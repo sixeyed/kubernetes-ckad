@@ -85,7 +85,33 @@ kubectl create secret generic my-secret \
 kubectl apply -f secret.yaml
 ```
 
-**TODO**: Add practice exercise with multiple creation methods and verification steps
+See complete examples: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml)
+
+**Practice exercise**:
+
+```bash
+# Create secrets using different methods
+kubectl create secret generic literal-secret --from-literal=password=secret123
+kubectl create secret generic file-secret --from-file=./tls.crt
+echo -e "USER=admin\nPASS=secret" > creds.env
+kubectl create secret generic env-secret --from-env-file=creds.env
+
+# Verify all were created
+kubectl get secrets | grep secret
+
+# Compare the structure
+kubectl get secret literal-secret -o yaml
+kubectl get secret file-secret -o yaml
+kubectl get secret env-secret -o yaml
+
+# Decode values
+kubectl get secret literal-secret -o jsonpath='{.data.password}' | base64 -d
+kubectl get secret env-secret -o jsonpath='{.data.USER}' | base64 -d
+
+# Cleanup
+kubectl delete secret literal-secret file-secret env-secret
+rm creds.env
+```
 
 ## Secret Types
 
@@ -99,7 +125,34 @@ Default type for arbitrary key-value data:
 kubectl create secret generic my-secret --from-literal=key=value
 ```
 
-**TODO**: Create example showing Opaque secret YAML structure
+See: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml) - includes Opaque secret examples.
+
+**Opaque secret YAML structure**:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-secret
+type: Opaque  # Default type
+data:
+  # Base64-encoded values
+  username: YWRtaW4=  # "admin"
+  password: c2VjcmV0MTIz  # "secret123"
+stringData:
+  # Plain text values (automatically base64-encoded)
+  api-key: "my-api-key-12345"
+  database-url: "postgres://user:pass@db.example.com:5432/mydb"
+```
+
+```bash
+# Decode secret values
+kubectl get secret my-secret -o jsonpath='{.data.username}' | base64 -d
+# Output: admin
+
+# View all keys
+kubectl get secret my-secret -o jsonpath='{.data}' | jq 'keys'
+```
 
 ### Docker Registry Secrets
 
@@ -131,14 +184,55 @@ spec:
   - name: regcred
 ```
 
-**TODO**: Create complete example specs:
-- `specs/secrets-types/docker-registry-secret.yaml`
-- `specs/secrets-types/pod-with-imagepullsecret.yaml`
+See complete examples: [`specs/ckad/imagepullsecrets.yaml`](specs/ckad/imagepullsecrets.yaml)
 
-**TODO**: Add exercise demonstrating:
-1. Creating docker-registry secret
-2. Using it in a Pod to pull private image
-3. Troubleshooting failed image pulls
+This file includes:
+- Docker registry secret creation (imperative and declarative)
+- Pod using imagePullSecrets
+- Deployment with multiple registry secrets
+- ServiceAccount with automatic imagePullSecrets
+- Examples for Docker Hub, GCR, ECR, ACR, Harbor
+
+**Exercise: Using private registry secrets**:
+
+```bash
+# 1. Create docker-registry secret
+kubectl create secret docker-registry my-registry \
+  --docker-server=registry.example.com \
+  --docker-username=myuser \
+  --docker-password=mypassword \
+  --docker-email=user@example.com
+
+# 2. Use in Pod (will attempt to pull from private registry)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: private-image-pod
+spec:
+  containers:
+  - name: app
+    image: registry.example.com/myapp:v1
+  imagePullSecrets:
+  - name: my-registry
+EOF
+
+# 3. Troubleshoot if image pull fails
+kubectl describe pod private-image-pod | grep -A 10 Events
+# Look for: ImagePullBackOff, ErrImagePull
+# Common issues:
+# - Wrong credentials
+# - Wrong registry URL
+# - Secret not in same namespace
+# - Image doesn't exist
+
+# Verify secret is correct
+kubectl get secret my-registry -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq
+
+# Cleanup
+kubectl delete pod private-image-pod
+kubectl delete secret my-registry
+```
 
 ### TLS Secrets
 
@@ -156,14 +250,64 @@ kubectl get secret my-tls-cert -o yaml
 
 The TLS Secret type automatically validates that `tls.crt` and `tls.key` fields are present.
 
-**TODO**: Create example specs:
-- `specs/secrets-types/tls-secret.yaml`
-- `specs/secrets-types/ingress-with-tls.yaml` (showing TLS secret usage)
+See complete examples: [`specs/ckad/tls-certificates.yaml`](specs/ckad/tls-certificates.yaml)
 
-**TODO**: Add exercise:
-1. Generate self-signed certificate
-2. Create TLS secret
-3. Use in Ingress resource (reference to ingress lab)
+This file includes:
+- TLS secret for Ingress
+- Self-signed certificate example
+- Mutual TLS (mTLS) with client certificates
+- Certificate rotation examples
+
+**Exercise: TLS certificates**:
+
+```bash
+# 1. Generate self-signed certificate
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout tls.key -out tls.crt \
+  -subj "/CN=myapp.example.com/O=myorg"
+
+# 2. Create TLS secret
+kubectl create secret tls myapp-tls \
+  --cert=tls.crt \
+  --key=tls.key
+
+# Verify structure
+kubectl get secret myapp-tls -o yaml
+# Shows: tls.crt and tls.key fields (both base64-encoded)
+
+# 3. Use in Ingress (see ingress lab for complete setup)
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+spec:
+  tls:
+  - hosts:
+    - myapp.example.com
+    secretName: myapp-tls  # References TLS secret
+  rules:
+  - host: myapp.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-service
+            port:
+              number: 80
+EOF
+
+# Verify TLS is configured
+kubectl describe ingress myapp-ingress | grep TLS
+# TLS: myapp-tls terminates myapp.example.com
+
+# Cleanup
+kubectl delete ingress myapp-ingress
+kubectl delete secret myapp-tls
+rm tls.crt tls.key
+```
 
 ### ServiceAccount Token Secrets
 
@@ -177,35 +321,108 @@ kubectl get sa my-sa -o yaml
 kubectl get secrets
 ```
 
-**TODO**: Add section explaining:
-- Legacy vs projected tokens
-- How ServiceAccounts use Secrets
-- When to manually create token secrets
+**ServiceAccount tokens**:
+
+- **Legacy behavior** (< Kubernetes 1.24): ServiceAccounts automatically created non-expiring token Secrets
+- **Current behavior** (≥ 1.24): Tokens are auto-projected into Pods as volumes with expiration
+- **Manual token creation**: Use `kubectl create token my-sa` for short-lived tokens
+- **When to manually create token Secrets**: For long-lived tokens (CI/CD, external integrations), though this is discouraged
+
+```bash
+# Create long-lived token Secret (legacy)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-sa-token
+  annotations:
+    kubernetes.io/service-account.name: my-sa
+type: kubernetes.io/service-account-token
+EOF
+
+# Token is automatically populated by Kubernetes
+kubectl get secret my-sa-token -o jsonpath='{.data.token}' | base64 -d
+```
 
 ### Basic Auth Secrets
 
 For HTTP basic authentication:
 
-```
+```bash
 kubectl create secret generic basic-auth \
   --from-literal=username=admin \
   --from-literal=password=secretpass \
   --type=kubernetes.io/basic-auth
 ```
 
-**TODO**: Add example showing basic-auth secret used with Ingress
+See: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml) for basic-auth examples.
+
+**Usage with Ingress annotations**:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: protected-app
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+spec:
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp
+            port:
+              number: 80
+```
 
 ### SSH Auth Secrets
 
 For SSH private keys:
 
-```
+```bash
 kubectl create secret generic ssh-key \
   --from-file=ssh-privatekey=~/.ssh/id_rsa \
   --type=kubernetes.io/ssh-auth
 ```
 
-**TODO**: Add example showing SSH secret mounted for git operations
+**Usage for git operations**:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: git-clone-pod
+spec:
+  containers:
+  - name: git
+    image: alpine/git
+    command:
+    - sh
+    - -c
+    - |
+      mkdir -p ~/.ssh
+      cp /ssh-keys/ssh-privatekey ~/.ssh/id_rsa
+      chmod 600 ~/.ssh/id_rsa
+      ssh-keyscan github.com >> ~/.ssh/known_hosts
+      git clone git@github.com:user/private-repo.git /workspace
+      ls -la /workspace
+    volumeMounts:
+    - name: ssh-keys
+      mountPath: /ssh-keys
+      readOnly: true
+  volumes:
+  - name: ssh-keys
+    secret:
+      secretName: ssh-key
+      defaultMode: 0400
+```
 
 ## Using Secrets in Pods
 
@@ -257,18 +474,58 @@ spec:
 
 Only specified keys are loaded, and you can rename them.
 
-**TODO**: Create comprehensive example:
-- `specs/usage/secret-multi-keys.yaml` - Secret with multiple keys
-- `specs/usage/pod-env-from.yaml` - Using envFrom
-- `specs/usage/pod-env-specific.yaml` - Using specific env keys
-- `specs/usage/pod-env-renamed.yaml` - Renaming keys during import
+See complete examples: [`specs/ckad/consume-secrets.yaml`](specs/ckad/consume-secrets.yaml)
 
-**TODO**: Add exercise demonstrating:
-1. Create Secret with multiple database config values
-2. Deploy Pod using envFrom (all variables)
-3. Deploy Pod using env with specific keys
-4. Deploy Pod renaming keys (DB_PASS -> DATABASE_PASSWORD)
-5. Verify environment variables in each Pod
+This file includes 10 methods for consuming secrets, including all environment variable patterns.
+
+**Exercise: Secret consumption with environment variables**:
+
+```bash
+# 1. Create multi-key secret
+kubectl create secret generic db-config \
+  --from-literal=DB_HOST=postgres.example.com \
+  --from-literal=DB_PORT=5432 \
+  --from-literal=DB_USER=appuser \
+  --from-literal=DB_PASS=secret123
+
+# 2. Pod using envFrom (all keys)
+kubectl run pod-envfrom --image=busybox --command -- sh -c "env | grep DB_ && sleep 3600" \
+  --dry-run=client -o yaml | \
+  kubectl patch -f - --local --type=json -p='[{"op":"add","path":"/spec/containers/0/envFrom","value":[{"secretRef":{"name":"db-config"}}]}]' -o yaml | \
+  kubectl apply -f -
+
+# 3. Pod with specific keys
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-specific-keys
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ['sh', '-c', 'env | grep DATABASE && sleep 3600']
+    env:
+    - name: DATABASE_HOST
+      valueFrom:
+        secretKeyRef:
+          name: db-config
+          key: DB_HOST
+    - name: DATABASE_PASSWORD  # Renamed from DB_PASS
+      valueFrom:
+        secretKeyRef:
+          name: db-config
+          key: DB_PASS
+EOF
+
+# 4. Verify environment variables
+kubectl exec pod-envfrom -- env | grep DB_
+kubectl exec pod-specific-keys -- env | grep DATABASE
+
+# Cleanup
+kubectl delete pod pod-envfrom pod-specific-keys
+kubectl delete secret db-config
+```
 
 ### As Volume Mounts
 
