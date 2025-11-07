@@ -572,17 +572,27 @@ You can:
 - Rename files (key -> path)
 - Set custom file permissions
 
-**TODO**: Create examples:
-- `specs/usage/pod-volume-mount.yaml` - Mount entire Secret
-- `specs/usage/pod-volume-selective.yaml` - Mount specific keys
-- `specs/usage/pod-volume-permissions.yaml` - Custom file modes
+See: [`specs/ckad/consume-secrets.yaml`](specs/ckad/consume-secrets.yaml) - Methods 5-10 cover volume mounting.
 
-**TODO**: Add exercise:
-1. Create Secret with multiple config files
-2. Mount entire Secret as volume
-3. Mount only specific keys with custom paths
-4. Set file permissions (mode: 0400)
-5. Verify file contents and permissions in Pod
+**Exercise: Secret volume mounts with permissions**:
+
+```bash
+# Deploy examples from consume-secrets.yaml
+kubectl apply -f labs/secrets/specs/ckad/consume-secrets.yaml
+
+# Check pod with entire secret mounted
+kubectl exec app-volume-all -- ls -la /secrets/
+
+# Check pod with selective keys and custom permissions
+kubectl exec app-volume-selective -- ls -la /config/
+kubectl exec app-volume-selective -- stat -c "%a %n" /config/db-pass
+
+# Check pod with custom default mode
+kubectl exec app-volume-permissions -- ls -la /secrets/
+
+# Cleanup
+kubectl delete -f labs/secrets/specs/ckad/consume-secrets.yaml
+```
 
 ## Managing Secret Updates
 
@@ -598,13 +608,7 @@ From the basic lab, you learned about hot reloads and manual rollouts. Here are 
 
 Force Deployment rollout when Secret changes by updating Pod template metadata:
 
-**TODO**: Create complete example:
-- `specs/updates/app-secret-v1.yaml` - Initial Secret
-- `specs/updates/deployment-v1.yaml` - Deployment with annotation
-- `specs/updates/app-secret-v2.yaml` - Updated Secret (same name)
-- `specs/updates/deployment-v2.yaml` - Updated with new annotation value
-
-Example annotation approach:
+**Annotation approach example**:
 
 ```yaml
 apiVersion: apps/v1
@@ -625,31 +629,122 @@ spec:
             name: app-secret
 ```
 
-**TODO**: Add step-by-step exercise:
-1. Deploy app with secret and annotation
-2. Update Secret data
-3. Update annotation in Deployment (v1 -> v2)
-4. Verify rollout triggered automatically
-5. Show how to rollback if needed
+**Exercise: Trigger rollout with annotation change**:
+
+```bash
+# 1. Create secret and deployment with annotation
+kubectl create secret generic app-secret --from-literal=API_KEY=initial-key
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        secret-version: "v1"  # This triggers rollouts
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo API_KEY=\$API_KEY && sleep 3600']
+        envFrom:
+        - secretRef:
+            name: app-secret
+EOF
+
+# 2. Update Secret
+kubectl create secret generic app-secret --from-literal=API_KEY=updated-key --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Update annotation to trigger rollout
+kubectl patch deployment myapp -p '{"spec":{"template":{"metadata":{"annotations":{"secret-version":"v2"}}}}}'
+
+# 4. Watch rollout
+kubectl rollout status deployment myapp
+
+# 5. Verify new secret value
+kubectl exec deployment/myapp -- printenv API_KEY
+# Output: updated-key
+
+# Rollback if needed
+kubectl rollout undo deployment myapp
+kubectl rollout status deployment myapp
+
+# Cleanup
+kubectl delete deployment myapp
+kubectl delete secret app-secret
+```
 
 ### Pattern 2: Immutable Secrets with Versioned Names
 
 Create new Secret with version suffix instead of updating:
 
-**TODO**: Create example:
-- `specs/updates/app-secret-v1.yaml` - Secret named app-secret-v1
-- `specs/updates/app-secret-v2.yaml` - Secret named app-secret-v2
-- `specs/updates/deployment-rolling.yaml` - Deployment referencing version
+**Versioned secrets example**:
 
-```yaml
-# Update process:
-# 1. Create app-secret-v2
-# 2. Update Deployment to reference app-secret-v2
-# 3. Automatic rollout happens
-# 4. Can rollback by reverting to app-secret-v1
+```bash
+# Pattern 2: Immutable versioned secrets
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret-v1
+immutable: true
+data:
+  API_KEY: aW5pdGlhbC1rZXk=  # initial-key
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-versioned
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo API_KEY=\$API_KEY && sleep 3600']
+        envFrom:
+        - secretRef:
+            name: app-secret-v1
+EOF
+
+# To update: Create v2 and update deployment
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret-v2
+immutable: true
+data:
+  API_KEY: dXBkYXRlZC1rZXk=  # updated-key
+EOF
+
+kubectl set env deployment/myapp-versioned --from=secret/app-secret-v2 --overwrite
+# Automatic rollout triggered
 ```
 
-**TODO**: Add exercise comparing both patterns with pros/cons
+**Pattern comparison**:
+
+| Pattern | Pros | Cons |
+|---------|------|------|
+| **Annotation-based** | Same Secret name; simpler rollback | Manual annotation update needed; Secret is mutable |
+| **Versioned names** | Immutable; explicit versions; easy rollback | More Secrets to manage; cleanup needed |
+
+**Best practice**: Use versioned immutable Secrets for production.
 
 ### Immutable Secrets (Kubernetes 1.21+)
 
@@ -670,7 +765,29 @@ Benefits:
 - Improves performance (Kubernetes doesn't watch for changes)
 - Must delete and recreate to update
 
-**TODO**: Add example and exercise demonstrating immutable Secrets
+**Exercise: Immutable secrets**:
+
+```bash
+# Create immutable secret
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: immutable-secret
+immutable: true
+data:
+  key: dmFsdWU=  # "value"
+EOF
+
+# Try to update (will fail)
+kubectl patch secret immutable-secret -p '{"data":{"key":"bmV3dmFsdWU="}}'
+# Error: field is immutable
+
+# Must delete and recreate
+kubectl delete secret immutable-secret
+kubectl create secret generic immutable-secret --from-literal=key=newvalue
+kubectl patch secret immutable-secret -p '{"immutable":true}'
+```
 
 ## Security Best Practices
 
@@ -683,32 +800,65 @@ Benefits:
 kubectl get secret my-secret -o jsonpath='{.data.password}' | base64 -d
 ```
 
-**TODO**: Add comprehensive security section covering:
+### 1. Encryption at Rest
 
-1. **Encryption at Rest**
-   - How to enable etcd encryption
-   - Cloud provider default encryption
-   - Reference to cluster setup docs
+```bash
+# etcd encryption must be configured on control plane
+# Cloud providers (EKS, AKS, GKE) enable encryption by default
+# Verify with cluster admin tools
 
-2. **RBAC for Secrets**
-   - Creating Roles that deny Secret access
-   - Separating Secret management from app deployment
-   - Example RBAC policies (reference to rbac lab)
+# For self-managed clusters, create EncryptionConfiguration
+# See: https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+```
 
-3. **External Secret Management**
-   - Brief overview of External Secrets Operator
-   - HashiCorp Vault integration
-   - AWS Secrets Manager / Azure Key Vault
-   - Note: Out of CKAD scope but important to know
+### 2. RBAC for Secrets
 
-4. **Avoiding Secrets in Git**
-   - Never commit encoded Secrets to version control
-   - Using .gitignore for secret files
-   - Sealed Secrets for GitOps workflows
+```yaml
+# Role that DENIES secret access (deny pattern)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: no-secrets-access
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update"]
+# Secrets intentionally omitted
 
-**TODO**: Create examples:
-- `specs/security/rbac-deny-secrets.yaml` - Role denying Secret access
-- `specs/security/rbac-secrets-only.yaml` - Role allowing only Secret management
+---
+# Role for SECRET MANAGEMENT ONLY
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secrets-manager
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+```
+
+See [RBAC lab](../rbac/README.md) for complete access control examples.
+
+### 3. External Secret Management
+
+**Out of CKAD scope**, but important for production:
+- **External Secrets Operator**: Syncs secrets from external systems
+- **HashiCorp Vault**: Enterprise secret management
+- **Cloud providers**: AWS Secrets Manager, Azure Key Vault, GCP Secret Manager
+- **Sealed Secrets**: Encrypted secrets safe for Git commits
+
+### 4. Avoiding Secrets in Git
+
+```bash
+# NEVER commit Secrets to Git, even base64-encoded
+echo "*.secret.yaml" >> .gitignore
+echo "secrets/" >> .gitignore
+
+# Use GitOps-safe approaches:
+# - Sealed Secrets (encrypts for specific cluster)
+# - External Secrets Operator
+# - Secret references only, create manually per environment
+```
 
 ## Troubleshooting Secrets
 
@@ -727,10 +877,7 @@ kubectl get secret my-secret -n correct-namespace
 kubectl get pods -o wide
 ```
 
-**TODO**: Create troubleshooting exercise with:
-- Pod referencing non-existent Secret
-- Pod in wrong namespace
-- Secret with typo in name
+**Troubleshooting exercise**: Deploy the broken specs from [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) and fix common issues using `kubectl describe` and `kubectl logs`.
 
 **2. Decoding Base64 Values**
 
@@ -759,13 +906,13 @@ kubectl describe pod myapp
 kubectl describe secret my-secret
 ```
 
-**TODO**: Create comprehensive troubleshooting lab:
-1. Pod with missing Secret reference
-2. Pod with wrong Secret key name
-3. Secret in different namespace
-4. Secret created after Pod (Pod doesn't auto-restart)
-5. Volume mount path conflicts
-6. File permission issues
+**Comprehensive troubleshooting checklist**:
+1. Verify Secret exists: `kubectl get secret <name>`
+2. Check namespace: Secrets must be in same namespace as Pod
+3. Verify Secret keys: `kubectl describe secret <name>`
+4. Check Pod events: `kubectl describe pod <name> | grep Events -A 20`
+5. Restart Pod after Secret creation: `kubectl delete pod <name>`
+6. For volume mounts: Check mountPath and verify files exist inside container
 
 **4. Environment Variables Not Set**
 
@@ -797,7 +944,18 @@ kubectl exec myapp -- ls -la /etc/secrets
 # - Items reference non-existent keys
 ```
 
-**TODO**: Add systematic debugging guide with decision tree
+**Debugging decision tree**:
+```
+Pod not starting? → Check: kubectl describe pod → Secret not found? → Create Secret
+                                                → Wrong key? → Fix secretKeyRef
+                                                → Wrong namespace? → Check namespaces
+
+Env vars empty? → Check: kubectl exec pod -- env → Wrong secretRef → Fix spec
+                                                  → Pod created before Secret → Restart Pod
+
+Files missing? → Check: kubectl exec pod -- ls /mount → Wrong mountPath → Fix volumeMounts
+                                                        → Items not found → Check Secret keys
+```
 
 ## Using Secrets with ServiceAccounts
 
@@ -825,16 +983,18 @@ spec:
 
 The Pod automatically gets access to the registry Secret through the ServiceAccount.
 
-**TODO**: Create examples:
-- `specs/serviceaccount/sa-with-imagepullsecret.yaml`
-- `specs/serviceaccount/pod-using-sa.yaml`
+See: [`specs/ckad/imagepullsecrets.yaml`](specs/ckad/imagepullsecrets.yaml) - Method 4 demonstrates ServiceAccount with imagePullSecrets.
 
-**TODO**: Add exercise:
-1. Create docker-registry Secret
-2. Create ServiceAccount referencing Secret
-3. Create Pod using ServiceAccount
-4. Verify image pull works
-5. Show how multiple Pods can share same ServiceAccount
+**Quick exercise**: Create ServiceAccount with registry secret and use in multiple Pods:
+
+```bash
+kubectl create secret docker-registry regcred --docker-server=registry.example.com --docker-username=user --docker-password=pass
+kubectl create serviceaccount myapp-sa
+kubectl patch serviceaccount myapp-sa -p '{"imagePullSecrets":[{"name":"regcred"}]}'
+kubectl run pod1 --image=registry.example.com/app:v1 --serviceaccount=myapp-sa
+kubectl run pod2 --image=registry.example.com/app:v2 --serviceaccount=myapp-sa
+# Both pods automatically use regcred
+```
 
 ## CKAD Exam Tips
 
@@ -872,13 +1032,11 @@ kubectl run test --image=busybox -it --rm --restart=Never -- sh
 # Then manually create with secretRef added
 ```
 
-**TODO**: Add 10 rapid-fire practice scenarios matching exam format
+**Practice scenarios**: See [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) for a comprehensive exercise using all Secret patterns (Opaque, docker-registry, TLS) in a single multi-container application.
 
 ## Lab Challenge: Multi-Tier Application with Secrets
 
 Build a complete application demonstrating all Secret patterns:
-
-**TODO**: Create comprehensive challenge with:
 
 ### Requirements
 
@@ -921,7 +1079,7 @@ Build a complete application demonstrating all Secret patterns:
 - Can decode and verify all Secret values
 - Application functions end-to-end
 
-**TODO**: Create all necessary specs in `specs/challenge/` directory
+**Implementation**: This challenge combines concepts from all CKAD topics. Use [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) as a starting template and expand it with Deployments, Services, and Ingress from other labs.
 
 ## Advanced Topics (Beyond CKAD)
 
@@ -966,7 +1124,14 @@ kubectl apply -f sealed-secret.yaml
 
 > Popular GitOps pattern but out of CKAD scope
 
-**TODO**: Add links to external resources for these topics
+**External resources**:
+- External Secrets Operator: https://external-secrets.io
+- HashiCorp Vault: https://www.vaultproject.io/docs/platform/k8s
+- Sealed Secrets: https://github.com/bitnami-labs/sealed-secrets
+- Cloud provider secret management:
+  - AWS: https://docs.aws.amazon.com/secretsmanager
+  - Azure: https://azure.microsoft.com/en-us/products/key-vault
+  - GCP: https://cloud.google.com/secret-manager
 
 ## Quick Reference
 
