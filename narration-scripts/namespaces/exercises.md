@@ -1,307 +1,59 @@
-# Namespaces - Practical Exercises
-## Narration Script for Hands-On Demonstration
-**Duration:** 12-15 minutes
+# Namespaces - Exercises Narration Script
 
----
+Welcome back! In the previous video, we covered the concepts behind Kubernetes namespaces. Now it's time to get hands-on and explore how namespaces work in practice. In this demo, we'll explore system namespaces, learn context switching, create our own namespaces, and see how they provide resource isolation and quotas.
 
-## Setup and Introduction (0:00 - 0:30)
+Make sure you have a Kubernetes cluster running and kubectl configured. I'm using Docker Desktop, but any Kubernetes distribution will work fine. Let's dive in and see how namespaces organize and isolate workloads in a cluster.
 
-"Welcome to the practical exercises for Kubernetes Namespaces. We'll work through real scenarios that demonstrate namespace isolation, resource quotas, and cross-namespace communication."
+## API specs
 
-**Preparation:**
+Before we start creating namespaces, let's understand what they are. Kubernetes uses declarative configuration with YAML files. The basic YAML for a namespace is extremely simple. We specify the API version as v1, the kind as Namespace, and metadata with just a name. That's really all you need for a basic namespace. It needs a name, and then for every resource you want to create inside the namespace, you add the namespace name to that object's metadata. Namespaces can't be nested, so it's a single-level hierarchy used to partition the cluster.
 
+## Creating and using namespaces
 
-"Let's start by exploring the namespaces that already exist in your cluster."
+The core components of Kubernetes itself run in Pods and Services, but you don't see them in kubectl because they're in a separate namespace. Let's start by checking what Pods exist in our default namespace. As expected, nothing is there yet. Now let's list all namespaces. You'll see several system namespaces that every Kubernetes cluster has. There's the default namespace where we've been working, the kube-system namespace containing system components, kube-public for publicly accessible resources, and kube-node-lease for node heartbeat data.
 
----
+Let's explore what's running in the kube-system namespace. The minus n flag tells kubectl which namespace to use. If you don't include it, commands use the default namespace. You'll see various system components depending on your Kubernetes distribution, but it should include a DNS server Pod. You can work with system resources in the same way as your own apps, but you need to include the namespace in the kubectl command.
 
-## Exercise 1: Exploring System Namespaces (0:30 - 2:30)
+Let's try printing the logs of the system DNS server. First, I'll try without specifying the namespace. That failed! The DNS server is in kube-system, not default. Now let's fix it by adding the namespace flag. There we go, we can see the DNS server logs. The namespace flag is essential when working across namespaces.
 
-### Understanding Default Namespaces (0:30 - 1:30)
+Adding a namespace to every command gets tedious. Kubernetes has contexts to let you set the default namespace for commands. Let's look at our current context. The context includes which cluster to connect to, authentication credentials, and the default namespace for commands. Contexts are how you switch between clusters too, and the cluster API server details are stored in your kubeconfig file.
 
-"Every Kubernetes cluster has system namespaces. Let's examine them:"
+You can update the settings for your context to change the namespace. Let's switch our default namespace to kube-system. All kubectl commands now work against the cluster and namespace in the current context. Let's print some Pod details. Notice we didn't specify minus n, but we see system Pods. Our context now defaults to kube-system. We can also print the logs without the namespace flag. It's dangerous to work in system namespaces though, so we should always switch back. Develop this habit: switch context for focused work, but always return to default when done.
 
+## Deploying objects to namespaces
 
-"You'll see several namespaces:
-- default: Where we've been working
-- kube-system: System components
-- kube-public: Publicly accessible resources
-- kube-node-lease: Node heartbeat data"
+Object specs can include the target namespace in the YAML, but if it's not specified, kubectl decides the namespace using the default for the context or an explicit namespace flag. Let's look at the sleep Pod specification. This defines a Pod with no namespace, so kubectl decides where it goes. We can deploy this Pod spec to the default namespace and then to the system namespace using different namespace flags. Now when we list Pods across all namespaces with the all-namespaces flag, we see both sleep Pods in different namespaces. Same Pod name, same labels, but they don't conflict because namespaces provide isolation.
 
-"The kube-system namespace contains the core components that make Kubernetes work:"
+Namespace access can be restricted with access controls, but in your dev environment you'll have cluster admin permissions so you can see everything. If you're using namespaces to isolate applications, you'll include the namespace spec with the model and specify the namespace in all the objects. Let's look at the whoami application specs. There's a namespace definition file, a deployment for the namespace, and services where the label selectors only apply to Pods in the same namespace as the Service.
 
+Kubectl can deploy all the YAML in a folder, but it doesn't check the objects for dependencies and create them in the correct order. Mostly that's fine because of the loosely-coupled architecture. Services can be created before a Deployment and vice-versa. But namespaces need to exist before any objects can be created in them, so the namespace YAML is called zero one underscore namespace.yaml to ensure it gets created first. Kubectl processes files in order by filename. After applying the whoami specs, we can see the services in the whoami namespace.
 
-"You'll see Pods for:
-- DNS server (CoreDNS or kube-dns)
-- kube-proxy for networking
-- Possibly metrics-server, dashboard, or other system components"
+Using namespaces to group applications or environments means your top-level objects don't need so many labels. You'll work with them inside a namespace, so you don't need labels for filtering. Let's deploy another app where all the components will be isolated in their own namespace. The configurable app has a namespace definition, a ConfigMap with app settings, and a Deployment which references the ConfigMap. Config objects need to be in the same namespace as the Pod. After deploying the app, we can list Deployments in all namespaces showing labels. The show-labels flag displays all labels for each resource.
 
-### Accessing Resources in Other Namespaces (1:30 - 2:30)
+You can only use kubectl with one namespace or all namespaces, so you might want additional labels for objects like Services so you can list across all namespaces and filter by label. Let's query Services across all namespaces that match the lab label. This shows Services from multiple namespaces that share the same label. Labels work across namespace boundaries, but label selectors within resources only work within the same namespace. This is an important distinction: a Service in the whoami namespace can only select Pods in the whoami namespace, even if matching Pods exist in other namespaces.
 
-"By default, kubectl commands use the 'default' namespace. Watch what happens:"
+## Namespaces and Service DNS
 
+Networking in Kubernetes is flat, so any Pod in any namespace can access another Pod by its IP address. Services are namespace-scoped, so if you want to resolve the IP address for a Service using its DNS name, you can include the namespace. A local domain name like whoami-np will only look for the Service in the same namespace where the lookup runs. A fully-qualified domain name like whoami-np.whoami.svc.cluster.local will look for the Service in the whoami namespace regardless of where you run the lookup.
 
-"That failed because the DNS server is in kube-system, not default. Let's fix it:"
+Let's run some DNS queries inside the sleep Pod. First, let's try looking up whoami-np without the namespace. That won't return an address because the Service is in a different namespace. Now let's include the namespace in the lookup. This includes the namespace, so it returns an IP address. As a best practice, you should use fully-qualified domain names to communicate between components. It makes your deployment less flexible because you can't change the namespace without also changing app config, but it removes a potentially confusing failure point.
 
+## Applying resource limits
 
-"Now we see the DNS server logs. The -n flag is essential when working across namespaces."
+Namespaces aren't just for logically grouping components, you can also enforce quotas on a namespace to limit the resources available. This ensures apps don't use all the processing power of the cluster, starving other apps. Resource quotas and limit ranges at the namespace level work together with resource limits and requests at the Pod level. Let's deploy the Pi-calculating web app, which is compute-intensive. To keep our cluster usable for other apps, we'll deploy it in a new namespace with a CPU quota applied.
 
----
+The specs include a quota which sets a total limit of four CPU cores across all Pods in the namespace, and a Deployment with one Pod that has a limit of one hundred twenty-five millicores, which is zero point one two five of one core. Resource requests specify how much memory or CPU the Pod would like allocated when it is created. Resource limits specify the maximum memory or CPU the Pod can access. There's no Nginx proxy for this release of the Pi app and the CPU allocation is very small, so the calculations will be slow.
 
-## Exercise 2: Context Switching (2:30 - 4:30)
+After deploying, we can check the quota and verify the Pod is running. When we try the app at the NodePort URL, on my machine it takes about ten and a half seconds to respond. Not every dev Kubernetes setup enforces CPU limitations. You might not see the app responding slowly if you're using Kind or Minikube. Docker Desktop and k3d do enforce them, and so do all the production Kubernetes platforms.
 
-### Understanding Contexts (2:30 - 3:15)
+Let's speed it up by bumping the processing power to two and a half CPU cores. After updating the app, we can check the resources set in the Pod using describe. When we refresh the app, on my machine it now takes about one point two seconds to respond. Much faster! Now let's try to go to the max. We'll set a limit of four and a half CPU cores, which is greater than the quota for the namespace. After applying the update, let's check the ReplicaSets. The new ReplicaSet never scales up to the desired count. When we describe it, you'll see a nice, clear error telling you that the quota has been exceeded. Kubernetes will keep trying, in case the quota changes or resources are freed up.
 
-"Adding -n to every command gets tedious. Kubernetes has contexts to set a default namespace:"
+## Lab
 
+That Pi service takes too long to run, and it performs better when you run it with a reverse proxy to cache the responses. The lab asks us to add a caching proxy in front of the Pi app, and the ops team wants all proxies in a namespace called front-end. You can use the reverse proxy setup from the specs as a starting point, but those specs don't include a namespace. We need to create the front-end namespace, add namespace references to all resources, and fix the proxy configuration to point to the Pi service in the pi namespace using a fully-qualified domain name. When you browse to the proxy endpoint, you'll find an error because the configuration needs to be fixed. The proxy configuration needs to point to the correct service URL using the FQDN pattern. Remember that ConfigMaps must be in the same namespace as the Pods that use them, and service URLs must use fully-qualified domain names for cross-namespace access.
 
-"The context includes:
-- Which cluster to connect to
-- Authentication credentials
-- Default namespace for commands"
+## Cleanup
 
-### Changing Your Working Namespace (3:15 - 4:00)
+Namespaces make cleanup easy. Just delete the namespace and all its resources are removed. We can delete the labeled namespaces, and they're gone, along with all their resources. Don't forget the sleep Pods we created in multiple namespaces. We can delete those across all namespaces using the all-namespaces flag with the label selector. Our cluster is clean again and ready for the next lab.
 
-"Let's switch our default namespace to kube-system:"
-
-
-"Notice we didn't specify -n, but we see system Pods. Our context now defaults to kube-system."
-
-### Best Practice: Switch Back (4:00 - 4:30)
-
-"It's dangerous to work in system namespaces. Always switch back:"
-
-
-"Develop this habit: switch context for focused work, but always return to default when done."
-
----
-
-## Exercise 3: Creating and Using Namespaces (4:30 - 7:00)
-
-### Deploying to Different Namespaces (4:30 - 5:30)
-
-"Let's deploy the same Pod to multiple namespaces:"
-
-
-"Notice there's no namespace in the YAML. Kubectl will decide where it goes:"
-
-
-"Same Pod name, same labels, but in different namespaces. They don't conflict because namespaces provide isolation."
-
-### Creating Application Namespaces (5:30 - 7:00)
-
-"Now let's deploy a complete application in its own namespace. The whoami app has three files:"
-
-
-"Notice the file naming:
-- 01-namespace.yaml - Creates the namespace first
-- deployment.yaml - The application
-- services.yaml - The services
-
-The '01' prefix ensures the namespace is created before the other resources."
-
-
-"The application is completely isolated in the 'whoami' namespace. This is how you organize applications or environments."
-
----
-
-## Exercise 4: Working with Multiple Applications (7:00 - 9:00)
-
-### Deploying the Configurable App (7:00 - 8:00)
-
-"Let's deploy another application in a different namespace:"
-
-
-"This app has:
-- A namespace
-- A ConfigMap with configuration
-- A Deployment that uses the ConfigMap"
-
-
-"Notice how we can see Deployments from all namespaces at once with -A (or --all-namespaces)."
-
-### Filtering with Labels (8:00 - 9:00)
-
-"Both apps have the same label for this lab:"
-
-
-"This shows Services across all namespaces that match the label. Labels work across namespace boundaries, but label selectors within resources (like Services selecting Pods) only work within the same namespace."
-
-**Important distinction:** "A Service in the 'whoami' namespace can only select Pods in the 'whoami' namespace, even if matching Pods exist in other namespaces."
-
----
-
-## Exercise 5: Cross-Namespace DNS (9:00 - 11:00)
-
-### Understanding Service DNS (9:00 - 9:45)
-
-"Services have DNS names, but how do they work across namespaces?"
-
-"Let's test from the sleep Pod in default namespace:"
-
-
-"That fails! The whoami-np service is in the 'whoami' namespace, not 'default'."
-
-### Using Fully-Qualified Names (9:45 - 11:00)
-
-"To access services across namespaces, use the FQDN:"
-
-
-"That works! The FQDN format is:
-
-
-You can also use the shorter form:"
-
-
-"Best practice: Always use FQDNs for cross-namespace communication. It's explicit and prevents confusion."
-
----
-
-## Exercise 6: Resource Quotas (11:00 - 14:00)
-
-### Understanding Resource Limits (11:00 - 11:45)
-
-"Quotas prevent applications from consuming all cluster resources. Let's see them in action with the Pi application:"
-
-
-"This ResourceQuota limits:
-- Total CPU limits across all Pods: 4 cores
-- Total memory limits: 8Gi
-
-Let's deploy the Pi app with a small CPU allocation:"
-
-
-### Testing the Application (11:45 - 12:30)
-
-"The app should be running. Let's test it:"
-
-
-"On my machine, this takes about 10.5 seconds. The Pod is limited to 125 millicores (0.125 CPU), so it's slow."
-
-**Note:** "If you're using Kind or Minikube, you might not see the slowdown. Docker Desktop and k3d do enforce CPU limits, as do all production Kubernetes platforms."
-
-### Increasing Resources (12:30 - 13:15)
-
-"Let's give the Pod more CPU:"
-
-
-"This bumps the CPU limit to 2.5 cores. Much more power!"
-
-
-"Try the calculation again:"
-
-
-"Much faster! On my machine, down to 1.2 seconds. That's the impact of resource allocation."
-
-### Exceeding Quota Limits (13:15 - 14:00)
-
-"What happens if we try to exceed the namespace quota?"
-
-
-"This requests 4.5 CPU cores, but our namespace quota is 4 cores total."
-
-
-"Look at the events: 'exceeded quota'. The ReplicaSet can't create the Pod because it would violate the namespace quota."
-
-"Kubernetes keeps trying in case the quota changes or other Pods are deleted, freeing up resources."
-
----
-
-## Exercise 7: Lab Challenge (14:00 - 15:00)
-
-### Understanding the Challenge (14:00 - 14:30)
-
-"The lab asks us to add a caching proxy in front of the Pi service. Requirements:
-- Use the reverse-proxy specs as a starting point
-- The proxy must be in a namespace called 'front-end'
-- Fix any configuration errors"
-
-
-"This spec has:
-- Nginx deployment and service
-- ConfigMap with proxy configuration
-- But NO namespace defined"
-
-### Solution Approach (14:30 - 15:00)
-
-"We need to:
-1. Create the 'front-end' namespace
-2. Add namespace to all resources
-3. Fix the proxy configuration to point to the Pi service in the 'pi' namespace using FQDN"
-
-"I'll let you work through this in the solution.md file, but the key is understanding:
-- Namespaces must exist before resources
-- ConfigMaps must be in the same namespace as Pods that use them
-- Service URLs must use FQDN for cross-namespace access"
-
-**Hint:** "The proxy configuration needs to point to: http://pi-web.pi.svc.cluster.local"
-
----
-
-## Cleanup and Summary (15:00 - 15:30)
-
-### Cleaning Up Resources
-
-"Namespaces make cleanup easy - just delete the namespace:"
-
-
-"The labeled namespaces are gone, along with all their resources."
-
-"Don't forget the sleep Pods we created:"
-
-
-### Key Takeaways
-
-"What we've learned:
-
-1. **Namespace basics** - Creating and switching between namespaces
-2. **Context management** - Using kubectl config to set default namespace
-3. **Resource isolation** - Same names in different namespaces don't conflict
-4. **Cross-namespace DNS** - Using FQDNs to access services across namespaces
-5. **Resource quotas** - Limiting resources at the namespace level
-6. **Configuration scoping** - ConfigMaps and Secrets are namespace-bound
-7. **Cleanup** - Deleting a namespace removes all its resources
-
-These patterns are essential for:
-- Multi-tenant clusters
-- Environment separation (dev/test/prod)
-- Resource management
-- Team isolation
-- Cost tracking and allocation"
-
----
-
-## Common Issues and Troubleshooting
-
-**If Pods don't start in namespaces with quotas:**
-- Check: `kubectl describe quota -n <namespace>`
-- Ensure Pods have resource requests and limits defined
-- Verify quota hasn't been exceeded
-
-**If cross-namespace communication fails:**
-- Use FQDN: `service.namespace.svc.cluster.local`
-- Check service exists: `kubectl get svc -n <namespace>`
-- Verify DNS is working: `kubectl exec <pod> -- nslookup kubernetes.default`
-
-**If you lose track of your namespace:**
-- Check context: `kubectl config get-contexts`
-- See current namespace: `kubectl config view --minify | grep namespace`
-- Always return to default: `kubectl config set-context --current --namespace default`
-
-**If resources aren't visible:**
-- Check the right namespace: `kubectl get pods -n <namespace>`
-- List all namespaces: `kubectl get pods -A`
-- Verify resource type is namespace-scoped: `kubectl api-resources --namespaced=true`
-
----
-
-## Transition to CKAD Exam Prep
-
-"In the next section, we'll focus on CKAD exam scenarios. You'll learn:
-- Imperative commands for namespace creation
-- Working with ResourceQuotas under time pressure
-- Quick context switching techniques
-- Common exam patterns with namespaces
-- Time-saving tips for the certification
-
-Let's practice for the exam!"
+That wraps up our hands-on exploration of namespaces. We've seen how to create and switch between namespaces, how namespace isolation works, how to access services across namespaces using DNS, and how resource quotas limit consumption at the namespace level. These patterns are essential for multi-tenant clusters, environment separation, resource management, and team isolation. In the next video, we'll dive deeper into CKAD-specific scenarios including imperative namespace commands, working with ResourceQuotas under time pressure, quick context switching techniques, and common exam patterns with namespaces.

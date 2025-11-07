@@ -1,308 +1,83 @@
-# Network Policy Practical Exercises - Narration Script
-**Duration:** 15-18 minutes
-**Format:** Hands-on demonstration following README.md
-**Target Audience:** CKAD candidates and Kubernetes practitioners
+# Network Policy - Exercises Narration Script
 
----
+Welcome to the practical Network Policy exercises. In this session, we'll work hands-on with Kubernetes Network Policy to secure a real distributed application. We'll see how network policies control traffic flow between Pods and learn to implement proper security boundaries in a Kubernetes cluster.
 
-## Introduction [0:00-0:30]
+We'll be working with the APOD application, which stands for Astronomy Picture of the Day. This is a three-tier distributed application that demonstrates realistic communication patterns between components. It consists of a web frontend that users interact with, an API service that fetches astronomy data from NASA's public API, and a logging service that records user activity. Through securing this application, you'll learn the essential patterns for implementing network policies in production environments.
 
-Welcome to the NetworkPolicy practical exercises. In this session, we'll work hands-on with Kubernetes NetworkPolicy to secure a real application. We'll deploy a distributed application, apply network policies, and observe how they control traffic flow.
+## Deploy the APOD application
 
-We'll be working with the APOD application - Astronomy Picture of the Day - which consists of three components: a web frontend, an API service, and a logging service. Through this example, you'll learn how to implement default deny policies, allow specific traffic patterns, and troubleshoot network connectivity issues.
+Let's start by understanding what we're deploying. The application consists of three separate components, each with its own Deployment and Service. The specifications are straightforward Kubernetes manifests without any special networking configuration initially. The API component provides REST endpoints to fetch information about the astronomy picture. The log component is another REST API that records information about application usage. The web application consumes both of these REST APIs and presents the picture of the day to users. The web component is published externally using a NodePort Service on port thirty thousand sixteen.
 
-Let's begin by setting up our environment and deploying the application.
+When we deploy these resources, Kubernetes creates all three Deployments and their associated Services. We need to wait for all the Pods to become ready before testing the application. This usually takes about thirty seconds to a minute depending on whether the container images are already cached locally. Once all Pods show as running and ready, we can browse to the application on localhost port thirty thousand sixteen. The application should load successfully, showing the astronomy picture with its description. The web frontend is successfully communicating with both the API and log services. This demonstrates the default Kubernetes networking behavior where all Pods can freely communicate with each other.
 
----
+Take note of this working state because we're about to change it dramatically. In a default Kubernetes cluster, networking is completely flat. Every Pod can reach every other Pod without any restrictions. This makes it easy to build and test applications, but it creates security gaps. There's no network segmentation, and applications can potentially access resources they shouldn't.
 
-## Part 1: Deploy the APOD Application [0:30-2:30]
+Now let's enforce a deny-all network policy. The specification uses an empty podSelector, which means it applies to all Pods in the namespace. There are no ingress or egress rules defined, which creates a complete traffic block. Understanding why this blocks everything is crucial. Network policies are additive, similar to RBAC rules. Subjects start with no permissions, and you explicitly grant what's needed. This policy specifies both ingress and egress in the policyTypes field, but provides no rules for either direction. The result is a policy that allows nothing, effectively blocking all incoming and outgoing communication for all Pods.
 
-**[0:30-1:00] Application Overview**
+When we apply this deny-all policy and check the network policies, we see it was created successfully. We can use the shorthand "netpol" instead of typing out "networkpolicies" each time. This policy should block all traffic, preventing the web app from communicating with the APIs. However, something interesting happens when we refresh the application in the browser. In most cases, the app still works perfectly fine.
 
-Let's start by understanding what we're deploying. The APOD application is a simple three-tier application:
+Why does the application continue functioning despite our deny-all policy? The answer is that most Kubernetes clusters don't actually enforce network policy. Docker Desktop, which many developers use, doesn't have a CNI plugin that supports network policy enforcement. The policy gets created and stored in the cluster's API server, but nothing is actually applying it to the network traffic. This is a critical distinction to understand. Network policy support requires a compatible CNI plugin like Calico, Cilium, or Weave. Without one of these plugins, policies are essentially decorative.
 
-The web component serves the user interface and is exposed via a NodePort Service on port 30016.
+We can verify this by trying to communicate between Pods directly. If we execute a command from the web Pod to call the API Pod, it will still succeed if the CNI doesn't enforce policies. The network traffic flows freely despite the policy saying it shouldn't. This demonstrates why testing in the right environment is so important.
 
-The API component provides REST endpoints to fetch astronomy picture data from NASA's public API.
+To really see network policies in action, we need a cluster with a CNI that enforces them. Let's remove the existing application to free up resources, and if you're already using k3d, stop your existing cluster to avoid port collisions when we create the new one.
 
-The log component is another REST API that records user activity.
+## Install k3d CLI
 
-All three components are defined with standard Kubernetes resources - Deployments and Services. There's nothing special about the specs themselves; they're regular application deployments without any network policies initially.
+We need k3d to create a cluster with proper network policy support. k3d is a tool for running Kubernetes clusters where each node runs inside a Docker container. It's not as user-friendly as Docker Desktop for everyday development, but it provides advanced configuration options that we need for this demonstration. Specifically, we can control which CNI plugin the cluster uses.
 
-**[1:00-1:30] Deploy the Application**
+The installation is straightforward using package managers. On Windows with Chocolatey, on macOS with Homebrew, or on Linux with a simple curl command. After installation, we can verify it's working by checking the version. The exercises use k3d version five, and this is important because options have changed significantly since older versions. If you're on version four or earlier, you'll need to upgrade to follow along. k3d requires Docker as its container runtime, so it works with Docker Engine on Linux or Docker Desktop on Mac and Windows. You can't use it with other container runtimes.
 
-Let's deploy all the components. I'll apply the manifests from the apod directory:
+## Try a new cluster with NetworkPolicy support
 
+With k3d installed, we can create specialized clusters to represent different environments or projects, then start and stop them as needed. The cluster creation command has numerous options for customizing the setup. By default, k3d clusters use the Flannel CNI plugin, which is common in many Kubernetes distributions. However, Flannel doesn't enforce network policies. We can configure a new cluster to start with no network plugin at all, then install Calico ourselves.
 
-We should see three Deployments and three Services being created. Let's check the status:
+The cluster creation command looks complex at first, but each part serves a specific purpose. We're creating a single-node cluster without the Flannel CNI installed. The port publishing flag makes ports thirty thousand through thirty thousand forty available on localhost, so we can access NodePort Services just like we would with Docker Desktop. The additional k3s arguments disable various default features we don't need for this demonstration. The cluster gets created without networking capabilities initially.
 
+After creation, k3d automatically changes your kubectl context to point to the new cluster. We can verify this by checking the cluster nodes. The node appears in the list, but if we look at its status, it's NotReady. The cluster isn't functional yet because there's no network plugin installed. If we dig deeper and check the Deployments in the kube-system namespace, we'll see that the DNS server isn't running either. CoreDNS requires networking to function, so it can't start without a CNI plugin.
 
-Wait for all Pods to reach the Running state with all containers ready. This usually takes 30 seconds to a minute depending on whether the images are already cached.
+Calico is a popular open-source network plugin that supports network policy enforcement. It's very commonly used in production environments where network policy is required. The network plugin runs as a DaemonSet, meaning one Pod runs on each node in the cluster. Calico uses privileged init containers to modify the network configuration of the operating system on each node. This is why we're using k3d for this exercise. Running Calico modifies network settings in ways that could interfere with your main cluster, but since k3d nodes are just containers, the changes are isolated and safe.
 
-**[1:30-2:30] Verify Application Functionality**
+The Calico manifest comes from the official Calico documentation. It includes the network plugin components and all the necessary RBAC rules for Calico to operate within the cluster. When we install Calico and watch the Pods in kube-system, we'll see various Calico components starting up. This takes a minute or two as the Pods pull images and initialize. The calico-node Pods configure networking on each node, while calico-kube-controllers manages the Calico resources cluster-wide.
 
-Now that the Pods are running, let's verify the application works. Open a browser and navigate to http://localhost:30016.
+Once Calico is running, we can check the node status again. The node should now show as Ready, indicating the cluster is fully functional. The CoreDNS Deployment should also scale up and become available. We now have a working Kubernetes cluster with a CNI that will actually enforce our network policies.
 
-You should see the Astronomy Picture of the Day website. The web frontend is successfully communicating with both the API and log services. Take note of this working state - we're about to break it with network policies, and then fix it properly.
+Let's deploy the APOD application again, this time on our policy-enforcing cluster. We apply the same manifests as before, and the Pods start up normally. Once they're running, we can verify the application works by browsing to localhost port thirty thousand sixteen. The application loads successfully, showing that basic networking functions correctly.
 
-The key observation here is that in a default Kubernetes cluster, all Pods can communicate freely. The web Pod can reach the API and log Pods without any restrictions. This is the flat networking model we discussed in the concepts presentation.
+Now we'll apply the same deny-all policy as before. When we check that the policy was created, it appears in the list just like it did on our previous cluster. But this time, something different happens. When we refresh the browser, the application times out and fails to load. This is what proper network policy enforcement looks like. The web Pod genuinely cannot communicate with the API or log Pods because all traffic is blocked by the policy.
 
----
+The blocking is even more comprehensive than you might initially realize. The Pods cannot even resolve DNS names to IP addresses. If we try to access the API by service name from the web Pod, it fails with a "bad address" message. The Pod can't resolve the service name because DNS traffic is also egress traffic, and our policy blocks all egress. Let's confirm this isn't just a DNS issue by testing with the Pod IP address directly. When we find the API Pod's IP using the wide output format and try to access it directly, this also times out. Both the egress policy blocking traffic from the web Pod and the ingress policy blocking traffic to the API Pod are preventing communication.
 
-## Part 2: Implement Default Deny Policy [2:30-5:00]
+## Deploy policies for application components
 
-**[2:30-3:15] Understanding Default Deny**
+Now we need to explicitly model the communication paths between our application components. We'll often see a default deny-all policy in production environments to prevent any accidental network communication. When you take this approach, you must explicitly define all the communication lines between components. This makes your security requirements visible and auditable in your cluster configuration.
 
-Now let's implement a default deny-all policy. This is a common security practice - block all traffic by default, then explicitly allow only what's necessary.
+The log policy allows ingress from the web Pod to the API port. Notice it doesn't include any egress rules because the log component doesn't make any outgoing network calls. It only receives requests from the web application. The web policy is more complex because the web component needs both to receive traffic and to make outgoing calls. It allows ingress from any location because it's the public-facing component of our application. For egress, it must be able to reach both API Pods and the DNS server. Without DNS, the web Pod couldn't resolve the API service names to IP addresses.
 
-Let me show you the policy we're about to apply. Opening the default-deny.yaml file:
+The API policy allows ingress from the web Pod since only the web application should be calling the API directly. The egress rules are particularly interesting. The API needs to reach the DNS server like all other components, but it also needs to make external calls to NASA's API to fetch astronomy data. If we want to restrict access to specific IP blocks like this, the services we use need to have static addresses. We can find these using DNS lookup tools like dig.
 
+When we apply these component-specific policies, we can verify them with the get networkpolicies command. We now have four policies total: the default deny-all and three component-specific policies. Let's test that the web Pod can now use the API. When we execute a wget command from the web Pod to the API service, it should succeed and return JSON data. The API is able to fetch data from the NASA APIs because the egress rules include the appropriate CIDR blocks. If we describe the API policy, we can see these IP blocks in the egress rules.
 
-Let's examine what we just created:
+Refreshing the application in the browser shows that everything is working again. The application functions normally, but this time with proper network security in place. Only the explicitly allowed communication paths are permitted, and everything else is blocked.
 
+## Lab
 
-We can use `netpol` as a shorthand for networkpolicies. Let's describe it to see the details:
+We've successfully deployed the APOD application with network policies, but our security isn't as tight as it could be. There's a vulnerability in our current approach that's important to understand. Our policies use label selectors to control access. For example, the API policy allows ingress from Pods labeled with the apod-web label. But what happens if someone deploys a malicious Pod with that same label?
 
+Let me demonstrate this security gap. We can deploy a basic sleep Pod that has the apod-web label, even though it's not the legitimate web application. Once this Pod is running, we can use it to access the API, and it works. The sleep Pod successfully calls the API endpoint because it has the correct label. The network policy has no way to distinguish between the legitimate web Pod and this impostor Pod. This is a label-based access control vulnerability that exists whenever you rely solely on Pod labels for security.
 
-Notice the podSelector is empty - just curly braces. This means the policy applies to ALL Pods in this namespace. The policyTypes include both Ingress and Egress, but there are no rules defined for either. This effectively blocks all incoming and outgoing traffic.
+The solution is to deploy the application to a dedicated namespace and use namespace selectors in the policies to restrict access. This provides an additional layer of security because namespace access can be controlled with RBAC. Your challenge is to fix this security issue with two tasks. First, change the application to use a custom namespace called "apod" instead of the default namespace. Second, modify the network policies to restrict ingress traffic to only allow Pods from the apod namespace.
 
-**[3:15-4:15] Testing the Policy Effect**
+You'll want to delete the existing APOD deployment to start fresh. Then recreate everything in the new namespace with updated policies. The namespace selector in your policies should check for a namespace label, and you'll need to ensure the apod namespace has that label. This prevents Pods in other namespaces from accessing the application components, even if they somehow get the matching Pod labels.
 
-Now, here's something interesting. Refresh the browser at http://localhost:30016.
+Take some time to work through this challenge. The hints file provides guidance if you get stuck, and the solution shows one complete approach. The key insight is combining both Pod selectors and namespace selectors to create layered security.
 
-In most cases, the application still works. Why? Because most Kubernetes clusters don't actually enforce NetworkPolicy. Docker Desktop, which many of you might be using, doesn't have a CNI plugin that supports NetworkPolicy enforcement.
+## Cleanup
 
-The policy is created and stored in the cluster, but it's not being applied to the actual network traffic. To really see NetworkPolicy in action, we need a cluster with a CNI plugin that supports policy enforcement, like Calico or Cilium.
+When you're finished with the exercises, you have a few cleanup options depending on what you want to do next. If you want to reuse your k3d cluster for other experiments, you can delete just the exercise resources. Deleting the apod namespace will remove all the application components in one command, and then cleaning up any resources in the default namespace using the label selector removes the test Pods we created.
 
-Let's verify that the policy isn't being enforced by trying to communicate between Pods:
+If instead you want to delete the entire cluster and switch back to your original Kubernetes setup, you can use the k3d cluster delete command for the labs-netpol cluster. Then switch your kubectl context back to your previous cluster, whether that's docker-desktop or another cluster name. You'll still want to clean up any exercise resources in that cluster using the label selector.
 
+If you were originally using a k3d cluster that you stopped at the beginning of this session, remember to start it again so your environment is back to its normal state. The k3d cluster start command will bring back your previous cluster.
 
-This should still work if your CNI doesn't enforce policies. The web Pod can still reach the API Pod despite the deny-all policy.
-
-**[4:15-5:00] Cleanup and Preparation**
-
-Since we need a policy-enforcing cluster, let's clean up this deployment:
-
-
-If you're already using k3d, stop your existing cluster to prevent port collisions:
-
-
-Now we'll set up a new cluster with Calico CNI, which does enforce NetworkPolicy. This is where the real learning happens.
-
----
-
-## Part 3: Create a Policy-Enforcing Cluster [5:00-8:00]
-
-**[5:00-6:00] Install k3d CLI (if needed)**
-
-If you don't already have k3d installed, you'll need it now. k3d is a tool that creates Kubernetes clusters where each node runs inside a Docker container. It's lightweight and perfect for testing advanced features like network policies.
-
-Installation is straightforward with package managers:
-
-On Windows with Chocolatey:
-
-
-On macOS with Homebrew:
-
-
-On Linux:
-
-
-Verify the installation:
-
-
-Make sure you're on k3d version 5 or later. The commands have changed significantly between versions.
-
-**[6:00-7:00] Create Cluster Without Default Networking**
-
-Now let's create a k3d cluster without the default Flannel CNI:
-
-
-Let me explain these options: we're creating a single-node cluster named labs-netpol. The `-p` flag publishes ports 30000-30040 to localhost so we can access NodePort services. The k3s-arg flags disable Flannel and other default features we don't need.
-
-This creates the cluster but without any CNI plugin. Let's check the cluster status:
-
-
-Notice the node is in NotReady state. Without a network plugin, the cluster cannot function. Even the CoreDNS deployment won't run:
-
-
-CoreDNS is scaled to zero or stuck pending because it requires networking to function.
-
-**[7:00-8:00] Install Calico CNI**
-
-Now we'll install Calico, which is a popular CNI plugin that supports NetworkPolicy. Calico runs as a DaemonSet and uses privileged init containers to configure the host network. This is why we're using k3d - we don't want to modify the network configuration of our main system.
-
-Apply the Calico manifest:
-
-
-Watch the Pods in the kube-system namespace:
-
-
-You'll see several Calico Pods starting: calico-node, calico-kube-controllers, and others. Wait for them all to be Running and Ready. This usually takes one to two minutes.
-
-Once Calico is running, check the node status again:
-
-
-The node should now be Ready. CoreDNS should also be running. Our cluster is now ready, and importantly, it will enforce NetworkPolicy rules.
-
----
-
-## Part 4: Deploy and Secure the Application [8:00-12:00]
-
-**[8:00-9:00] Deploy Application on New Cluster**
-
-Now let's deploy the APOD application again, this time on our policy-enforcing cluster:
-
-
-Wait for the Pods to become ready:
-
-
-Once they're running, verify the application works by browsing to http://localhost:30016. The application should load normally, showing the astronomy picture of the day.
-
-Now apply the default deny-all policy again:
-
-
-Check that it was created:
-
-
-**[9:00-10:00] Observe Policy Enforcement**
-
-Now refresh the browser at http://localhost:30016. This time, the application will timeout and fail to load. This is what proper NetworkPolicy enforcement looks like.
-
-The web Pod cannot communicate with the API or log Pods because all traffic is blocked. But it's even more restrictive than that - the Pods cannot even resolve DNS names.
-
-Let's verify this. First, try to access the API by name from the web Pod:
-
-
-This will fail with a "bad address" message - the web Pod cannot resolve the apod-api service name to an IP address because DNS traffic is also blocked by the egress policy.
-
-Let's confirm this isn't just a DNS issue by using the Pod IP directly:
-
-
-Note the IP address, then try to access it directly:
-
-
-Replace <pod-ip-address> with the actual IP. This will also timeout because the egress policy blocks all outgoing traffic from the web Pod, and the ingress policy blocks all incoming traffic to the API Pod.
-
-**[10:00-12:00] Apply Component-Specific Policies**
-
-Now we need to explicitly model the communication paths between components. We have three policies to apply:
-
-The log policy allows ingress from the web Pod to the API port, with no egress since the log component doesn't make outgoing calls.
-
-The web policy allows ingress from any location - because it's public-facing - and egress to both API Pods plus the DNS server.
-
-The API policy allows ingress from the web Pod and egress to the DNS server and to specific IP ranges where the NASA API is hosted.
-
-Let's apply these policies:
-
-
-Check what was created:
-
-
-We now have four policies: the default-deny and three component-specific policies. Let's verify the web Pod can now reach the API:
-
-
-This should now succeed, returning JSON data from the API. Let's look at the API policy in detail:
-
-
-Notice the egress rules include both the DNS selector and specific CIDR blocks for the NASA API endpoints. This allows the API Pod to fetch data from the external service while still being restricted.
-
-Now refresh the browser at http://localhost:30016. The application is working again, but this time with proper network security in place. Only the explicitly allowed communication paths are permitted.
-
----
-
-## Part 5: Lab Challenge - Enhanced Security [12:00-15:00]
-
-**[12:00-13:00] Identify the Security Gap**
-
-We have the application running with network policies, but there's still a security vulnerability. Let me show you.
-
-The policies use label selectors to control access. For example, the apod-api policy allows ingress from Pods labeled "app: apod-web". But what if someone deploys a malicious Pod with that same label?
-
-Let's test this. I'll deploy a sleep Pod that has the apod-web label:
-
-
-Now let's use this Pod to bypass our security:
-
-
-This succeeds. The sleep Pod can access the API because it has the correct label, even though it's not the legitimate web application. This is a label-based access control vulnerability.
-
-The solution is to deploy the application to a dedicated namespace and use namespace selectors in the policies to restrict access to Pods from that specific namespace. This provides an additional layer of security.
-
-**[13:00-14:00] Lab Task Instructions**
-
-Your challenge is to fix this security issue. Here are the two tasks:
-
-First, modify all the application manifests to deploy to a custom namespace called "apod" instead of the default namespace.
-
-Second, update the network policies to restrict ingress traffic to only allow Pods from the apod namespace. This prevents Pods in other namespaces from accessing the application components, even if they have matching labels.
-
-You'll need to delete the existing APOD deployment to start fresh. Then recreate everything in the new namespace with updated policies.
-
-Take 5 to 10 minutes to work on this. Use the hints file if you get stuck, and check the solution if you need guidance.
-
-**[14:00-15:00] Solution Walkthrough**
-
-Let's walk through the solution. First, delete the existing deployment:
-
-
-Create the apod namespace:
-
-
-Now you need to update each manifest file to include `namespace: apod` in the metadata section. Alternatively, you can use `kubectl apply -f <file> -n apod` to override the namespace.
-
-For the network policies, you need to add namespaceSelector to the ingress rules. For example, in the apod-api policy:
-
-
-This requires both the namespace label AND the pod label to match. The namespace selector and pod selector in the same list item create an AND condition.
-
-After applying the updated manifests and policies, test that the application works:
-
-
-Browse to http://localhost:30016 - it should work.
-
-Now verify that Pods from outside the namespace cannot access the API:
-
-
-This should timeout, proving that namespace-based isolation is working correctly.
-
----
-
-## Conclusion [15:00-15:30]
-
-**Summary**
-
-In this practical session, we've accomplished several things:
-
-We deployed a multi-tier application and observed default Kubernetes networking behavior.
-
-We implemented a default deny-all NetworkPolicy and learned that not all CNI plugins enforce policies.
-
-We created a k3d cluster with Calico CNI to properly enforce NetworkPolicy.
-
-We applied component-specific policies to allow only necessary communication paths.
-
-We identified and fixed a label-based security vulnerability using namespace selectors.
-
-**Key Takeaways**
-
-Remember these practical lessons:
-
-Always test in an environment that enforces NetworkPolicy. Docker Desktop won't help you learn this properly.
-
-Start with default deny, then add allow rules. It's easier to reason about and more secure.
-
-Don't forget DNS in egress policies - this is the most common mistake.
-
-Use namespace selectors for cross-namespace isolation. Labels alone are not sufficient for security.
-
-Test your policies thoroughly. Use kubectl exec with wget or curl to verify connectivity works as expected and fails where it should.
-
-**Next Steps**
-
-I recommend practicing these exercises multiple times until you can write policies from memory. On the CKAD exam, you won't have time to look up syntax - you need to know the structure cold.
-
-Try creating policies for different application architectures. Practice with three-tier apps, microservices, and cross-namespace scenarios.
-
-Thank you for following along with this practical demonstration. Now you're ready for the CKAD-specific scenarios in the exam prep session.
+That completes our hands-on exploration of network policies. We've seen how flat networking works by default, how to implement default deny policies, why CNI plugins matter for policy enforcement, how to model component communication explicitly, and how to use namespace selectors for stronger security. These patterns form the foundation of network security in Kubernetes environments.

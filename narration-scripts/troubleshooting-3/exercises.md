@@ -1,141 +1,66 @@
-# Troubleshooting Advanced Components - Practical Exercises
+# Troubleshooting Advanced Kubernetes Components - Exercises Narration Script
 
-**Duration:** 20-25 minutes
-**Format:** Live demonstration with Helm chart troubleshooting
-**Note:** Advanced content beyond CKAD core requirements
-**Prerequisites:** Ingress controller, Helm installed
-
----
-
-## Introduction (1 minute)
-
-This lab focuses on troubleshooting a broken Helm chart that deploys a web application with Ingress and a PostgreSQL database using StatefulSet. This represents real-world complexity beyond CKAD scope.
-
-**The Challenge:** Fix a Helm deployment with multiple interconnected issues across Helm templating, Ingress configuration, and StatefulSet management.
-
-**Success Criteria:**
-- Helm chart installs successfully
-- Application accessible via http://whoami.local:8000
-- All pods healthy and running
-
-Let's begin!
+**Duration:** 25-30 minutes
+**Format:** Screen recording with live demonstration
+**Note:** Advanced content beyond core CKAD requirements
+**Prerequisite:** Ingress controller installed, Helm available
 
 ---
 
-## Exercise: Broken Helm Chart with Ingress and StatefulSet (18-22 minutes)
+Welcome to advanced Kubernetes troubleshooting. This lab focuses on troubleshooting a broken Helm chart that deploys a complex application with Ingress routing and a StatefulSet database. This represents real-world complexity that goes beyond the core CKAD exam requirements, but the troubleshooting skills you'll practice here are valuable for understanding how enterprise applications work in Kubernetes.
 
-### Step 1: Environment Setup (2 minutes)
+This lab is marked as beyond CKAD because Helm chart creation and advanced Ingress patterns aren't core exam topics. However, basic Ingress and StatefulSet concepts are relevant, and the systematic troubleshooting approach applies to everything. If you're preparing specifically for CKAD, focus on the basic troubleshooting and troubleshooting-2 labs first, then come back to this material.
 
-**Deploy Ingress Controller:**
+Today we're working with a Helm chart that's deliberately broken in multiple ways. The chart deploys a web frontend accessible through Ingress and a PostgreSQL database using a StatefulSet. Your goal is to fix the Helm deployment so it installs successfully and the application is accessible at whoami.local:8000.
 
+## Lab
 
-### Step 2: Attempt Helm Installation (2 minutes)
+Before we can deploy the broken application, we need an Ingress controller. Ingress resources don't do anything by themselves - they need an Ingress controller running in the cluster to implement the routing rules. Let me deploy the Ingress controller from the ingress lab specs.
 
-**Try to install the broken chart:**
+The Ingress controller creates several pods and services in a dedicated namespace. It's watching for Ingress resources across the cluster and configuring itself to route traffic according to those Ingress rules. We'll need this running before our application Ingress can work.
 
+Now let's attempt to install the broken Helm chart. I'm using helm upgrade with the install flag, pointing to the chart directory in troubleshooting-3/specs/app-chart. The create-namespace flag will create the namespace if it doesn't exist. Watch what happens when I run this.
 
-**Expected:** Installation fails with errors. Note the error messages.
+The installation fails with errors. This is common with Helm charts - template errors prevent the chart from even being installed. Helm templates are Go templates that generate Kubernetes YAML. If the template syntax is wrong or references undefined values, the installation fails immediately. Read the error message carefully - it usually tells you exactly which template has a problem and what's wrong with it.
 
-**Common Helm errors:**
-- Template parsing errors
-- Missing required values
-- Resource validation failures
+Let me use helm template to render the templates without actually installing them. This dry-run mode shows you what YAML would be generated. It's incredibly useful for debugging template errors because you can see the rendered output and spot problems. If the template command fails, the error message points to the specific template file and line number where the issue is.
 
-**Investigate the failure:**
+Common Helm template issues include missing closing braces in variable references, undefined values being referenced, invalid YAML indentation in the templates, and missing required fields in the generated resources. Let me check the chart structure to see what templates exist and examine them for syntax errors.
 
+When I find template errors, I fix them in the template files. This might mean adding default values, fixing brace syntax, correcting indentation, or adjusting how values are referenced. After fixing template errors, I try the install again.
 
-### Step 3: Diagnosis - Helm Chart Issues (4 minutes)
+Once the Helm chart installs successfully, that doesn't mean the application works. Helm just creates the Kubernetes resources - those resources still need to be configured correctly. Now we move into troubleshooting the actual deployed resources, which is the same systematic approach we've been practicing.
 
-**Validate templates without installing:**
+Let me check what resources were created. I can see pods, services, an Ingress, and likely a StatefulSet. The pod status tells me immediately if we have problems. Are pods running? Are they ready? Any crashes or errors?
 
+For Ingress troubleshooting, start by checking if the Ingress resource exists and is configured correctly. When I describe the Ingress, I look at the host rules, the service backends, and the port numbers. The Ingress needs to route traffic to a service that actually exists. The service name in the Ingress must match a real service name exactly.
 
-**Check chart structure:**
+Common Ingress issues include service name mismatches where the Ingress references a service that doesn't exist or has a slightly different name, wrong port numbers where the Ingress routes to a port the service doesn't expose, missing host configuration where requests don't match any host rule, and missing Ingress controller where no controller is watching for Ingress resources.
 
+Let me test Ingress routing. I can use curl with a Host header to simulate a request to the Ingress host. If that doesn't work, I check each layer - does the service exist? Does it have endpoints? Are the pods actually running? Is the Ingress controller healthy?
 
-**Common issues to look for:**
-- Missing closing braces in templates `{{ }}`
-- Undefined values references
-- Invalid YAML indentation
-- Missing required fields
+StatefulSets add another dimension of complexity. StatefulSets are for applications that need stable identities and persistent storage. Each pod gets a consistent name and its own PersistentVolumeClaim. When I check the StatefulSet status, I look at how many replicas are ready versus desired. If they're not all ready, I need to investigate why.
 
-**Fix Helm template errors:**
+Common StatefulSet issues include PVCs not binding because no matching PVs are available, missing headless service which StatefulSets require for stable network identities, pods stuck in pending or init state preventing the ordered startup, and ordered startup blocking where StatefulSets start pods sequentially and a problem with one pod blocks all subsequent pods.
 
+For PVC issues with StatefulSets, remember that StatefulSets use volumeClaimTemplates to automatically create PVCs for each pod. If these PVCs can't bind, the pods stay pending. I need to check what the volumeClaimTemplates request and ensure matching PVs exist.
 
-### Step 4: Diagnosis - Ingress Issues (3 minutes)
+Let me work through the systematic fix process. First, I fix any Helm template syntax errors so the chart actually installs. Second, I check if all expected resources were created. Third, I verify pod status and investigate any that aren't running. Fourth, I check if the Ingress routes to the correct service. Fifth, I ensure StatefulSet PVCs can bind to PVs. Sixth, I verify services have endpoints and selectors match.
 
-**Once Helm installs, check Ingress:**
+After each fix, I watch what happens. Kubernetes reconciles the changes, which might take a moment. Pods might restart. PVCs might bind. Services might populate endpoints. I verify each fix worked before moving to the next issue.
 
+When debugging Helm deployments specifically, the helm status command shows the overall status of the release. Helm get manifest shows all the Kubernetes resources that were created. Helm get values shows what values were used during installation. These commands help you understand what Helm actually did.
 
-**Common Ingress issues:**
-- Service name mismatch
-- Wrong port numbers
-- Missing host configuration
-- TLS secret issues
+If I need to make changes and reinstall, I can use helm upgrade again. Helm tracks the release history and can apply changes incrementally. If I need to completely start over, helm uninstall removes everything and I can install fresh.
 
-**Test Ingress routing:**
+The final verification is accessing the application through the Ingress. I need to make sure my request includes the correct Host header matching the Ingress rule. When using curl, I specify the Host header explicitly. When using a browser, I might need to configure local DNS or edit my hosts file to resolve the hostname.
 
+When everything works, the pods should all be running and ready, the StatefulSet should have all replicas ready, PVCs should be bound to PVs, services should have endpoints, the Ingress should route traffic to the backend service, and the application should respond at the configured hostname.
 
-### Step 5: Diagnosis - StatefulSet Issues (3 minutes)
+This type of advanced troubleshooting combines everything we've learned - understanding resource dependencies, reading error messages carefully, checking configurations systematically, and verifying fixes at each layer. The complexity comes from having more moving parts, but the approach remains the same.
 
-**Check StatefulSet status:**
+## Cleanup
 
+When you're finished, clean up the Helm release and associated resources. Helm uninstall removes the release, but StatefulSet PVCs persist by design to prevent data loss. You need to explicitly delete them if you want a complete cleanup. Then delete the namespace to remove anything else.
 
-**Common StatefulSet issues:**
-- PVCs not binding (no PV available)
-- Missing headless service
-- Pods stuck in pending/init
-- Ordered startup blocking
-
-**Fix PVC issues:**
-
-
-### Step 6: Fix All Issues (4 minutes)
-
-**Systematic fixes:**
-
-1. Fix Helm template syntax errors
-2. Update values.yaml with missing required values
-3. Fix Ingress service references
-4. Create PVs for StatefulSet PVCs
-5. Ensure headless service exists
-6. Fix service selectors
-
-**Upgrade Helm release with fixes:**
-
-
-### Step 7: Verification (3 minutes)
-
-**Comprehensive checks:**
-
-
----
-
-## Cleanup (1 minute)
-
-
----
-
-## Summary (1 minute)
-
-**Skills Practiced:**
-- Helm chart troubleshooting
-- Template debugging with --dry-run and --debug
-- Ingress configuration and routing
-- StatefulSet PVC management
-- Multi-component dependency debugging
-
-**Key Takeaways:**
-- Helm --dry-run catches template errors before installation
-- Ingress requires controller + correct service refs + host headers
-- StatefulSets need PVs, headless services, and ordered startup
-- Complex systems require layer-by-layer diagnosis
-
-**For CKAD Focus:**
-- Master basic troubleshooting first
-- Return to advanced topics after certification
-- Apply same systematic approach to all resources
-
----
-
-**Total Duration:** 20-25 minutes
-**Note:** This is advanced enrichment content beyond core CKAD requirements
+That completes our advanced troubleshooting exercise. You've practiced debugging Helm templates, troubleshooting Ingress routing, and fixing StatefulSet storage issues. While this material goes beyond core CKAD requirements, the systematic troubleshooting approach applies to all Kubernetes resources. The skills you've developed here - reading error messages, checking dependencies, verifying configurations, and testing systematically - are essential for working with any Kubernetes deployment, whether simple or complex.

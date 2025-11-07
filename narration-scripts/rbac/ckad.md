@@ -1,386 +1,231 @@
-# RBAC CKAD Exam Preparation - Narration Script
-**Duration: 25-30 minutes**
-**Format: Advanced topics and exam strategies following CKAD.md**
+# Role-Based Access Control - CKAD Exam Preparation Script
 
----
+Welcome to the CKAD exam preparation session for Role-Based Access Control. This session builds on the basic RBAC concepts and takes you deeper into advanced topics, troubleshooting techniques, and exam strategies. RBAC questions appear in the Application Environment, Configuration and Security domain, which represents 25 percent of the CKAD exam. You'll likely face scenarios requiring ServiceAccount creation, permission configuration, and troubleshooting forbidden errors.
 
-## Introduction (1:00)
+This session covers complex RBAC rules with multiple resources and API groups, built-in ClusterRoles that provide standard permission sets, cross-namespace access patterns for distributed applications, troubleshooting workflows for permission issues, and most importantly, speed techniques for the time-constrained exam environment. Mastering these skills will help you handle RBAC questions quickly and accurately.
 
-Welcome to the CKAD exam preparation session for Role-Based Access Control. This session builds on the basic RBAC concepts and takes you deeper into advanced topics, troubleshooting techniques, and exam strategies.
+## Prerequisites
 
-RBAC questions appear in the "Application Environment, Configuration and Security" domain, which represents 25% of the CKAD exam. You'll likely face scenarios requiring ServiceAccount creation, permission configuration, and troubleshooting.
+Before diving into advanced topics, you should be comfortable with the foundational concepts. You need to understand what Roles and RoleBindings are and how they work together to grant permissions. You should know the difference between namespace-scoped resources like Roles and cluster-scoped resources like ClusterRoles. ServiceAccounts and their usage should be familiar, including how Pods reference them and how tokens are mounted automatically. The basic auth can-i command for testing permissions is essential, as is understanding which resources belong to which API groups. If any of these concepts are unclear, review the basic RBAC lab first before continuing with these advanced scenarios.
 
-This session covers complex RBAC rules, built-in ClusterRoles, cross-namespace access, troubleshooting patterns, and most importantly - speed techniques for the time-constrained exam environment.
+## CKAD RBAC Topics Covered
 
-Let's begin with advanced ServiceAccount management.
+The exam expects you to handle a wide range of RBAC scenarios. ServiceAccount creation and management is fundamental, including both imperative and declarative approaches. Complex RBAC rules involving multiple resources, multiple API groups, and specific resource names appear frequently. You need to know the built-in ClusterRoles like view, edit, admin, and cluster-admin, and when to use each one. Aggregated ClusterRoles demonstrate how Kubernetes composes permissions from multiple sources. RBAC for specific sensitive resources like Secrets and ConfigMaps requires careful permission scoping. Cross-namespace access patterns show how applications in one namespace can access resources in another. Security contexts combined with ServiceAccount tokens control both what actions are permitted and how containers run. Finally, troubleshooting permission issues quickly is critical because exam time is limited and you can't afford to spend too long debugging.
 
----
+## ServiceAccount Deep Dive
 
-## ServiceAccount Deep Dive (3:00)
+For the CKAD exam, you must be comfortable creating and managing ServiceAccounts quickly using both approaches. The imperative approach is fastest, creating a ServiceAccount with a single command. You can use the shorthand "sa" instead of typing out "serviceaccount" every time, which saves precious seconds during the exam. Listing ServiceAccounts shows all accounts in the namespace, including the default ServiceAccount that every namespace has automatically.
 
-**[Time: 4:00 total]**
+When you describe a ServiceAccount, you see that Kubernetes automatically creates tokens for authentication. These tokens are what get mounted into Pods when they use the ServiceAccount. Understanding this automatic token creation helps you troubleshoot when applications can't authenticate to the API server.
 
-For the CKAD exam, you must be comfortable creating and managing ServiceAccounts quickly. Let's explore both imperative and declarative approaches.
+Attaching a ServiceAccount to a Pod can be done several ways, but the fastest exam approach uses the set serviceaccount command. This works on Pods, Deployments, StatefulSets, and DaemonSets, updating them in place without manually editing YAML. You can verify the change immediately by checking the Pod specification. For new Deployments, you can set the ServiceAccount at creation time using the appropriate flag, but for existing workloads, the set command is your quickest option.
 
-**[Terminal ready]**
+### Creating and Managing ServiceAccounts
 
-The fastest way to create a ServiceAccount is imperatively:
+Creating ServiceAccounts is straightforward with imperative commands, but you can also use declarative YAML when you need more control or want to define multiple resources together. The declarative approach lets you specify additional metadata like labels and annotations that might be required for organizational policies. However, for exam speed, memorize the imperative commands and use them by default.
 
-**[Execute command]**
+### Using ServiceAccounts in Pods
 
-That's it - one command. You can use the shorthand "sa" instead of "serviceaccount":
+Pods reference ServiceAccounts through the serviceAccountName field in their specification. This field goes at the same level as containers, not inside the container definition. A common exam mistake is putting it in the wrong place in the YAML structure. When you create a Pod or Deployment, the ServiceAccount must already exist, or the resource creation will fail. The error message will clearly indicate that the ServiceAccount wasn't found, which is your cue to create it first.
 
-**[Execute command]**
+### Disabling ServiceAccount Token Mounting
 
-For listing ServiceAccounts:
+Token mounting can be disabled at two levels, and understanding both is important for security-focused exam questions. Disabling at the Pod level using automountServiceAccountToken set to false prevents just that specific Pod from receiving the token. This is useful for individual workloads that you know don't need API access. However, disabling at the ServiceAccount level is a better practice because it prevents all Pods using that ServiceAccount from receiving tokens. This makes your security posture consistent across all workloads sharing the same identity.
 
-**[Execute command, show output including default SA]**
+The exam might ask you to secure a Pod or Deployment, and one correct answer is always to disable token mounting if the application doesn't need API access. This reduces the attack surface significantly because compromised containers can't use the token to query or modify cluster resources.
 
-Every namespace has a "default" ServiceAccount that's used by Pods if you don't specify a different one. Let's look at the details:
+## Complex RBAC Rules
 
-**[Execute command, highlight tokens section]**
+In real-world scenarios and exam questions, you'll often need Roles with multiple rules covering different resource types and API groups. Understanding how to structure these complex Roles efficiently is important for both correctness and speed.
 
-Notice Kubernetes automatically creates a token for this ServiceAccount. When a Pod uses this ServiceAccount, this token is mounted into the container.
+### Multiple Resources and Verbs
 
-Now, how do you attach a ServiceAccount to a Pod? The fastest way is using kubectl set:
+When a Role needs to grant permissions to multiple resource types, you can structure the rules in different ways. You can create separate rules for each resource type, which is clear but verbose. Alternatively, you can combine resources into a single rule if they share the same API group and verbs. The trade-off is readability versus conciseness. For the exam, being able to create these quickly with imperative commands is valuable, even though the generated YAML might not be as compact as hand-written configurations.
 
-**[Execute commands]**
+The critical concept for exam success is memorizing which resources belong to which API groups. Core resources like Pods, Services, ConfigMaps, and Secrets use an empty API group, which you specify as empty quotes in YAML. Deployments, StatefulSets, DaemonSets, and ReplicaSets all belong to the apps API group. Jobs and CronJobs belong to the batch API group. Ingress resources belong to the networking.k8s.io API group. NetworkPolicies also belong to networking.k8s.io. Getting the API group wrong means your permissions won't work, and this is a common source of errors under exam pressure.
 
-The set serviceaccount command works on Pods, Deployments, StatefulSets, and DaemonSets. Let's verify:
+### Resource-Specific Permissions
 
-**[Execute command, show "myapp"]**
+The resourceNames field in RBAC rules provides fine-grained control, allowing you to grant access to specific named resources rather than all resources of a type. This is powerful for security scenarios where an application needs access to particular Secrets or ConfigMaps but shouldn't see everything in the namespace. When you specify resource names, the ServiceAccount can get, update, patch, or delete those specific resources by name.
 
-For Deployments, you can set it at creation or update it:
+However, there's a critical limitation that catches many people on the exam: resourceNames works with verbs like get, delete, update, and patch, but it does not work with list or watch. This makes sense when you think about it because list operations return multiple resources, and the Kubernetes API can't efficiently filter a list to just the named resources after the fact. If you need to grant list permissions, you have to grant them for all resources of that type, not specific names. The exam might test whether you understand this limitation by asking you to troubleshoot why a ServiceAccount can get a specific Secret but can't list Secrets.
 
-**[Execute commands]**
+### Subresource Permissions
 
-This is much faster than editing YAML during the exam. Speaking of which, let's talk about a critical security feature - disabling ServiceAccount token mounting.
+Some Kubernetes resources have subresources that require explicit permissions separate from the main resource. The most common example is Pod logs. You might grant a ServiceAccount permission to get and list Pods, but without specific permission to the pods/log subresource, they can't actually view logs. Other important subresources include pods/exec for executing commands in containers, pods/portforward for port forwarding, deployments/scale for scaling operations, and pods/status for updating Pod status fields.
 
----
+When troubleshooting exam scenarios, if operations on the main resource work but related operations fail, check whether you need to grant permissions to subresources. The error messages usually indicate which subresource is being accessed, giving you a clear hint about what permission is missing.
 
-## Disabling Token Mounting for Security (2:30)
+### Wildcard Permissions
 
-**[Time: 6:30 total]**
+Wildcards in RBAC rules grant very broad permissions and are generally not recommended for production. You can use asterisks for API groups, resources, or verbs, which grants access to everything in that category. While this simplifies RBAC configuration, it violates the principle of least privilege. The exam might present troubleshooting scenarios where overly permissive rules are a security concern, and you need to recognize them as problematic. Alternatively, you might need to quickly grant broad permissions as part of a multi-step scenario, where you'll use wildcards for speed and then restrict them in a follow-up step.
 
-Most applications don't need access to the Kubernetes API. Mounting the ServiceAccount token creates an unnecessary security risk. If an attacker compromises your container, they could potentially use that token.
+## Built-in ClusterRoles
 
-You can disable token mounting at two levels. First, at the Pod level:
+Kubernetes provides predefined ClusterRoles for common use cases, and using these is often faster and more correct than creating custom Roles. Understanding the built-in roles and when to apply them is important for exam efficiency.
 
-**[Execute command]**
+### Standard User-Facing Roles
 
-Let's verify the token isn't mounted:
+There are four standard ClusterRoles that form a hierarchy of increasing permissions. The view role grants read-only access to most resources in a namespace but specifically excludes Secrets and some ConfigMaps for security reasons. This is perfect for users or applications that need visibility without modification capabilities. The edit role adds the ability to modify most resources, including creating and deleting Pods, Services, Deployments, ConfigMaps, and Secrets. However, edit does not grant permissions to modify RBAC resources themselves, preventing users from escalating their own privileges.
 
-**[Execute command]**
+The admin role gives full access within a namespace, including creating and modifying Roles and RoleBindings. This allows namespace administrators to manage permissions for their team without needing cluster-wide privileges. Finally, the cluster-admin role provides unrestricted access to all resources across the entire cluster. This is essentially the superuser role and should be granted very carefully.
 
-Better yet, disable it at the ServiceAccount level so all Pods using that ServiceAccount inherit this security posture:
+For the exam, knowing when to use built-in roles versus creating custom roles saves significant time. If the required permissions match one of these standard levels, using the built-in ClusterRole is always faster than defining a custom Role from scratch.
 
-**[Execute command]**
+### Using ClusterRoles with RoleBindings
 
-This is a best practice question that might appear on the exam: "Make this Pod more secure by preventing API access." The answer is setting automountServiceAccountToken to false.
+A powerful but sometimes confusing pattern is using ClusterRoles with RoleBindings rather than ClusterRoleBindings. This allows you to apply standard permission sets to specific namespaces rather than cluster-wide. The ClusterRole defines what permissions are available, but the RoleBinding restricts where those permissions apply. This is useful when you want consistent permission definitions across multiple namespaces but don't want to grant cluster-wide access.
 
-Let's move on to complex RBAC rules.
+For example, you might have a standard ConfigMap reader ClusterRole that defines read permissions for ConfigMaps. By creating RoleBindings in different namespaces that reference this ClusterRole, you can grant the same logical permissions in multiple places without duplicating the Role definition. This pattern appears in exam scenarios where you need to set up consistent permissions across development, staging, and production namespaces.
 
----
+## Aggregated ClusterRoles
 
-## Complex RBAC Rules (4:00)
+Aggregation is an advanced RBAC feature where a ClusterRole automatically includes rules from other ClusterRoles based on label selectors. The aggregated ClusterRole has an aggregationRule section that specifies which labels to match, and Kubernetes automatically populates its rules from all ClusterRoles with matching labels.
 
-**[Time: 10:30 total]**
+This pattern is used by Kubernetes itself for the built-in roles. The view, edit, and admin ClusterRoles all use aggregation, which allows you to extend these standard roles with custom permissions. If you create a ClusterRole with specific labels, those permissions automatically become part of the aggregated role without modifying the core definitions.
 
-In real-world scenarios and exam questions, you'll often need Roles with multiple resources and permissions. Let me show you the patterns.
+For the exam, you're unlikely to need to create aggregated ClusterRoles from scratch, but you should recognize them when you see them. More importantly, understanding that you can extend built-in roles by creating properly labeled ClusterRoles is valuable for scenarios where standard permissions are almost sufficient but need slight customization.
 
-First, let's create a Role that grants permissions to multiple resource types:
+## RBAC for Specific Resources
 
-**[Execute command, show YAML output]**
+Certain resources require special attention in RBAC configurations because they handle sensitive data or critical cluster functions.
 
-Notice it creates separate rules for each resource type. But what about resources in different API groups? Let's say we need access to Pods and Deployments:
+### Secrets Management
 
-**[Execute commands]**
+Secrets contain sensitive information like passwords, tokens, and certificates. Granting access to Secrets should be done carefully following the principle of least privilege. Instead of granting blanket access to all Secrets, use resourceNames to restrict access to specific Secrets that an application legitimately needs. The verbs you grant matter too, where read-only access with get and list might be sufficient for applications that only consume Secrets, while create, update, and delete permissions should be granted sparingly.
 
-The key here is remembering which resources belong to which API groups. Let me show you how to check:
+Note that the built-in view ClusterRole intentionally excludes Secrets, forcing you to explicitly grant Secret access when needed. This is a deliberate security decision to prevent accidental exposure of sensitive data. The edit and admin roles do include Secret permissions, so be aware of what you're granting when using built-in roles.
 
-**[Execute command, highlight APIVERSION column]**
+### ConfigMaps Access
 
-This shows you the API group for each resource. Core resources like Pods, Services, ConfigMaps, and Secrets use an empty API group - just empty quotes in your Role. Deployments, StatefulSets, and DaemonSets use "apps". Jobs and CronJobs use "batch". Ingresses use "networking.k8s.io".
+ConfigMaps are less sensitive than Secrets but still contain application configuration that might have security implications. The same patterns for Secrets apply to ConfigMaps, including using resourceNames for specific ConfigMaps and granting appropriate verbs based on what the application needs to do. Some organizations treat ConfigMaps similarly to Secrets in terms of access control, while others are more permissive since ConfigMaps are meant for non-sensitive data.
 
-For the exam, memorize these common ones. Let's talk about subresources next.
+### Service Account Token Access
 
-Some resources have subresources that need explicit permissions. The most common example is Pod logs:
+ServiceAccounts themselves can be managed through RBAC, and there's a specific subresource for token creation. The serviceaccounts/token subresource allows creating tokens for ServiceAccounts programmatically. This is useful for automation scenarios but should be controlled carefully since anyone who can create tokens for a ServiceAccount can effectively impersonate that account.
 
-**[Execute command]**
+## Cross-Namespace Access
 
-This Role allows viewing Pods and their logs. Without the pods/log permission, you could see the Pod exists but couldn't read its logs. Other important subresources include pods/exec for kubectl exec access, and deployments/scale for scaling operations.
+Applications often need to access resources in namespaces other than their own, and understanding how to configure this correctly is essential for multi-tier application architectures.
 
-Now let's discuss resourceNames - a powerful but tricky feature.
+### ServiceAccount in Different Namespace
 
----
+RoleBindings can reference subjects from any namespace, not just the namespace where the RoleBinding exists. This enables cross-namespace access patterns. The key is understanding where each resource lives. The Role or ClusterRole defines what actions are allowed. The RoleBinding grants those permissions to specific subjects and must be in the same namespace as the resources being accessed. The ServiceAccount is the subject and can be in a completely different namespace.
 
-## Resource-Specific Permissions (2:30)
+For example, an application running in the app namespace might need to read ConfigMaps from the shared namespace. You create a Role in the shared namespace with ConfigMap read permissions. You create a RoleBinding in the shared namespace that references the Role and specifies the ServiceAccount from the app namespace as the subject. Now Pods using that ServiceAccount in the app namespace can access ConfigMaps in the shared namespace.
 
-**[Time: 13:00 total]**
+The subject format in RoleBindings is critical and must include the namespace even when it's the same as the RoleBinding's namespace. The format is namespace colon name when specified in commands, or separate namespace and name fields in YAML. Getting this wrong causes the permission to silently fail because Kubernetes can't find the subject.
 
-Sometimes you need to grant access to specific named resources, not all resources of a type. This is done with resourceNames:
+### Listing Namespaces
 
-**[Execute commands]**
+Namespace listing is a special case because namespaces themselves are cluster-scoped resources, not namespace-scoped. To grant permissions to list or get namespaces, you must use a ClusterRole and ClusterRoleBinding. This is commonly needed for applications that provide multi-tenant interfaces or need to discover available namespaces dynamically. However, it's also a privileged operation because seeing the list of namespaces can reveal organizational structure and what teams are working on, so it should be granted thoughtfully.
 
-This Role only allows getting those two specific Secrets. Let's bind it and test:
+## RBAC Troubleshooting
 
-**[Execute commands, show yes and no]**
+Troubleshooting RBAC issues quickly is crucial for exam success because permission problems are common and can block progress on multi-part questions.
 
-This is powerful for limiting access. However, there's a critical limitation you must know for the exam: resourceNames works with get, delete, update, and patch, but NOT with list or watch. If you try to use resourceNames with list, the permission won't work.
+### Debugging Permission Issues
 
-This catches many people by surprise on the exam. Remember: specific resources can be accessed individually, but you can't list "just these resources."
+When you encounter permission errors, a systematic approach saves time. Start by checking if the current user or ServiceAccount can perform the failing action using auth can-i. This immediately tells you whether permissions are missing or the problem is something else. If permissions are missing, check what ServiceAccount the Pod is actually using, since it might not be what you expect. Verify that the ServiceAccount exists and hasn't been deleted. Check whether Roles or RoleBindings exist in the namespace and whether they're correctly configured. Finally, verify that API groups in Role definitions match the resources you're trying to access.
 
----
+The auth can-i command is your primary diagnostic tool. You can test as yourself, as a different user, or as a ServiceAccount. You can test in specific namespaces or cluster-wide. You can even list all permissions a subject has, though this requires cluster admin privileges. Learning to use auth can-i fluently is essential for fast troubleshooting.
 
-## Built-in ClusterRoles (3:00)
+### Finding RBAC Bindings
 
-**[Time: 16:00 total]**
+Sometimes you need to discover what permissions a ServiceAccount has rather than testing specific actions. Finding which RoleBindings and ClusterRoleBindings reference a particular ServiceAccount requires searching through all bindings and checking their subjects. You can list all RoleBindings in all namespaces and filter by ServiceAccount name, or describe all bindings and manually search for the ServiceAccount. This is tedious but necessary when you need to understand the complete set of permissions granted to an identity.
 
-Kubernetes provides built-in ClusterRoles that cover common permission sets. Using these is often faster than creating custom Roles. Let's explore them:
+### Common RBAC Errors
 
-**[Execute command]**
+Several error patterns appear repeatedly. The first is Forbidden errors with messages clearly indicating that a ServiceAccount cannot perform an action on a resource. The solution is creating or fixing Role and RoleBinding resources. The second is when a RoleBinding references a non-existent Role. The binding gets created successfully, but permissions don't work because the Role isn't there. The describe command on the RoleBinding usually shows warnings about this.
 
-These four roles form a hierarchy of increasing permissions. Let's examine what "view" provides:
+ServiceAccount not found errors occur when you create a RoleBinding before creating the ServiceAccount it references. The order matters, so create ServiceAccounts first, then Roles, then RoleBindings. Wrong API group errors happen when your Role specifies permissions for pods in the apps API group instead of the empty API group. The kubectl api-resources command shows you the correct API group for each resource type, making this easy to check.
 
-**[Execute command, scroll through permissions]**
+## Production Security Best Practices
 
-The "view" role gives read-only access to most resources, but notice it excludes Secrets and some ConfigMaps for security reasons. You can see Pods, Services, Deployments, but you can't see Secrets.
+The CKAD exam increasingly emphasizes security, so understanding and applying security best practices is important both for the exam and for real-world work.
 
-The "edit" role adds modification capabilities:
+### Principle of Least Privilege
 
-**[Execute command]**
+Always grant the minimum permissions necessary for an application to function. If an application only needs to read ConfigMaps, don't grant write or delete permissions. If it only needs access to specific ConfigMaps, use resourceNames to restrict access. If it only needs access in one namespace, use namespace-scoped Roles rather than ClusterRoles. This principle extends to verbs as well, where you should carefully consider which verbs are truly needed rather than granting all verbs for convenience.
 
-With "edit", you can create, update, and delete Pods, Services, Deployments, and other application resources, but you still can't modify RBAC resources themselves. This prevents users from escalating their own permissions.
+### ServiceAccount Per Application
 
-The "admin" role gives full access within a namespace, including RBAC management:
+Each application should have its own dedicated ServiceAccount rather than sharing the default ServiceAccount or reusing ServiceAccounts across multiple applications. This provides isolation where if one application is compromised, the attacker only gets the permissions for that specific application, not everything in the namespace. It also makes auditing and permission management cleaner because you can see exactly which applications have which permissions.
 
-**[Execute command]**
+### Namespace Isolation
 
-And "cluster-admin" is the superuser role with unrestricted access to everything.
+Namespaces combined with RBAC provide strong isolation between environments and teams. Development namespaces can have relaxed permissions where developers have edit access to experiment freely. Production namespaces should have strict permissions where developers have read-only view access and only the deployment pipeline or operations team has edit access. This prevents accidental changes to production and provides clear boundaries between environments.
 
-For the exam, here's a key pattern: use built-in ClusterRoles with RoleBindings to grant standard permissions in specific namespaces. Let's see this in action:
+## CKAD Lab Exercises
 
-**[Execute commands]**
+The lab exercises combine multiple RBAC concepts into realistic scenarios that mirror exam questions.
 
-This grants the "developer" ServiceAccount full edit permissions, but only in the "dev" namespace. The ClusterRole defines the permissions, but the RoleBinding restricts where they apply. This is a common exam pattern.
+### Exercise 1: Create ServiceAccount with Basic Permissions
 
----
+The first exercise involves creating a ServiceAccount and granting it specific permissions to access Pods, Services, and a particular ConfigMap. You need to create the ServiceAccount, define a Role with get and list permissions for Pods and Services plus get permission for a named ConfigMap, bind the Role to the ServiceAccount, and then deploy a Pod that uses the ServiceAccount. Finally, verify that permissions work correctly using auth can-i commands to test both permitted and denied actions. This tests your ability to set up basic RBAC from scratch and verify it works.
 
-## Cross-Namespace Access (3:30)
+### Exercise 2: Multi-Resource Role
 
-**[Time: 19:30 total]**
+This exercise requires creating a Role with different permission levels for different resources. The developer Role should grant full access to Pods with all verbs, read-only access to Deployments and ReplicaSets with get and list permissions, read access to ConfigMaps, and no access to Secrets. You bind this Role to a dev-user ServiceAccount in a dev namespace. The challenge is structuring the rules correctly with appropriate API groups and verbs for each resource type, and then verifying with auth can-i that the permissions are exactly what was specified without being overly permissive.
 
-Applications often need to access resources in other namespaces. This is a common exam scenario: "ServiceAccount in namespace A needs to read ConfigMaps in namespace B."
+### Exercise 3: Cross-Namespace Access
 
-Let's set up this scenario:
+Cross-namespace scenarios test your understanding of where to create each resource. You have a backend ServiceAccount in the app namespace that needs to read a specific ConfigMap named shared-config in the shared namespace without access to anything else. You create a Role in the shared namespace with get permission on the specific ConfigMap using resourceNames. You create a RoleBinding in the shared namespace that binds the Role to the backend ServiceAccount from the app namespace. The verification confirms that cross-namespace access works for the specific ConfigMap but is properly denied for other ConfigMaps and for list operations.
 
-**[Execute commands]**
+### Exercise 4: Troubleshoot RBAC
 
-Now, to grant the "backend" ServiceAccount in "app" namespace access to ConfigMaps in "shared" namespace, we create a Role in the "shared" namespace:
+Troubleshooting exercises present broken RBAC configurations that you must diagnose and fix. Common issues include Roles with wrong API groups, RoleBindings missing namespace in the subject specification, ServiceAccounts that don't exist, or permissions granted to the wrong subject. You use auth can-i to confirm permissions don't work, describe Roles and RoleBindings to find the configuration errors, apply fixes, and verify that permissions now work correctly. This develops the systematic troubleshooting approach you need for exam success.
 
-**[Execute command]**
+### Exercise 5: Secure Application Deployment
 
-And here's the key - we create a RoleBinding in the "shared" namespace, but reference the ServiceAccount from the "app" namespace:
+The final comprehensive exercise involves deploying a production application with complete security hardening. You create custom ServiceAccounts with minimal permissions for frontend and backend components. You disable token automounting for components that don't need API access. You configure access to specific Secrets and ConfigMaps using resourceNames. You use namespaces to isolate the production environment. Finally, you verify everything with auth can-i commands and by checking the actual deployed resources. This exercise combines multiple security concepts into a realistic production deployment scenario.
 
-**[Execute command]**
+## Common CKAD Exam Scenarios
 
-Notice the serviceaccount format: namespace colon name. The RoleBinding is in "shared" namespace, the Role is in "shared" namespace, but the ServiceAccount is in "app" namespace. Let's verify:
+Certain scenario patterns appear frequently in the exam, and practicing these until you can complete them quickly is important for time management.
 
-**[Execute commands, show yes for shared, no for app]**
+### Scenario 1: Create ServiceAccount and Assign to Pod
 
-Perfect! The ServiceAccount can access ConfigMaps in "shared" but not in its own namespace. This demonstrates precise control over cross-namespace access.
+When asked to create a ServiceAccount and configure a deployment to use it, the fastest approach is imperative commands. Create the ServiceAccount, then use set serviceaccount to update the Deployment. Verify by checking the Deployment specification to confirm the ServiceAccount name is set correctly. This entire sequence should take less than 30 seconds once you're practiced.
 
-For the exam, remember: the Role and RoleBinding must be in the namespace containing the resources you want to access, but the subject can be from any namespace.
+### Scenario 2: Grant Role to ServiceAccount
 
----
+For scenarios requiring specific permissions, create the Role imperatively if possible, specifying verbs and resources in the command. Create the RoleBinding connecting the Role to the ServiceAccount with the correct namespace:name format. Verify with auth can-i that the permissions work as expected before moving to the next part of the question.
 
-## Troubleshooting RBAC Issues (4:00)
+### Scenario 3: Cluster-Wide Permissions
 
-**[Time: 23:30 total]**
+When cluster-wide access is required, use ClusterRole and ClusterRoleBinding instead of namespace-scoped resources. Be careful with the ServiceAccount subject format in ClusterRoleBindings, which still needs to include the namespace. Verify permissions in multiple namespaces to confirm cluster-wide access is working.
 
-Troubleshooting RBAC is a critical exam skill. Let's walk through common scenarios and diagnostic techniques.
+### Scenario 4: Use Built-in Role
 
-Scenario one: Your Pod is getting 403 Forbidden errors. Here's your troubleshooting workflow:
+If the required permissions match a standard level like view or edit, use the built-in ClusterRole with a RoleBinding to apply it in the specific namespace. This is much faster than creating a custom Role and ensures you haven't missed any necessary permissions.
 
-**[Create a problem scenario]**
+### Scenario 5: Debug Permission Issue
 
-**[Execute command]**
+Permission debugging scenarios give you a failing Pod and ask you to fix it. Identify the ServiceAccount being used, check current permissions with auth can-i, create the missing Role with required permissions, create the RoleBinding connecting Role to ServiceAccount, and verify the fix. This workflow should become automatic with practice.
 
-First, identify which ServiceAccount the Pod is using:
+## Quick Command Reference for CKAD
 
-**[Execute command]**
+Memorizing essential commands and their shortcuts helps you work quickly under exam pressure. For ServiceAccounts, you can create them, list them, describe them, delete them, and set them on Deployments with dedicated commands. For Roles, you can create them imperatively specifying verbs and resources, list them, describe them, and delete them. The same patterns apply to ClusterRoles.
 
-If it returns nothing or "default", that's likely the issue. The default ServiceAccount has no permissions. Let's check:
+For RoleBindings, you can create them for ServiceAccounts or users, referencing either Roles or ClusterRoles. You can create ClusterRoleBindings for cluster-wide permission grants. List, describe, and delete operations work the same as other resources.
 
-**[Execute command, show no]**
+Permission testing with auth can-i accepts various flags to test different scenarios. You can test if you can perform an action, test as a different user or ServiceAccount, test in specific namespaces, and list all permissions you have. The auth can-i command is so important that you should practice using it until you can construct the right command without referring to documentation.
 
-Confirmed. Now we need to either create a new ServiceAccount with permissions, or grant permissions to the default ServiceAccount. Best practice is a new ServiceAccount:
+## Exam Tips and Tricks
 
-**[Execute commands]**
+Speed is crucial for the CKAD exam, and several techniques help you work faster. Always use imperative commands when possible rather than writing YAML from scratch. Chain multiple commands with && to execute them sequentially in one line. Remember the shorthand versions of resource types to save typing. Master the auth can-i command format for quick permission verification.
 
-Let's verify the fix:
+Common mistakes to avoid include forgetting the namespace in ServiceAccount subjects, using wrong API groups for resources, creating Roles and RoleBindings in different namespaces, trying to use resourceNames with list or watch verbs, and creating RoleBindings before their corresponding Roles exist. Being aware of these pitfalls helps you catch mistakes before they cost you time.
 
-**[Execute command, show yes]**
+## Study Checklist
 
-Perfect. Scenario two: Permissions work in one namespace but not another.
+To ensure you're prepared for RBAC questions, work through this checklist. You should be able to create ServiceAccounts both imperatively and declaratively. You need to understand which common resources belong to which API groups without looking it up. You must be able to create Roles with multiple rules covering different resource types. Creating RoleBindings for ServiceAccounts should be automatic. You should know when to use ClusterRoles with RoleBindings for namespace-scoped application of cluster-scoped definitions.
 
-**[Execute commands, show yes and no]**
+Testing permissions with auth can-i should be second nature, including the correct format for different user types and namespaces. Troubleshooting RBAC issues systematically saves time when things don't work. Disabling ServiceAccount token mounting for security is a best practice you should remember. Configuring cross-namespace access requires understanding where each resource lives. Using built-in ClusterRoles instead of creating custom Roles when appropriate is faster. Understanding resourceNames limitations prevents confusion when list operations don't work as expected. Finally, working with subresources like logs, exec, and scale should be straightforward.
 
-The ServiceAccount has permissions in "default" but not "prod". Two solutions: create Role and RoleBinding in the "prod" namespace, or use ClusterRole and ClusterRoleBinding for cluster-wide access:
+## Cleanup
 
-**[Execute commands]**
+After completing the lab exercises, clean up all the resources you created. You can delete all RBAC-related resources across all namespaces using labels if you tagged them during creation. This keeps your cluster clean and ready for the next practice session. For exam practice, getting into the habit of cleaning up after each scenario helps you maintain focus and avoid confusion between different practice attempts.
 
-Now let's verify cluster-wide access:
-
-**[Execute commands, show yes for both]**
-
-Excellent. One more troubleshooting tip: if permissions seem correct but still don't work, check the API group. This is a common mistake:
-
-**[Execute commands, show apiGroups: [apps]]**
-
-Notice kubectl correctly used "apps" as the API group. But if you were writing YAML and used an empty apiGroups, it wouldn't work. Always verify API groups with kubectl api-resources.
-
----
-
-## Exam Speed Techniques (3:00)
-
-**[Time: 26:30 total]**
-
-Time management is crucial for the CKAD exam. Let me share speed techniques for RBAC questions.
-
-First, always use imperative commands when possible. Here's a complete RBAC setup in one command chain:
-
-**[Execute command chain]**
-
-That's ServiceAccount creation, Role creation, RoleBinding creation, and verification - all in one copy-paste. Learn to chain commands with && for sequential execution.
-
-Second, master the kubectl auth can-i command format. This is your verification tool:
-
-Third, use dry-run and kubectl set for faster Pod updates:
-
-**[Execute command]**
-
-Fourth, remember the shorthand commands:
-- "sa" instead of "serviceaccount"
-- "cm" instead of "configmap"
-- "deploy" instead of "deployment"
-
-Finally, for exam questions about security hardening, remember these key points:
-- Disable automountServiceAccountToken for Pods that don't need API access
-- Use resourceNames to restrict access to specific Secrets or ConfigMaps
-- Grant the minimum necessary verbs - if you only need to read, don't grant delete
-- Use namespace-scoped Roles instead of ClusterRoles when possible
-
----
-
-## Common Exam Scenarios (2:30)
-
-**[Time: 29:00 total]**
-
-Let me walk you through typical exam question patterns and how to approach them quickly.
-
-**Question pattern one**: "Create a ServiceAccount and configure the deployment to use it."
-
-Your response:
-
-**[Execute commands as a walkthrough]**
-
-**Question pattern two**: "Grant the ServiceAccount permissions to read ConfigMaps."
-
-Your response:
-
-**[Execute commands]**
-
-**Question pattern three**: "Fix the permission issue preventing this Pod from accessing Secrets."
-
-Your troubleshooting steps:
-
-**Question pattern four**: "Grant cluster-wide read access to Pods."
-
-Your response:
-
-These patterns cover about 80% of RBAC exam questions. Practice until you can execute each pattern in under 30 seconds.
-
----
-
-## Summary and Final Tips (1:00)
-
-**[Time: 30:00 total]**
-
-Let's summarize the key takeaways for CKAD RBAC success.
-
-Master imperative commands for ServiceAccounts, Roles, and RoleBindings. They're faster than writing YAML and less error-prone under exam pressure.
-
-Memorize common API groups: empty string for core resources, "apps" for Deployments, "batch" for Jobs, "networking.k8s.io" for Ingresses.
-
-Always verify your work with kubectl auth can-i before moving to the next question. This catches mistakes early.
-
-Remember the ServiceAccount format in commands: system:serviceaccount:namespace:name.
-
-Understand the difference between namespace-scoped and cluster-scoped resources. Know when to use Role versus ClusterRole, RoleBinding versus ClusterRoleBinding.
-
-Practice cross-namespace access scenarios - they're common on the exam.
-
-And finally, for any security question, consider: disable token mounting, use resourceNames for specific resources, grant minimum necessary verbs, and prefer namespace-scoped roles.
-
-With these skills and patterns, you're well-prepared for RBAC questions on the CKAD exam.
-
----
-
-## Cleanup (0:30)
-
-**[Time: 30:30 total]**
-
-Let's clean up our exam practice environment:
-
-**[Execute commands]**
-
-You're now ready to tackle RBAC questions on the CKAD exam. Practice these patterns until they become automatic, and you'll have the speed and accuracy needed for exam success.
-
-Good luck!
-
----
-
-**End of CKAD Preparation Session: 25-30 minutes**
-
-## Notes for Presenter
-
-### Prerequisites
-- Clean Kubernetes cluster for demonstrations
-- kubectl configured and working
-- Terminal with history enabled for showing command patterns
-- Familiarity with CKAD exam format and timing
-
-### Pacing Strategy
-- **Faster track (25 min)**: Execute commands without showing all output, assume viewer familiarity with basic concepts
-- **Standard track (27-28 min)**: Follow script as written with brief output review
-- **Detailed track (30 min)**: Add extra explanation of YAML output, show more verification steps
-
-### Critical Exam Tips to Emphasize
-
-1. **ServiceAccount Format**: 
-   - This exact format is required for  flag
-   - Namespace is mandatory even if it's "default"
-
-2. **Common API Groups** (write on screen/whiteboard):
-   - Core (Pod, Service, ConfigMap, Secret): 
-   - apps (Deployment, StatefulSet, DaemonSet): 
-   - batch (Job, CronJob): 
-   - networking.k8s.io (Ingress, NetworkPolicy): 
-
-3. **Speed Commands** (create reference sheet):
-   bash
-# Clean slate
-kubectl delete all --all
-kubectl delete sa --all --field-selector metadata.name!=default
-kubectl delete role --all
-kubectl delete rolebinding --all
-kubectl delete clusterrole pod-reader-cluster 2>/dev/null
-kubectl delete clusterrolebinding problem-app-cluster monitor-pods 2>/dev/null
-
-# Set up common test resources
-kubectl create namespace demo
-kubectl run test-pod --image=nginx
-``set -o historysystem:serviceaccount:NS:NAMEkubectl auth can-i` before moving on
-- If stuck, create using imperative commands and verify, rather than debugging YAML
-- Remember: ServiceAccount subject format includes namespace even for default
+With these concepts, patterns, and commands mastered, you're well-prepared for RBAC questions on the CKAD exam. The key is practice until these operations become automatic, allowing you to work quickly and accurately under exam time pressure.

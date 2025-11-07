@@ -1,380 +1,59 @@
-# Troubleshooting Application Modeling - Practical Exercises
+# Troubleshooting Application Modeling - Exercises Narration Script
 
 **Duration:** 20-25 minutes
-**Format:** Live demonstration and guided troubleshooting
-**Prerequisites:** Kubernetes cluster running, kubectl configured
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running, completed basic troubleshooting exercises
 
 ---
 
-## Introduction (1 minute)
+Welcome to application modeling troubleshooting. This builds on what we learned in the basic troubleshooting lab, but now we're dealing with more complex scenarios. In real Kubernetes deployments, applications don't exist in isolation. They depend on configuration from ConfigMaps, credentials from Secrets, persistent storage from PersistentVolumes, and they're organized into namespaces. When any of these dependencies are misconfigured, your application breaks in interesting ways.
 
-Welcome to hands-on application modeling troubleshooting. Today we'll work with a broken web application that uses multiple Kubernetes resources working together.
+Today we're working with a broken web application that requires all these components working together. It needs configuration from a ConfigMap, database credentials from a Secret, persistent storage via a PersistentVolume, and it's deployed to a custom namespace. Your goal is to fix all the configuration issues so the application is healthy and accessible at localhost:8040 or localhost:30040, displaying its configuration correctly.
 
-**The Scenario:** A web application that requires:
-- Configuration from a ConfigMap
-- Database credentials from a Secret
-- Persistent storage via PersistentVolume
-- Deployment to a custom namespace
+This mirrors real CKAD exam scenarios where multiple resources must work together correctly. The exam loves questions like this because they test whether you really understand how Kubernetes resources interact. You can't just memorize commands - you need to think systematically about dependencies and troubleshoot methodically.
 
-**Your Mission:**
-- Fix all configuration issues
-- Get the pod healthy with no restarts
-- Access the application at http://localhost:8040 or http://localhost:30040
-- See the web app displaying its configuration correctly
+## Lab
 
-**CKAD Reality:** This mirrors real exam scenarios where multiple resources must work together. You'll need systematic diagnosis!
+Let me deploy the broken application. I'm applying all the specs from the troubleshooting-2 directory. Kubernetes accepts the YAML files, which means the syntax is valid, but that doesn't mean the application will actually work. This is the nature of declarative configuration - Kubernetes validates the structure but can't predict whether your configuration makes sense for your application.
 
-Let's get started!
+When I try to access the application, nothing responds. Let's start investigating. First, I need to understand what resources were created and in which namespaces. When I list all resources, I can see some things in the default namespace and some in a custom namespace. This is our first clue - resources might be scattered across namespaces when they need to be together.
 
----
+Let's check the troubleshooting-2 namespace specifically. I can see a deployment, but what's the status? Are the pods running? When I look at the pods, the status tells me immediately if we have a problem. Maybe it's Pending, maybe it's CreateContainerConfigError, maybe it's CrashLoopBackOff. Each status points to a different category of problem.
 
-## Exercise: The Broken Multi-Resource Application (18-20 minutes)
+The describe command is critical here. When I describe the pod, look at the events section. You'll often see messages about missing ConfigMaps, missing Secrets, or PersistentVolumeClaims that won't bind. These events are Kubernetes telling you exactly what's wrong - you just need to read them carefully and understand what they mean.
 
-### Step 1: Deploy the Broken Application (1 minute)
+Let's say I see an event about a ConfigMap not being found. The first question is - does the ConfigMap exist at all? I can list ConfigMaps in the namespace to check. If it doesn't exist, I need to create it. If it exists, the next question is - am I looking in the right namespace? ConfigMaps are namespace-scoped, which means a pod can only reference ConfigMaps in its own namespace. If the ConfigMap is in the default namespace but the pod is in troubleshooting-2, the pod can't see it.
 
-**Deploy all resources:**
+The same logic applies to Secrets. When the pod complains about a missing Secret, I need to verify the Secret exists in the correct namespace. Creating a Secret is straightforward with kubectl create secret, but remember you need to create it in the same namespace where the pod is running.
 
+PersistentVolumeClaims add another layer of complexity. When a pod wants to use persistent storage, it references a PVC, which then needs to bind to a PV. If the PVC is stuck in Pending state, that means no PV matches its requirements. I need to check what the PVC is requesting - how much storage, what access mode, which storage class - and then verify that a matching PV exists. If not, I'll need to create one.
 
-**Initial Testing:**
+Here's where namespace boundaries matter again. PVCs are namespace-scoped, so the PVC must be in the same namespace as the pod. But PVs are cluster-scoped, meaning they're not in any namespace. So I create the PV without a namespace specification, but the PVC must be in the pod's namespace.
 
+Service configuration is another common issue. Even if the pod is healthy, you might not be able to access it if the service is misconfigured. The service needs the correct selector to match the pod labels, the right ports to route traffic correctly, and the appropriate type to expose it how you want. When I check the service endpoints, if it shows none, that's a selector mismatch. The service selector doesn't match the pod labels.
 
-**Narration:** "The application isn't accessible. Let's start our systematic troubleshooting process."
+Port configuration requires careful attention. The service has a port, which is what clients connect to, and a targetPort, which is where traffic gets forwarded on the pod. The targetPort must match the containerPort in the pod spec. If these don't align, the service routes traffic to the wrong port and nothing works.
 
-**What was created?**
+Let me work through a complete diagnosis systematically. First, I check which namespaces have resources. Then I focus on the namespace where my application should be running. I check if all required resources exist - deployment, service, ConfigMap, Secret, PVC. For resources that exist, I verify they're in the correct namespace. For resources that don't exist, I create them.
 
+When the pod is still not running after ensuring resources exist, I describe the pod to check for different errors. Maybe the ConfigMap key names don't match what the pod expects. The ConfigMap might have a key called database-url, but the pod is looking for database_url with an underscore. Kubernetes is exact about these things - the names must match character for character.
 
-**Observation Questions:**
-- What namespaces are involved?
-- Are there any pods? What's their status?
-- Do ConfigMaps and Secrets exist?
-- Are there any PVCs? What's their status?
+Volume mount paths need to match what the application expects. If the application looks for configuration at /app/config but the volume is mounted at /config, it won't find the files. I need to check the application's expectations and make sure the volumeMount path matches.
 
-**Pause for 1 minute:** "Take a moment to review what resources exist and their current state."
+After fixing each issue, I watch what happens. Kubernetes might need a moment to reconcile the changes. New pods might be created. PVCs might bind. Configuration might be loaded. I verify at each step that the fix actually worked before moving to the next issue.
 
----
+When working with ConfigMaps, I can verify the configuration was loaded correctly by checking the environment variables inside the pod or looking at the mounted files. The exec command lets me run commands inside the container to inspect what the application actually sees.
 
-### Step 2: High-Level Resource Assessment (2 minutes)
+The systematic approach is essential. I don't try to fix everything at once. I identify one issue, fix it, verify it's resolved, then move to the next issue. This prevents confusion and ensures I'm actually making progress.
 
-**Check the namespace:**
+Once the pod is running and ready, I need to verify the service configuration. Does the service have endpoints? If yes, the selector is correct. Can I port-forward to the service and access the application? If yes, the ports are configured correctly. Can I access it via the NodePort or LoadBalancer? If yes, the service type is appropriate.
 
+The final verification is accessing the application through its intended endpoint and confirming it displays correctly. Not just that it responds, but that it shows the configuration from the ConfigMap, it can access its persistent storage, and everything is working as designed.
 
-**Narration:** "We should see a deployment, service, ConfigMap, Secret, and PVC. Let's check each component."
+This type of troubleshooting requires understanding how Kubernetes resources relate to each other. Pods depend on ConfigMaps and Secrets for configuration. They depend on PVCs for storage, which depend on PVs. Services depend on pod labels to know where to route traffic. Everything must be in the right namespace with the right names and the right configurations. It's a web of dependencies, and troubleshooting means understanding that web.
 
-**Check deployments:**
+## Cleanup
 
+When you're finished investigating and fixing the application, we need to clean up properly. Since we used a custom namespace, deleting that namespace removes most of the resources. However, some resources might have been created in other namespaces during troubleshooting, so we specifically delete ConfigMaps with the troubleshooting-2 label across all namespaces to ensure complete cleanup.
 
-**Check pods:**
-
-
-**Check services:**
-
-
-**Expected Findings:**
-- Deployment may show 0/1 READY
-- Pod may be in error state (Pending, CrashLoopBackOff, CreateContainerConfigError, etc.)
-- Service exists but has no endpoints
-
-**Narration:** "Based on the pod status, we can start narrowing down the issue. Let's examine the pod in detail."
-
----
-
-### Step 3: Pod-Level Diagnosis (3 minutes)
-
-**Get pod details:**
-
-
-**What to look for in describe output:**
-
-**1. Pod Status Section:**
-
-
-**2. Container Status:**
-
-
-**3. Events Section (CRITICAL!):**
-
-Look for errors like:
-- `configmap "xyz" not found`
-- `secret "xyz" not found`
-- `persistentvolumeclaim "xyz" not found`
-- `key "xyz" not found in ConfigMap`
-- `error mounting volume`
-
-**Guided Investigation (2 minutes):**
-
-**Narration:** "Read through the events carefully. They usually tell you exactly what's wrong. Look for:"
-1. Missing ConfigMaps or Secrets
-2. Wrong key names
-3. PVC issues
-4. Mount path problems
-
-**Common Finding #1: ConfigMap Issues**
-
-If you see `configmap "X" not found`:
-
-
-**Common Finding #2: Secret Issues**
-
-If you see `secret "X" not found`:
-
-
-**Common Finding #3: PVC Issues**
-
-If you see PVC-related errors:
-
-
-**Common Finding #4: Key Name Mismatches**
-
-If pod starts but describes show key errors:
-
-
----
-
-### Step 4: ConfigMap and Secret Investigation (3 minutes)
-
-**Check ConfigMap configuration:**
-
-
-**Typical ConfigMap Issues:**
-
-**Issue A: ConfigMap in Wrong Namespace**
-
-
-**Issue B: Wrong Key Names**
-
-
-**Example fix:**
-
-
-**Check Secret configuration:**
-
-
-**Typical Secret Issues:**
-
-Similar to ConfigMap:
-- Wrong namespace
-- Wrong key names
-- Pod can't access Secret
-
-**Narration:** "ConfigMap and Secret issues are the most common application modeling problems. Let's fix any we've found."
-
----
-
-### Step 5: PersistentVolume Investigation (2 minutes)
-
-**Check PVC status:**
-
-
-**Typical PVC Issues:**
-
-**Issue A: No Matching PV**
-
-
-**Issue B: PV/PVC Mismatch**
-
-
-**Solution:** Create compatible PV or adjust PVC.
-
-**Issue C: PVC Bound but Pod Can't Mount**
-
-
----
-
-### Step 6: Service and Endpoint Verification (2 minutes)
-
-**Once pod is healthy, check service routing:**
-
-
-**Verify service configuration:**
-
-
-**Check ports:**
-
-
----
-
-### Step 7: Fix the Issues (4 minutes)
-
-**Narration:** "Now let's fix the issues we've identified. Work through them systematically."
-
-**Common Fix 1: Move ConfigMap to Correct Namespace**
-
-
-**Common Fix 2: Create Missing Secret**
-
-
-**Common Fix 3: Fix Key Names**
-
-
-Or fix the ConfigMap:
-
-
-**Common Fix 4: Create Missing PV**
-
-
-**Common Fix 5: Fix Service Selector**
-
-
-**Common Fix 6: Restart Pods After Config Changes**
-
-
-**Narration:** "After each fix, check if the pod status improves. You might need to fix multiple issues."
-
----
-
-### Step 8: Verification (3 minutes)
-
-**Comprehensive verification checklist:**
-
-**1. All Resources Exist in Correct Namespace:**
-
-
-**2. Pod is Healthy:**
-
-
-**3. PVC is Bound:**
-
-
-**4. Service Has Endpoints:**
-
-
-**5. Application Responds:**
-
-
-**6. Configuration is Loaded:**
-
-
-**7. Persistent Storage Works:**
-
-
-**Success Criteria:**
-
-✅ Pod is Running and Ready (1/1)
-✅ No pod restarts
-✅ PVC is Bound
-✅ Service has endpoints
-✅ Application responds at http://localhost:8040 or http://localhost:30040
-✅ Web app displays configuration correctly
-✅ No errors in pod logs
-
-**Narration:** "If all checks pass, you've successfully diagnosed and fixed all the application modeling issues!"
-
----
-
-## Common Issues and Solutions (2 minutes)
-
-**Let's review the typical issues found in this lab:**
-
-### Issue 1: Resources in Wrong Namespace
-
-**Problem:** ConfigMap or Secret created in `default` namespace, but deployment is in `troubleshooting-2`.
-
-**Solution:**
-
-
-### Issue 2: ConfigMap Key Mismatch
-
-**Problem:** ConfigMap has `database-url` but pod looks for `database_url`.
-
-**Solution:**
-
-
-### Issue 3: PVC Not Bound
-
-**Problem:** No PV available matching PVC requirements.
-
-**Solution:**
-
-
-### Issue 4: Service Can't Find Pods
-
-**Problem:** Service selector doesn't match pod labels.
-
-**Solution:**
-
-
----
-
-## CKAD Exam Tips (2 minutes)
-
-### Quick Diagnosis Commands
-
-**For multi-resource applications:**
-
-
-### Time-Saving Strategies
-
-**1. Use --all-namespaces to find misplaced resources:**
-
-
-**2. Create resources quickly:**
-
-
-**3. Copy resources between namespaces:**
-
-
-### Common Patterns in CKAD
-
-**Pattern 1:** "Application can't find configuration"
-→ Check ConfigMap exists in correct namespace
-
-**Pattern 2:** "Pod stuck in ContainerCreating"
-→ Check PVC is Bound
-
-**Pattern 3:** "Pod keeps restarting"
-→ Check configuration values are correct
-
-**Pattern 4:** "Can't access application"
-→ Check service has endpoints
-
-### Verification Workflow
-
-1. ✅ `kubectl get all,cm,secret,pvc -n <namespace>` - All resources exist
-2. ✅ `kubectl get pods -n <namespace>` - Pods Running and Ready
-3. ✅ `kubectl get pvc -n <namespace>` - PVC Bound
-4. ✅ `kubectl get endpoints -n <namespace>` - Service has endpoints
-5. ✅ `curl <service>` - Application responds
-
----
-
-## Cleanup (1 minute)
-
-
----
-
-## Summary and Key Takeaways (1 minute)
-
-**What We Practiced:**
-
-1. **Multi-resource troubleshooting** - Dealing with interconnected components
-2. **Namespace-aware debugging** - Finding resources in wrong namespaces
-3. **ConfigMap/Secret issues** - Key mismatches and missing resources
-4. **PVC troubleshooting** - Understanding binding and volume issues
-5. **Service endpoint verification** - Ensuring routing works
-
-**CKAD Skills Reinforced:**
-- ✅ Systematic multi-resource diagnosis
-- ✅ Using kubectl across namespaces
-- ✅ Understanding resource dependencies
-- ✅ Fixing configuration issues quickly
-- ✅ Comprehensive verification
-
-**Real-World Application:**
-- This is exactly how production applications are modeled
-- Multiple teams create different resources - mismatches happen
-- Namespace isolation requires careful coordination
-- Always verify cross-resource references
-
-**Key Lessons:**
-- Start with pod describe to identify missing resources
-- Check namespace boundaries carefully
-- Verify key names match exactly
-- Ensure PVCs are Bound before pods can use them
-- Always check service endpoints after fixes
-
----
-
-**Total Duration:** 20-25 minutes
-**Next Session:** Advanced troubleshooting with Helm, Ingress, and StatefulSets
-
-**Remember:** In the CKAD exam, application modeling questions combine multiple topics. Master the systematic approach and you'll handle any complexity!
+That completes our application modeling troubleshooting exercise. You've practiced diagnosing and fixing multi-resource applications with ConfigMaps, Secrets, PersistentVolumes, and namespace issues. These skills are essential for the CKAD exam where you'll frequently need to work with complex applications that depend on multiple resources working correctly together. In the next video, we'll cover CKAD-specific scenarios with more advanced patterns and time-saving techniques.

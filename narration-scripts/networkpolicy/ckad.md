@@ -1,438 +1,127 @@
-# Network Policy CKAD Exam Preparation - Narration Script
-**Duration:** 20-25 minutes
-**Format:** CKAD exam-focused scenarios and patterns
-**Target Audience:** CKAD exam candidates
+# Network Policy - CKAD Narration Script
 
----
+Welcome to the CKAD exam preparation module for Kubernetes Network Policy. This session focuses specifically on what you need to know for the Certified Kubernetes Application Developer exam. Network Policy is classified as a supplementary topic, which means it's helpful to know and may appear on the exam, but it's not as heavily weighted as core topics like Pods, Deployments, or Services. However, when network policy questions do appear, candidates often struggle because there's no imperative command to help you. You must write YAML from scratch, and under time pressure, that can be challenging.
 
-## Introduction [0:00-1:00]
+In this session, we'll cover the exam-specific patterns you need, the common scenarios that appear, effective debugging techniques, and most importantly, the pitfalls that trip up candidates. By the end, you'll be able to quickly write network policy YAML during the exam and troubleshoot connectivity issues efficiently.
 
-Welcome to the NetworkPolicy CKAD exam preparation session. This is where we focus specifically on what you need to know for the Certified Kubernetes Application Developer exam.
+## CKAD Exam Context
 
-NetworkPolicy is classified as a supplementary topic for CKAD, which means it's helpful to know and may appear on the exam, but it's not as heavily weighted as core topics. However, when it does appear, candidates often struggle with it because it requires writing YAML from scratch - there are no imperative commands to help you.
+The CKAD exam expects you to demonstrate several specific competencies with network policies. You need to understand ingress and egress traffic control, knowing which direction each rule type affects. You must be able to use Pod selectors and namespace selectors correctly, understanding scope and selection. Port-based restrictions are important, allowing specific protocols and ports while blocking others. CIDR-based rules come up for controlling access to IP blocks. You'll need to implement default deny policies as the foundational security pattern. And critically, you must be able to debug network connectivity issues when things don't work as expected.
 
-In this session, we'll cover the exam-specific knowledge you need: common patterns, typical scenarios you'll encounter, debugging techniques, and most importantly, the common pitfalls that trip up exam candidates.
+The exam is performance-based. You'll be given a scenario describing security requirements, and you'll need to create policies that implement those requirements. Speed matters significantly. If you're constantly referring to documentation or trying to remember syntax, you'll run out of time. The goal is to write YAML confidently from memory for common patterns.
 
-By the end of this session, you'll be able to quickly write NetworkPolicy YAML during the exam and troubleshoot connectivity issues efficiently. Let's dive in.
+The single most important concept for the exam is that network policy is additive. This affects every policy you write, so let me emphasize it clearly. When multiple network policies select the same Pod, they combine to create a union of allowed traffic. If any policy allows a specific traffic pattern, that traffic is permitted. You cannot write a policy to deny traffic that another policy allows. This behavior is identical to RBAC. It's a whitelist model where you start with no access and explicitly grant permissions.
 
----
+Here's what this means in practice. If one policy allows traffic from Pods labeled app equals frontend, and another policy allows traffic from Pods labeled app equals backend, then both frontend and backend Pods can reach the target Pod. The policies don't conflict or override each other. They combine. The corollary is equally important. To block traffic, you simply don't allow it in any policy. There is no explicit deny rule in network policies.
 
-## Section 1: Exam Context & Fundamentals [1:00-4:00]
+Always test connectivity after applying policies. On the exam, verification is crucial. Don't just apply a policy and assume it works. Test that allowed traffic succeeds and blocked traffic fails. This verification is often part of the grading criteria.
 
-**[1:00-1:30] What CKAD Expects**
+One more critical exam point. Not all Kubernetes clusters enforce network policy. The exam environment should support it, but you need to understand why policies might not work. Local development clusters often lack the necessary CNI plugin. Docker Desktop doesn't enforce policies. You need Calico, Cilium, Weave, or another policy-aware CNI. This won't be an issue during the exam itself, but understanding this helps you troubleshoot problems.
 
-For the CKAD exam, you need to demonstrate these NetworkPolicy competencies:
+## NetworkPolicy Basics
 
-Understanding ingress and egress traffic control - knowing which direction each rule type affects.
+Network policies work at the Pod level, not the Service level. This is a common point of confusion. Policies select target Pods using label selectors. They define ingress rules for incoming traffic, egress rules for outgoing traffic, or both. The rules are allow-lists following a whitelist model. Multiple policies are additive, creating a union of all rules. Without any policy affecting a Pod, all traffic is allowed. Once even one policy selects a Pod, that Pod becomes subject to policy enforcement.
 
-Using pod selectors and namespace selectors - selecting the right Pods and understanding scope.
+The basic structure consists of four main sections. The podSelector determines which Pods this policy applies to. An empty selector with just curly braces means all Pods in the namespace. The policyTypes field lists which traffic directions this policy controls, either Ingress, Egress, or both. The ingress section contains rules for incoming traffic, and the egress section contains rules for outgoing traffic. Each rule can specify sources or destinations using Pod selectors, namespace selectors, or IP blocks, along with optional port restrictions.
 
-Configuring port-based restrictions - allowing specific protocols and ports.
+## Imperative vs Declarative
 
-Applying CIDR-based rules - using IP blocks for external access control.
+Here's a challenge unique to network policy. There is no kubectl create command that generates a complete, functional policy. You can run kubectl create networkpolicy with the dry-run flag to get output, but this only produces an empty skeleton. You still need to fill in the podSelector, policyTypes, ingress rules, and egress rules manually. For many candidates, it's actually faster to write the YAML from memory than to use this command and then edit the result.
 
-Implementing default deny policies - the foundational security pattern.
+My recommendation is to memorize templates for common patterns. Have a mental template for allowing traffic from specific Pods, allowing egress to APIs, and creating default deny policies. During the exam, you can type these quickly and modify them for the specific scenario. Practice writing policies from scratch until it becomes automatic. Get comfortable with your editor, whether that's vim or nano. Know how to create YAML files, edit them efficiently, and apply them without fumbling.
 
-Debugging network connectivity issues - troubleshooting when things don't work.
+The commands you'll use frequently are straightforward. Getting policies uses kubectl get networkpolicy or the shorthand netpol. Describing policy details shows which Pods are selected and what rules apply. Applying your YAML uses kubectl apply with the filename. Deleting a policy if you need to fix it uses kubectl delete networkpolicy.
 
-The exam is performance-based. You'll be given a scenario and asked to create policies that implement specific security requirements. Speed matters, so you need to write YAML confidently without constantly referring to documentation.
+## Default Deny Policies
 
-**[1:30-2:30] Critical Exam Tip: Additive Nature**
+Default deny policies are fundamental patterns you must know cold for the exam. There are three essential patterns. Deny all ingress blocks all incoming traffic while allowing outgoing traffic. The YAML specifies Ingress in the policyTypes field but provides no ingress rules. An empty podSelector means it applies to all Pods in the namespace. Deny all egress blocks all outgoing traffic but allows incoming traffic. The YAML specifies Egress in policyTypes but provides no egress rules. Deny all traffic combines both, listing both Ingress and Egress in policyTypes with no rules for either. This creates complete isolation with no traffic in or out.
 
-The single most important concept for the exam is that NetworkPolicy is additive. Let me emphasize this because it affects every policy you write.
+The key to understanding these patterns is recognizing what happens when you specify a policyType but provide no rules for that type. This creates a default deny for that direction. An empty rules section doesn't mean "allow everything." It means "allow nothing."
 
-When multiple NetworkPolicies select the same Pod, they combine to create a union of allowed traffic. If any policy allows a specific traffic pattern, that traffic is permitted. You cannot write a policy to deny traffic that another policy allows.
+You might encounter an exam scenario asking you to create a default deny policy and verify that it blocks traffic. The workflow would involve creating the policy with an empty podSelector and both policyTypes, then creating test Pods to verify they cannot communicate. Testing with wget or curl should timeout, confirming the policy is enforced. This timeout is your verification that the policy works correctly.
 
-This is identical to RBAC's behavior. It's a whitelist model: you start with no access and explicitly grant permissions.
+A common mistake that trips up exam candidates is misunderstanding what an empty podSelector means. The curly braces, podSelector with just empty braces, means ALL Pods, not none. This is intentional and powerful. It's how you apply a policy to every Pod in a namespace, which is exactly what you want for default deny. If you wanted to select no Pods, you wouldn't use network policy at all, or you'd use a selector that matches nothing. Empty selector equals universal application within the namespace. This is consistent with other Kubernetes resources where empty selectors have the same meaning.
 
-Here's what this means practically: if one policy allows traffic from app=frontend, and another policy allows traffic from app=backend, both frontend and backend can reach the target Pod. The policies don't conflict; they combine.
+## Ingress Rules (Incoming Traffic)
 
-The corollary is important: to block traffic, you simply don't allow it in any policy. There is no explicit deny rule.
+The most common exam scenario involves allowing traffic from one set of Pods to another. For example, you might be asked to allow traffic from app equals web Pods to app equals api Pods on port eight thousand eighty. The pattern is straightforward once you understand the structure. The policy's podSelector at the top level targets the destination, the Pods receiving traffic. The podSelector inside the from section specifies the source, the Pods sending traffic. This distinction is crucial because mixing them up is a common error.
 
-Always test connectivity after applying policies. On the exam, verification is crucial. Don't just apply a policy and move on - test that it works as intended.
+Cross-namespace communication presents a more advanced scenario. You might need to allow Pods in a frontend namespace to access API Pods in a backend namespace. This requires namespace selectors. Here's the important insight: namespace selectors match namespaces by their labels, not by their names directly. You need to verify or add a label to the source namespace first. Then your policy uses namespaceSelector in the from section, matching the namespace label.
 
-**[2:30-4:00] No Imperative Commands**
+This pattern allows traffic from any Pod in any namespace with the matching label. If you want to be more specific, restricting to certain Pods in certain namespaces, you combine both selectors in the same list item. When namespaceSelector and podSelector appear in the same list item under the same dash, it creates an AND condition. The Pod must have the matching label AND must be in a namespace with the matching label. Both conditions must be true for traffic to be allowed.
 
-Here's a challenge unique to NetworkPolicy: there's no kubectl create command that generates a complete, functional policy. You must write YAML from scratch or use templates.
+Understanding OR versus AND logic in ingress rules is critical for the exam. This trips up many candidates. When namespaceSelector and podSelector are in the same list item, indicated by being under the same dash, it's an AND condition. Both must match. When they're in separate list items with separate dashes, it's an OR condition. Either can match, and traffic is allowed.
 
-You can run this command:
+Here's an example of OR logic. Multiple dashes under the from section create separate rules. Traffic is allowed from Pods with one label OR from any Pod in namespaces with another label. Either condition permits the traffic. Here's an example of AND logic. A single dash with both selectors means traffic is allowed from Pods with a specific label that are also in namespaces with a specific label. Both conditions are required.
 
-But this only generates an empty skeleton. You still need to fill in podSelector, policyTypes, ingress rules, and egress rules. It's often faster to write the YAML from memory than to use this command.
+On the exam, read the requirements carefully. The wording matters significantly. "From web OR from prod namespace" is different from "from web Pods in prod namespace." These are different requirements that need different policy structures.
 
-My recommendation: memorize a few templates. Have a mental template for common patterns like allow-from-specific-pod, allow-to-api, and default-deny. During the exam, you can type these quickly and modify them for the specific scenario.
+Sometimes you need to allow or block traffic based on IP addresses. An exam question might ask you to allow traffic from IP range one ninety two dot one sixty eight dot one dot zero slash twenty four except one ninety two dot one sixty eight dot one dot five. This uses ipBlock in the from section. The cidr field specifies the allowed range, and the except field lists specific IPs or ranges to exclude from that CIDR.
 
-Practice writing policies from scratch until it becomes automatic. Use vim or nano efficiently - know how to create YAML files, edit them, and apply them quickly.
+Common use cases include allowing traffic from specific external networks, allowing traffic from node networks, or blocking cloud metadata services at the IP one sixty nine dot two fifty four dot one sixty nine dot two fifty four. Note that ipBlock works with actual IP addresses, not DNS names. If the exam gives you a hostname, you cannot use it directly in ipBlock. You'd need to resolve it to IP addresses first.
 
-Common commands you'll use frequently:
+## Egress Rules (Outgoing Traffic)
 
-Get policies: 
+This is the number one mistake on the exam, so pay close attention. Forgetting to allow DNS in egress policies causes more failures than anything else. Here's what happens. You create an egress policy that allows your web Pod to connect to your API Pod. You test it using the service name, and it fails with "bad address" or "unknown host." Why? Because the Pod cannot resolve the service name to an IP address. DNS is blocked by your egress policy.
 
-Describe policy details: 
+Every egress policy must include a rule allowing DNS unless you're explicitly blocking all outgoing traffic. DNS uses UDP port fifty three to the kube-system namespace where CoreDNS runs. The standard pattern includes a to section with a namespaceSelector for kube-system and a ports section for UDP fifty three. Some clusters might also need TCP port fifty three, and you might need to select the CoreDNS Pods specifically depending on how the kube-system namespace is labeled.
 
-Apply your YAML: 
+On the exam, if DNS isn't working, check your egress policies first. This is almost always the culprit when service name resolution fails.
 
-Delete if you need to fix it: 
+After DNS, you need to allow egress to your actual destination services. If the exam asks you to allow app equals web Pods to connect to app equals api Pods on port eight thousand eighty, this is an egress policy on the web Pods. But remember, you also need DNS. These appear as two separate list items, two separate dashes under egress. Each creates a separate rule. The Pod can access DNS OR the API. These are OR'd together, and both are allowed.
 
----
+Sometimes Pods need to access external services outside the cluster. The exam might ask you to allow web Pods to access external HTTPS services. This uses ipBlock with zero dot zero dot zero dot zero slash zero to represent "any IP address." The ports section restricts it to HTTPS on port four forty three. You can make this more restrictive using the except field to block specific ranges even though the CIDR would normally include them.
 
-## Section 2: Default Deny Patterns [4:00-7:00]
+A complete realistic example combines DNS and external access. The first egress rule allows DNS to the kube-system namespace on UDP and TCP port fifty three. The second rule allows HTTPS to anywhere except the cloud metadata service IP. This pattern is common in real-world scenarios and appears frequently in exam questions.
 
-**[4:00-5:00] Three Essential Patterns**
+## Common CKAD Patterns
 
-Default deny policies are fundamental. You'll almost certainly encounter them on the exam. There are three patterns you must know cold.
+A classic exam scenario involves securing a three-tier application with web, API, and database layers. The requirements typically specify that the web tier accepts traffic from anywhere on port eighty, the web can connect to API on port eight thousand eighty, the API accepts traffic from web only, the API can connect to database on port five thousand four thirty two, the database accepts traffic from API only, and all tiers can access DNS.
 
-Deny all ingress: This blocks all incoming traffic but allows outgoing traffic. The YAML has policyTypes with Ingress listed, but no ingress rules defined. An empty podSelector means it applies to all Pods in the namespace.
+This requires three policies, one for each tier. The database policy allows ingress from Pods labeled tier equals api on port five thousand four thirty two. It allows egress to DNS in kube-system. Notice there's no egress to other services because the database doesn't initiate connections to other tiers. The API policy has both ingress and egress. Ingress allows traffic from tier equals web on port eight thousand eighty. Egress allows connections to tier equals database on port five thousand four thirty two and to DNS. The web policy allows ingress from anywhere using an empty from selector. Egress allows connections to tier equals api on port eight thousand eighty and to DNS.
 
-Deny all egress: This blocks all outgoing traffic but allows incoming traffic. The YAML has policyTypes with Egress listed, but no egress rules. Pods can receive connections but cannot initiate them or even resolve DNS.
+Another common pattern is namespace isolation, where Pods can only communicate with others in the same namespace. This is simpler than it might seem. The policy applies to all Pods in the namespace using an empty podSelector at the top level. It allows ingress from all Pods using an empty podSelector in the from section. Because namespaceSelector isn't specified, it defaults to the current namespace only. Result: Pods in the namespace can communicate with each other, but Pods from other namespaces cannot reach them.
 
-Deny all traffic: This combines both - policyTypes lists both Ingress and Egress with no rules for either. Complete isolation. No traffic in or out.
+If you want egress isolation too, add an egress section with the same pattern. Now Pods can only talk to each other and to DNS. This creates complete namespace isolation while still allowing the necessary internal communication.
 
-The key to understanding these: when you specify a policyType but provide no rules for that type, you've created a default deny for that direction.
+Sometimes you need to explicitly allow all traffic, usually to override a more restrictive default deny policy. Allow all ingress uses an empty rule in the ingress section. That empty curly braces means "allow from anywhere" with no from section at all. Allow all egress uses an empty rule in the egress section with no to section, meaning "allow to anywhere." These patterns are useful when you have a default deny policy but need certain Pods to be unrestricted.
 
-**[5:00-6:00] Practice Scenario: Verify Denial**
+## Testing NetworkPolicy
 
-Let me walk through a quick practice scenario. The exam might ask you to create a default deny policy and verify that it blocks traffic.
+On the exam, you must verify your policies work. Testing commands are essential. For HTTP connectivity, wget with the timeout flag prevents failed connections from hanging and wasting time. For arbitrary ports, netcat with the z flag checks if a port is open, and v is verbose. For DNS specifically, nslookup tests name resolution. If this fails, your egress policy probably blocks DNS. For getting Pod IPs when you need to test without DNS, use the wide output format or JSONPath queries.
 
-First, create the policy with an empty podSelector and both policyTypes:
+When something doesn't work, here's your debugging workflow. First, list all policies in the namespace to see what exists. Describe the specific policy to see what it's doing. Pay attention to the Pod Selector line showing which Pods are affected and how many match. Check Pod labels to ensure they match your selectors. If labels don't match, your policy won't apply to those Pods. Check namespace labels for namespaceSelector issues. If you're trying to match a namespace but it doesn't have the required label, your policy won't work. Verify that your CNI actually enforces network policy by checking for Calico, Cilium, or Weave Pods in kube-system.
 
-Then create test Pods:
+Common debugging scenarios come up repeatedly. If your app can't reach the API, check whether the app Pod has an egress policy, whether it allows the API Pod's selector and port, and whether it allows DNS. Quick test: can the Pod resolve the service name? If DNS resolution fails, DNS is blocked. If it succeeds but the connection fails, the egress rule might not match the API Pod correctly.
 
-Verify they cannot communicate:
+If your API isn't receiving traffic, check whether the API Pod has an ingress policy and whether it allows the source Pod's selector and the correct port. Verify the source Pod's labels match the podSelector in the API's ingress policy. For cross-namespace communication issues, check whether the namespace has the required label. If the label is missing, add it with kubectl label namespace, then test again.
 
-This should fail with a timeout. That's your verification that the policy is working.
+## CKAD Exam Scenarios
 
-**[6:00-7:00] Common Mistake: Empty Selector Meaning**
+Let me walk through the scenarios you're most likely to encounter. For allowing web to API communication, the task typically asks you to create a network policy so web can access API on a specific port. The solution applies to the API Pods and allows ingress from web Pods on the specified port.
 
-A common exam mistake is misunderstanding what an empty podSelector means. Let me clarify:
+For namespace-level isolation, you'll create a network policy in a specific namespace that only allows traffic from Pods within the same namespace. The solution uses an empty podSelector to select all Pods and allows ingress with an empty podSelector in the from section, which defaults to the current namespace.
 
- - empty curly braces - means ALL Pods. Not none. ALL. This is crucial.
+For allowing only specific namespaces, you'll create a policy that allows ingress only from Pods in namespaces with a specific label. The solution uses namespaceSelector in the from section matching the namespace label.
 
-If you want to select NO Pods, you don't use NetworkPolicy at all, or you use a selector that matches nothing, like a label that doesn't exist.
+For a database with multiple clients, you'll allow ingress on a database port from both API and analytics Pods. The solution lists multiple podSelectors in the from section as separate list items, creating an OR condition.
 
-Empty podSelector is intentional and powerful. It's how you apply a policy to every Pod in a namespace, which is exactly what you want for default deny policies.
+For egress with DNS, you'll create a policy allowing egress to API Pods and DNS queries. The solution has two separate egress rules: one for DNS to kube-system, and one for API access. Note that DNS selector syntax might vary by cluster, so you might need to adjust the label selector for DNS Pods.
 
-Remember: empty selector equals universal application within that namespace. This is consistent with other Kubernetes resources - an empty selector in a Service selects all Pods, for example.
+## Advanced Topics
 
----
+Named ports in network policy allow you to reference ports by name as defined in Pod specs instead of using numbers. This provides flexibility and maintainability. If you define a port name in a Pod's containerPort section, the network policy can reference that name instead of the numeric port. This is especially useful when port numbers might change between versions but the name remains constant.
 
-## Section 3: Ingress Rules - Exam Scenarios [7:00-11:00]
+Network policies combine additively when multiple policies select the same Pod. There's no precedence or priority. All matching policies apply simultaneously. The union of all rules determines what's allowed. Any policy allowing traffic permits it. You cannot use one policy to deny what another allows. Order doesn't matter because policies are evaluated together. This additive pattern is useful for incremental access. Start with a default deny policy, then add specific allow policies as needed.
 
-**[7:00-8:00] Basic Pod-to-Pod Communication**
+For stateful sets, Pods need to communicate with each other for replication and clustering. Egress rules must allow Pod-to-Pod communication within the stateful set. Each Pod has a stable DNS name, but network policy applies to all replicas using the same labels. You'll typically allow ingress from application Pods and egress both to DNS and to other Pods in the same stateful set.
 
-The most common exam scenario: allow traffic from one set of Pods to another.
+## Cleanup
 
-For example: "Allow traffic from app=web Pods to app=api Pods on port 8080."
+Cleanup commands are straightforward. Delete a specific network policy by name, delete all network policies in a namespace with the all flag, delete by label selector, or delete in a specific namespace. On the exam, cleaning up after yourself isn't usually required unless explicitly stated, but knowing these commands helps you reset if you need to start over on a problem.
 
-The pattern is straightforward. The policy's podSelector targets the destination - the Pods receiving traffic. The ingress from section specifies the source - the Pods sending traffic.
+## Next Steps
 
-Here's the structure:
+After mastering network policy for CKAD, continue practicing with related topics. Namespaces are often combined with network policy for security boundaries. Services help you understand Pod-to-service communication patterns. RBAC provides access control that complements network control. Ingress covers external access patterns that work alongside internal network policies.
 
-Notice the podSelector at the top selects the API Pods - the target. The podSelector inside from selects the web Pods - the source. This is a common point of confusion, so make sure you understand which selector does what.
-
-**[8:00-9:00] Cross-Namespace Communication**
-
-A more advanced scenario: "Allow Pods in namespace frontend to access app=api Pods in namespace backend."
-
-This requires namespaceSelector. Here's the key insight: namespaceSelector matches namespaces by their labels, not by their names directly.
-
-First, you need to verify or add a label to the namespace:
-
-Then your policy uses namespaceSelector:
-
-This allows traffic from any Pod in any namespace labeled tier=frontend.
-
-If you want to be more specific - only certain Pods in certain namespaces - you combine both selectors in the same list item:
-
-This is an AND condition: the Pod must be labeled app=web AND must be in a namespace labeled tier=frontend. Both conditions must be true.
-
-**[9:00-10:00] OR vs AND Logic**
-
-Understanding OR versus AND logic in ingress rules is critical for the exam. This trips up many candidates.
-
-When namespaceSelector and podSelector are in the same list item - the same dash - it's an AND condition. Both must match.
-
-When they're in separate list items - separate dashes - it's an OR condition. Either can match.
-
-Example of OR:
-
-This allows traffic from app=web Pods in the current namespace OR from any Pod in namespaces labeled env=prod.
-
-Example of AND:
-
-This allows traffic from app=web Pods that are in namespaces labeled env=prod. Both conditions required.
-
-On the exam, read the requirements carefully. "From web OR from prod namespace" versus "from web Pods in prod namespace" - these are different requirements.
-
-**[10:00-11:00] CIDR-Based Rules**
-
-Sometimes you need to allow or block traffic based on IP addresses. The exam might ask: "Allow traffic from IP range 192.168.1.0/24 except 192.168.1.5."
-
-This uses ipBlock:
-
-The cidr field specifies the allowed range. The except field lists specific IPs or ranges to exclude from that CIDR.
-
-Common use cases: allowing traffic from specific external networks, allowing traffic from node networks, or blocking cloud metadata services like 169.254.169.254.
-
-Note that ipBlock works with actual IP addresses, not DNS names. If the exam gives you a hostname, you cannot use it directly in ipBlock - you'd need to resolve it to IPs first.
-
----
-
-## Section 4: Egress Rules - The DNS Trap [11:00-15:00]
-
-**[11:00-12:00] Always Allow DNS**
-
-This is the number one mistake on the exam: forgetting to allow DNS in egress policies.
-
-Here's what happens: you create an egress policy that allows your web Pod to connect to your API Pod. You test it:
-
-It fails with "bad address" or "unknown host." Why? Because the Pod cannot resolve the service name api-service to an IP address. DNS is blocked.
-
-Every egress policy must include a rule allowing DNS unless you're explicitly blocking all outgoing traffic. DNS uses UDP port 53 to the kube-system namespace where CoreDNS runs.
-
-The standard pattern:
-
-Some clusters label the kube-system namespace differently, or you might need to select the CoreDNS Pods specifically:
-
-On the exam, if DNS isn't working, check your egress policies first. This is the most likely culprit.
-
-**[12:00-13:30] Allow Egress to Specific Services**
-
-After DNS, you need to allow egress to your actual destination services.
-
-Scenario: "Allow app=web Pods to connect to app=api Pods on port 8080."
-
-This is an egress policy on the web Pods:
-
-But remember, you also need DNS:
-
-Notice these are two separate list items - two separate dashes under egress. Each dash creates a separate rule. The Pod can access DNS OR the API. These are OR'd together.
-
-**[13:30-15:00] Allow External Access**
-
-Sometimes Pods need to access external services outside the cluster. The exam might ask: "Allow web Pods to access external HTTPS services."
-
-This uses ipBlock with 0.0.0.0/0 to represent "any IP":
-
-This allows HTTPS to anywhere. You can make it more restrictive:
-
-The except field blocks specific ranges even though 0.0.0.0/0 would normally include them.
-
-A complete example with DNS and external access:
-
-This is a realistic pattern you'll use often: allow DNS and allow HTTPS to the internet.
-
----
-
-## Section 5: Common CKAD Patterns [15:00-18:00]
-
-**[15:00-16:00] Three-Tier Application**
-
-A classic exam scenario: secure a three-tier application with web, API, and database layers.
-
-Requirements:
-- Web accepts traffic from anywhere on port 80
-- Web can connect to API on port 8080
-- API accepts traffic from web only
-- API can connect to database on port 5432
-- Database accepts traffic from API only
-- All can access DNS
-
-This requires three policies. Here's the database policy:
-
-The API policy has both ingress and egress:
-
-Notice the API policy allows egress to database AND DNS. Both are required.
-
-**[16:00-17:00] Namespace Isolation**
-
-Another common pattern: isolate a namespace so Pods can only talk to each other, not to Pods in other namespaces.
-
-This is actually simple:
-
-This applies to all Pods in the prod namespace - empty podSelector at the top. It allows ingress from all Pods - empty podSelector in the from section. But because namespaceSelector is not specified, it defaults to the current namespace only.
-
-Result: Pods in prod can communicate with each other, but Pods from other namespaces cannot reach Pods in prod.
-
-If you want egress isolation too, add:
-
-Now Pods can only talk to each other and to DNS. Complete namespace isolation.
-
-**[17:00-18:00] Allow-All Patterns**
-
-Sometimes you need to explicitly allow all traffic, usually to override a more restrictive policy.
-
-Allow all ingress:
-
-That empty curly braces in the ingress list means "allow from anywhere." No from section at all.
-
-Allow all egress:
-
-Same thing for egress. No to section means "allow to anywhere."
-
-These are useful when you have a default deny policy and need certain Pods to be unrestricted.
-
----
-
-## Section 6: Testing and Debugging [18:00-21:00]
-
-**[18:00-19:00] Testing Connectivity**
-
-On the exam, you must verify your policies work. Here are the essential commands.
-
-Test HTTP connectivity:
-
-The timeout flags are important. Without them, failed connections can hang for a long time, wasting exam time.
-
-Test arbitrary ports with netcat:
-
-The -z flag is zero-I/O mode - just check if the port is open. -v is verbose.
-
-Test DNS specifically:
-
-If this fails, your egress policy probably blocks DNS.
-
-Get Pod IPs when you need to test without DNS:
-
-Then use the IP address directly in your test commands.
-
-**[19:00-20:00] Debugging Policies**
-
-When something doesn't work, here's your debugging workflow.
-
-First, list all policies in the namespace:
-
-Describe the specific policy to see what it's doing:
-
-Pay attention to the "Pod Selector" line - it shows you which Pods are affected and how many match.
-
-Check Pod labels to ensure they match your selectors:
-
-If labels don't match, your policy won't apply to those Pods.
-
-Check namespace labels for namespaceSelector issues:
-
-If you're trying to match namespace "prod" but it doesn't have the required label, your policy won't work.
-
-Verify that your CNI actually enforces NetworkPolicy:
-
-Look for calico, cilium, or weave Pods. If you only see flannel, policies won't be enforced.
-
-**[20:00-21:00] Common Debugging Scenarios**
-
-Scenario 1: "My app can't reach the API."
-
-Check: Does the app Pod have an egress policy? Does it allow the API Pod's selector and port? Does it allow DNS?
-
-Quick test: Can the Pod resolve the service name?
-
-If this fails, DNS is blocked. If it succeeds but the connection fails, the egress rule might not match the API Pod correctly.
-
-Scenario 2: "My API isn't receiving traffic."
-
-Check: Does the API Pod have an ingress policy? Does it allow the source Pod's selector and the correct port?
-
-Verify the source Pod's labels:
-
-Make sure these labels match the podSelector in the API's ingress policy.
-
-Scenario 3: "Cross-namespace communication isn't working."
-
-Check: Does the namespace have the required label?
-
-If the label is missing, add it:
-
-Then test again.
-
----
-
-## Section 7: Exam Strategy and Pitfalls [21:00-24:00]
-
-**[21:00-22:00] Top 10 Exam Pitfalls**
-
-Let me run through the ten most common mistakes candidates make with NetworkPolicy on the CKAD exam.
-
-1. Forgetting DNS - We've covered this extensively. Always include DNS in egress policies.
-
-2. Empty podSelector confusion - Remember,  means ALL Pods, not none.
-
-3. AND vs OR logic - Same list item equals AND, separate items equal OR.
-
-4. Policy not enforced - If your cluster doesn't support NetworkPolicy, policies won't work. The exam environment should support it, but be aware.
-
-5. Service vs Pod - NetworkPolicy works on Pods, not Services. Use Pod labels, not Service names.
-
-6. Forgetting policyTypes - If you specify policyTypes, you must list Ingress, Egress, or both. Forgetting this can cause unexpected blocking.
-
-7. Namespace labels - namespaceSelector requires namespaces to have labels. Don't assume they're there; check and add if needed.
-
-8. Bidirectional communication - Allowing A to talk to B doesn't allow B to talk to A. You need policies for both directions.
-
-9. Using port names incorrectly - Named ports in policies must match the container port names exactly.
-
-10. CIDR for Pod IPs - Don't use ipBlock for Pod-to-Pod communication. Pod IPs can change. Use podSelector instead.
-
-**[22:00-23:00] Time Management Strategy**
-
-NetworkPolicy questions can be time-consuming because you're writing YAML from scratch. Here's how to manage time effectively.
-
-Read the requirements carefully. Understand what traffic should be allowed and what should be blocked.
-
-Start with a template. Have mental templates for common patterns like ingress-from-pods, egress-to-api, and default-deny.
-
-Write the YAML in an editor. Don't try to use cat with heredoc on the exam - it's too error-prone. Use vim or nano to create a file, then apply it.
-
-Test incrementally. Don't write three policies and then test. Write one, apply it, test it, then move to the next.
-
-Use describe liberally.  shows you exactly what's selected and what's allowed.
-
-If it's not working and you're stuck, move on. NetworkPolicy questions aren't worth spending 20 minutes on. Get partial credit if you can, then come back if time permits.
-
-**[23:00-24:00] Final Preparation Tips**
-
-To be exam-ready, you need to practice writing policies from memory. Here's my recommended practice routine.
-
-First, memorize three templates: a basic ingress policy, a basic egress policy with DNS, and a default deny policy. Write these from scratch repeatedly until you can type them without thinking.
-
-Second, practice common scenarios. Set up test environments and secure them with policies. Three-tier apps, cross-namespace communication, namespace isolation - do each scenario at least five times.
-
-Third, practice debugging. Intentionally break policies and practice identifying and fixing the issues quickly.
-
-Fourth, get comfortable with kubectl exec and testing commands. wget, curl, nslookup, nc - know these cold.
-
-Fifth, review the official Kubernetes documentation page on NetworkPolicy. The exam allows you to access documentation, so know where to find examples quickly if you need them.
-
-Finally, remember the exam environment should enforce NetworkPolicy. If you're practicing locally, make sure you're using a CNI that enforces policies, or your practice won't reflect reality.
-
----
-
-## Conclusion [24:00-25:00]
-
-**Summary**
-
-We've covered everything you need for NetworkPolicy on the CKAD exam.
-
-You understand that policies are additive - multiple policies combine to allow traffic.
-
-You know the three default deny patterns and when to use each.
-
-You can write ingress rules using podSelector, namespaceSelector, and ipBlock.
-
-You understand AND vs OR logic in rule combinations.
-
-You can write egress rules and critically, you remember to always include DNS.
-
-You know the common patterns: three-tier apps, namespace isolation, allow-all overrides.
-
-You have testing and debugging strategies that will save you time on the exam.
-
-And you're aware of the common pitfalls that trap other candidates.
-
-**Final Words**
-
-NetworkPolicy is intimidating because there's no imperative command to help you. But with practice, it becomes mechanical. You're not solving complex problems; you're applying known patterns to specific scenarios.
-
-Put in the practice time. Write policies from scratch until it's automatic. Set up test scenarios and secure them. Break things and fix them. Build muscle memory.
-
-Remember: on the exam, speed comes from confidence. Confidence comes from practice. Practice deliberately, practice repeatedly, and you'll be ready.
-
-Good luck on your CKAD exam. You've got this.
+That completes our CKAD preparation for Kubernetes Network Policy. The key to success is practice. Write policies from scratch repeatedly until it becomes automatic. Set up test scenarios and secure them. Break things intentionally and fix them. Build the muscle memory you need for exam speed. Remember that network policy questions require writing YAML without imperative commands, so memorizing common patterns makes all the difference. Practice deliberately and repeatedly, and you'll be ready for whatever network policy scenarios appear on your exam.

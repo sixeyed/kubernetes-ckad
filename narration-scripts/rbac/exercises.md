@@ -1,267 +1,83 @@
-# RBAC Practical Demo - Narration Script
-**Duration: 18-22 minutes**
-**Format: Live demonstration following README.md**
+# Role-Based Access Control - Exercises Narration Script
 
----
+Welcome to the hands-on portion of our RBAC training. In this demonstration, we'll work through practical scenarios that show Role-Based Access Control in action. We'll deploy applications, grant them API access, troubleshoot permission issues, and implement security best practices.
 
-## Introduction (1:00)
-
-Welcome to the hands-on portion of our RBAC training. In this demonstration, we'll work through practical scenarios that show RBAC in action. We'll deploy applications, grant them API access, troubleshoot permission issues, and implement security best practices.
+Kubernetes supports fine-grained access control, allowing you to decide who has permission to work with resources in your cluster and what they can do with them. There are two parts to RBAC that work together to provide this flexibility. Roles define access permissions for resources like Pods and Secrets, allowing specific actions like create and delete. RoleBindings grant the permissions in a Role to a subject, which could be a kubectl user or an application running in a Pod. This decoupling of permissions from subjects lets you model security with a manageable number of objects.
 
 By the end of this session, you'll have seen real examples of creating ServiceAccounts, Roles, and RoleBindings, and you'll understand how to verify that permissions are working correctly.
 
-Let's get started with our first exercise - securing API access for applications.
+## Do this first if you use Docker Desktop
 
+Before we begin, there's an important note for those using Docker Desktop. Older versions have a bug in the default RBAC setup that prevents permissions from being applied correctly. If you're using Docker Desktop version 4.2 or earlier, you'll need to run a fix script first before any of the RBAC demonstrations will work properly.
 
----
+The fix involves running a shell script on Mac or WSL2, or a PowerShell script on Windows. Docker Desktop version 4.3.0 and later fixed this issue, so if you see an error about the docker-for-desktop-binding not being found, that's actually good news because it means your version doesn't have the bug and you're ready to proceed.
 
-## Docker Desktop RBAC Fix (0:30)
+## Securing API access with Service Accounts
 
-Before we begin, a quick note for those using Docker Desktop: older versions have a bug in the default RBAC setup that prevents permissions from being applied correctly. If you're using Docker Desktop version 4.2 or earlier, you'll need to run a fix script first.
+Authentication for end-user access is managed outside of Kubernetes, so we'll focus on RBAC for internal cluster access, specifically for applications running inside Kubernetes. We'll work with a simple web application that connects to the Kubernetes API server to get a list of Pods, display them, and allow you to delete them.
 
-I'm on a newer version, so I'll skip this step. But if you see the error message about docker-for-desktop-binding not found, that's actually good - it means you don't have the bug.
+First, we need something to display, so we'll create a sleep Deployment to give us a Pod to view in the application. This sleep Pod will just run continuously, giving us a stable target for our demonstrations. Now let's look at the initial specification for the web app. It doesn't include any RBAC rules yet, but it does include a specific security account for the Pod. The deployment YAML creates a ServiceAccount and sets the Pod spec to use that ServiceAccount rather than the default one.
 
-Let's move on to our first real exercise.
+This is an important pattern to understand. By creating a dedicated ServiceAccount, we're establishing a unique identity for this application. Each application should have its own ServiceAccount rather than sharing the default one, which is a security best practice. When we deploy the resources in the kube-explorer directory, Kubernetes creates the ServiceAccount, starts the Deployment with one Pod, and sets up Services for accessing the app.
 
----
+Let's browse to the application and see what happens. We immediately see an error message. The app is trying to connect to the Kubernetes REST API to get a list of Pods, but it's getting a 403 Forbidden error. This is RBAC in action, demonstrating the difference between authentication and authorization.
 
-## Exercise 1: Deploying the Application (2:00)
+Kubernetes automatically populates an authentication token in the Pod, which the app uses to connect to the API server. When we print all the details about the kube-explorer Pod, we can see a volume mounted at the standard path for service account information. This volume mount isn't in our Pod spec explicitly because it's a Kubernetes default behavior to add it automatically. Every Pod gets this mount unless we explicitly disable it.
 
+When we look at the actual token file inside the container, we see a JWT token. This is the authentication token for the Service Account, so Kubernetes knows the identity of the API user. The app is authenticated, meaning the API server knows who it is, but the account is not authorized to list Pods. This is a crucial security principle in Kubernetes: all security principals, whether ServiceAccounts, Groups, or Users, start off with no permissions and need to be explicitly granted access to resources.
 
-We're going to work with a web application called kube-explorer that connects to the Kubernetes API to display and manage Pods. First, let's create a sleep Deployment so we'll have some Pods to view.
+We can check the permissions of any user or ServiceAccount with the auth can-i command. When we check whether the kube-explorer ServiceAccount can get pods in the default namespace, the command returns no. The ServiceAccount ID in these commands includes both the namespace and name, following the format system:serviceaccount:namespace:name.
 
+RBAC rules are applied when a request is made to the API server, so we can fix this app by deploying a Role and RoleBinding. The Role specification creates permissions to list and delete Pods in the default namespace. Looking at the YAML, we see it contains rules that define what actions are allowed. Each rule secures access to one or more types of resources, specifying the API groups, the resource types, and the verbs or actions allowed.
 
-Good. Now let's look at the kube-explorer deployment spec before we apply it.
+The RoleBinding applies the new Role to the app's Service Account, connecting the permissions we defined to the identity we created. When we deploy these rules and verify the Service Account permissions again, we now get a yes response. Refreshing the website, we can now see the Pod list. We can even delete the sleep Pod, and when we return to the main page, we see a replacement Pod created by the ReplicaSet. This demonstrates that our RBAC configuration is working correctly and the application has the permissions it needs.
 
+## Granting cluster-wide permissions
 
-Notice here - the Pod spec includes "serviceAccountName: kube-explorer". This tells Kubernetes to use a specific ServiceAccount instead of the default one. The ServiceAccount is created in this same file.
+The role binding we created restricts access to the default namespace. The same ServiceAccount can't see Pods in other namespaces like kube-system. When we check if the kube-explorer account can get Pods in the kube-system namespace, it returns no as expected.
 
-This is important: by creating a dedicated ServiceAccount, we're setting up a unique identity for this application. Now we can grant permissions to this specific identity.
+We could grant access to Pods in each namespace with more Roles and RoleBindings, but if we want permissions to apply across all namespaces, we can use a ClusterRole and ClusterRoleBinding instead. These work similarly to namespace-scoped resources but operate at the cluster level.
 
-Let's deploy all the kube-explorer resources:
+The ClusterRole sets Pod permissions for the entire cluster, and you'll notice there's no namespace in the metadata section because it's cluster-scoped. The ClusterRoleBinding applies the role to the app's ServiceAccount. An important security consideration here is that we're only granting read permissions at the cluster level. The verb list includes get, list, and watch, but not delete. This follows the principle of least privilege, where we give broader read access but keep write and delete operations restricted to specific namespaces.
 
+After deploying the cluster rules, we can verify that the ServiceAccount can now get Pods in the system namespace, but when we check delete permissions, it still returns no. This demonstrates how we can have different permission levels in different scopes. The app has full management capabilities in the default namespace but read-only access cluster-wide.
 
-Perfect. The deployment creates a ServiceAccount, a Deployment with one Pod, and two Services for accessing the app.
+When we browse to the app with a namespace parameter in the query string, pointing to kube-system, the app can now see Pods in that namespace. RBAC permissions are finely controlled at the resource type level, so even though the app can see Pods, if we click the Service Accounts link, we get the 403 Forbidden error again because we haven't granted permissions for that resource type.
 
----
+## Common Pod-to-API-Server Access Patterns
 
-## Exercise 2: Understanding the 403 Error (2:30)
+Understanding how Pods access the Kubernetes API is critical for working with Kubernetes day to day. There are several common patterns you'll encounter repeatedly. The first pattern involves creating a ServiceAccount for an application using imperative commands, which is the fastest approach. You create the ServiceAccount, create a Role with the needed permissions, bind the Role to the ServiceAccount, and then reference the ServiceAccount when creating the Pod or Deployment.
 
+The second pattern addresses apps that need to read configuration dynamically. Many applications need to access ConfigMaps and Secrets at runtime through the API rather than having them mounted as volumes or environment variables. For these cases, you create a Role that grants get and list permissions on configmaps and secrets, then bind it to your application's ServiceAccount.
 
-Now let's browse to the application at localhost:8010.
+The third pattern actually involves disabling ServiceAccount functionality for security. Most apps don't need API access at all, so mounting the token unnecessarily increases your attack surface. If an attacker compromises your container, they could potentially use that token to query or modify cluster resources. You can disable automatic token mounting either at the Pod level or at the ServiceAccount level, with the ServiceAccount level being preferred because it applies to all Pods using that account.
 
+The fourth pattern handles cross-namespace access, where apps sometimes need to access resources in other namespaces. You create the Role in the target namespace with the required permissions, then create a RoleBinding in that same target namespace, but specify the ServiceAccount from the different namespace in the subjects section. This gives precise control over which applications can access resources in which namespaces.
 
-And we see an error. The application is getting a "403 Forbidden" response when it tries to list Pods from the Kubernetes API. This is RBAC in action - the application is authenticated, meaning Kubernetes knows who it is, but it's not authorized, meaning it doesn't have permission to perform this action.
+## RBAC Troubleshooting
 
-Let's investigate. First, let's look at the Pod details:
+Troubleshooting RBAC issues is a common task in Kubernetes operations. When you encounter 403 Forbidden errors in Pod logs, you need a systematic approach to diagnose and fix the problem. The first step is checking if the ServiceAccount exists and identifying which one the Pod is actually using. Many times, Pods are inadvertently using the default ServiceAccount which has no permissions.
 
+Next, you check what the ServiceAccount can actually do using the auth can-i command. This tells you immediately whether the permissions are missing entirely or just misconfigured. Then you list all roles and rolebindings in the namespace to see what RBAC resources exist. Once you identify the gap, the solution typically involves creating the missing Role with appropriate permissions or creating the missing RoleBinding to connect the Role to the ServiceAccount.
 
-Look at the Mounts section here. You'll see a volume mounted at /var/run/secrets/kubernetes.io/serviceaccount. This volume contains three files: a namespace file, a CA certificate, and most importantly, a token file.
+Another common symptom is when a Pod is using the wrong ServiceAccount. You might think the Pod has permissions, but when you check which ServiceAccount it's actually using, you find it's not the one you configured. The describe command shows this clearly in the Service Account field. The fix involves updating the Deployment to use the correct ServiceAccount, which you can do with the set serviceaccount command. This is much faster than editing YAML and waiting for the rollout.
 
-Kubernetes automatically injects this token into every Pod. It's how the application authenticates to the API server. Let's look at that token:
+When permissions work in one namespace but not another, you need to check whether you're using namespace-scoped or cluster-scoped RBAC resources. The auth can-i command with different namespace flags quickly reveals whether permissions are namespace-specific. You have two solution options depending on your security requirements. For limited access, create Role and RoleBinding resources in each target namespace. For broader access, use ClusterRole and ClusterRoleBinding to grant cluster-wide permissions, though this should be done carefully following the principle of least privilege.
 
+Sometimes the ServiceAccount token isn't mounted in the Pod at all, causing connection failures to the API server. This can happen if token mounting was disabled either at the ServiceAccount level or the Pod level. You can check the automountServiceAccountToken field on both resources to diagnose this. If your application legitimately needs API access, you need to enable token mounting, though for most applications, you actually want it disabled for security.
 
-This JWT token identifies the Pod as using the kube-explorer ServiceAccount. The API server sees this token, knows the identity, but when it checks RBAC rules, there are no permissions granted to this ServiceAccount.
+A subtle issue that catches many people is using the wrong API group in Role specifications. If you grant permissions but they still don't work, checking whether the API group matches the resource type is crucial. The api-resources command shows you the correct API group for each resource type. Core resources like Pods, Services, ConfigMaps, and Secrets use an empty string for the API group. Deployments, StatefulSets, and DaemonSets use the apps group. Jobs and CronJobs use the batch group. Ingress resources use the networking.k8s.io group. Getting this wrong means your Role permissions won't match the actual API requests.
 
-Let's verify this using kubectl auth can-i:
+## Lab
 
+Now you'll get some practice working with RBAC yourself. You need to be familiar with these concepts because you'll certainly have restricted permissions in production clusters, and if you need new access, you'll get it more quickly if you can provide the admin with the exact Role and RoleBinding specifications you need.
 
-The command returns "no" - confirming that this ServiceAccount cannot get or list Pods. Now let's fix that.
+Your first challenge is to deploy new RBAC rules so the ServiceAccount view in the kube-explorer app works correctly for objects in the default namespace. Currently, when you click the Service Accounts link, you get a 403 error because the kube-explorer ServiceAccount doesn't have permissions to view ServiceAccounts. You need to create a Role that grants the appropriate permissions and bind it to the kube-explorer ServiceAccount.
 
----
+The second part of the lab addresses a security best practice. Mounting the ServiceAccount token in Pods is default behavior, but most apps don't actually use the Kubernetes API server. Having the token mounted is a potential security issue because if an attacker compromises your container, they could use that token. Your task is to amend the sleep Pod so it doesn't have a token mounted. This involves setting the automountServiceAccountToken field to false in the Pod specification.
 
-## Exercise 3: Creating and Applying RBAC Rules (3:00)
+## Cleanup
 
+Before finishing, we need to clean up all the resources we created during this demonstration. We can delete Pods, Deployments, Services, ServiceAccounts, Roles, RoleBindings, ClusterRoles, and ClusterRoleBindings all in one command by using labels. Since all our lab resources are labeled with kubernetes.courselabs.co equals rbac, we can select them all with a label filter. This removes everything associated with this lab, leaving our cluster in a clean state ready for the next exercise.
 
-Let's look at the RBAC resources we need to create:
-
-
-This Role is called "pod-manager". It has rules that grant two sets of permissions. The first rule allows "get", "list", and "watch" verbs on pods. The second rule allows "delete" on pods. We're separating these because deletion is a more privileged operation.
-
-Notice the apiGroups is set to an empty string in quotes - that's correct for Pods because they're in the core v1 API. Now let's look at the RoleBinding:
-
-
-The RoleBinding connects our Role to the ServiceAccount. The roleRef section points to the "pod-manager" Role. The subjects section specifies the kube-explorer ServiceAccount in the default namespace.
-
-Let's apply both of these:
-
-
-Great. Now let's verify the ServiceAccount has permissions:
-
-
-Excellent! It returns "yes" now. Let's refresh the web application.
-
-
-Perfect! The application now displays a list of Pods. You can see our kube-explorer Pod and the sleep Pod we created earlier. Notice we can click the delete button on the sleep Pod.
-
-
-The Pod was deleted, but if we go back to the main page, we see a new sleep Pod. This is the ReplicaSet creating a replacement, which shows our application has working delete permissions.
-
----
-
-## Exercise 4: Cluster-Wide Permissions (3:30)
-
-
-Our current RBAC rules only work in the default namespace. Let's verify this by checking permissions in the kube-system namespace:
-
-
-As expected, it returns "no". To grant access across all namespaces, we need ClusterRole and ClusterRoleBinding resources.
-
-Let's examine the cluster-wide RBAC configuration:
-
-
-This ClusterRole is named "pod-reader". Notice it has no namespace in the metadata - that's what makes it cluster-scoped. It grants "get", "list", and "watch" permissions on pods, but notice it doesn't include "delete". This is following the principle of least privilege - we'll give cluster-wide read access, but keep deletion restricted to the default namespace.
-
-Now the ClusterRoleBinding:
-
-
-The ClusterRoleBinding connects the pod-reader ClusterRole to our kube-explorer ServiceAccount. Let's apply these:
-
-
-Now let's verify permissions in the system namespace:
-
-
-Great - returns "yes" for reading. But let's check deletion:
-
-
-Perfect! Returns "no" for delete. This shows how we can have different permission levels in different scopes - full management in default namespace, but read-only cluster-wide.
-
-Let's verify in the browser:
-
-
-Excellent! We can see Pods from the kube-system namespace. Notice we can view them, but the delete buttons won't work here because we don't have delete permissions.
-
----
-
-## Exercise 5: Fine-Grained Permissions (2:00)
-
-
-RBAC permissions are very fine-grained. Our application only has access to Pod resources. Let's demonstrate this by clicking the Service Accounts link.
-
-
-And we get the 403 Forbidden error again. The application needs separate permissions for ServiceAccounts. This shows the principle of least privilege in action - just because you can access Pods doesn't mean you can access other resources.
-
----
-
-## Lab Exercise: ServiceAccount Viewer (4:00)
-
-
-Now it's your turn to practice. Your challenge is to grant the kube-explorer application permissions to view ServiceAccounts in the default namespace.
-
-Let me show you how I would approach this. First, I need to understand what permissions are required. Let's check the API group for ServiceAccounts:
-
-
-ServiceAccounts are in the core API group - the empty string. Now I'll create a Role:
-
-
-That creates the Role imperatively. For the exam, imperative commands are faster than writing YAML. Now I need a RoleBinding:
-
-
-The key here is the format of the serviceaccount subject: namespace colon name. Let's verify:
-
-
-Perfect! Let's test it in the browser:
-
-
-Excellent! Now we can see the ServiceAccounts in the default namespace.
-
----
-
-## Lab Exercise: Disabling ServiceAccount Token (3:00)
-
-
-The second part of the lab asks us to disable ServiceAccount token mounting for the sleep Pod as a security best practice.
-
-Most applications don't need to access the Kubernetes API, so mounting the token creates an unnecessary security risk. If an attacker compromises the container, they could potentially use that token to query or modify cluster resources.
-
-Let's check if the token is currently mounted:
-
-
-Yes, the token is there. To disable it, we need to set automountServiceAccountToken to false in the Pod spec. Let me show you how using kubectl patch:
-
-
-This updates the Deployment template. Now we need to wait for the Pod to be recreated:
-
-
-Good, we have a new Pod. Let's verify the token is no longer mounted:
-
-
-Perfect! The directory doesn't exist or is empty. The ServiceAccount token is no longer mounted, reducing our security exposure.
-
----
-
-## Review and Best Practices (1:00)
-
-
-Let's review what we've covered in this practical session.
-
-We created a dedicated ServiceAccount for our application, following the principle of having unique identities for each application.
-
-We granted namespace-scoped permissions using a Role and RoleBinding, giving the application management capabilities in the default namespace.
-
-We extended access cluster-wide using a ClusterRole and ClusterRoleBinding, but with reduced permissions - demonstrating layered security.
-
-We practiced troubleshooting RBAC issues using kubectl auth can-i, which is essential for both development and the CKAD exam.
-
-And finally, we improved security by disabling ServiceAccount token mounting for applications that don't need API access.
-
-These patterns form the foundation of application security in Kubernetes. Practice creating these resources imperatively for exam speed, but always verify your work using auth can-i before moving on.
-
----
-
-## Cleanup (0:30)
-
-
-Before we wrap up, let's clean up our resources:
-
-
-All resources are removed. You're now ready to practice these exercises on your own.
-
----
-
-**End of Practical Demo: 18-22 minutes**
-
-## Notes for Presenter
-
-### Prerequisites
-- Kubernetes cluster running (Docker Desktop, k3d, or similar)
-- kubectl configured and working
-- Terminal with good font size for visibility
-- Browser ready for localhost access
-- All lab files present in /home/user/kubernetes-ckad/labs/rbac/
-
-### Pacing Tips
-- **Faster track (18 min)**: Skip some of the "let's look at the file" sections, assume viewers know YAML
-- **Standard track (20 min)**: Follow script as written
-- **Detailed track (22 min)**: Add more explanation of YAML fields, answer anticipated questions
-
-### Common Issues
-- **Port conflict**: If port 8010 is busy, the service won't be accessible. Check with `lsof -i :8010`
-- **Timing issues**: After applying RBAC, sometimes need to wait a few seconds for API server to sync
-- **Browser caching**: Use Ctrl+Shift+R for hard refresh if application seems stuck
-
-### Demo Environment Setup
-Before starting:
-
-
-### Terminal Commands Summary
-For quick reference during demo:
-
-
-### Visual Aids
-- **Terminal**: Use split screen - commands on left, watch output on right
-- **Browser**: Keep dedicated window for kube-explorer app
-- **Timing display**: Optional countdown timer visible to help with pacing
-
-### Audience Engagement
-- Pause after Exercise 2 to let "403 Forbidden" sink in
-- Ask "What would you try first?" before showing kubectl auth can-i
-- Encourage viewers to follow along in their own clusters
-- Mention "This is a common exam scenario" when appropriate
-
-### Key Callouts
-When to emphasize:
-- "This is exam-relevant" → ServiceAccount creation, imperative commands
-- "Common mistake" → Forgetting namespace in ServiceAccount subject
-- "Security best practice" → Disabling token mounting, least privilege
-- "Troubleshooting technique" → Using kubectl auth can-i
+These patterns form the foundation of application security in Kubernetes. You've seen how to create dedicated ServiceAccounts for applications, how to grant namespace-scoped permissions with Roles and RoleBindings, how to extend access cluster-wide with ClusterRoles and ClusterRoleBindings, how to troubleshoot RBAC issues using the auth can-i command, and how to improve security by disabling token mounting for applications that don't need API access. Practice creating these resources both declaratively with YAML and imperatively with kubectl commands, as both approaches are valuable in different situations.

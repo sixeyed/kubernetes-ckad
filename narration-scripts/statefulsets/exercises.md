@@ -1,425 +1,115 @@
-# StatefulSets - Practical Exercises
-## Narration Script for Hands-On Demo
+# StatefulSets - Exercises Narration Script
 
-**Duration: 18-22 minutes**
-**Target Audience: CKAD Candidates**
-**Delivery Style: Step-by-step demonstration with explanations**
-
----
-
-## Introduction (60 seconds)
-
-Welcome to the hands-on StatefulSets lab session. In this demo, we'll work through the exercises from the StatefulSets lab, deploying real applications and exploring StatefulSet behavior in a live Kubernetes cluster.
-
-**What We'll Cover**:
-1. Deploy a simple StatefulSet with stable network identities
-2. Understand Pod communication patterns and DNS resolution
-3. Deploy a replicated PostgreSQL database with persistent storage
-4. Work through the lab challenge
-
-**Prerequisites Check**:
-Before we begin, ensure you have:
-- A working Kubernetes cluster (Docker Desktop, minikube, or similar)
-- kubectl configured and connected
-- The lab files from `labs/statefulsets/`
-
-Let's get started.
+**Duration:** 18-20 minutes
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running, completed Pods, Services, and Deployments labs
 
 ---
 
-## Section 1: Deploy a Simple StatefulSet (4-5 minutes)
+Welcome back! In the previous video, we covered the concepts behind Kubernetes StatefulSets. Now it's time to get hands-on and explore how StatefulSets manage stateful applications with stable network identities and persistent storage.
 
-### 1.1 Introduction to the Simple Example (45 seconds)
+Most workloads run happily in Deployments where Pods are interchangeable and can start in any order with random names. But some applications need stability. Think about a replicated database where you have a primary node and several secondaries. The secondaries need to know exactly how to find the primary by name, and they need to wait until the primary is ready before they start. That's where StatefulSets come in, providing ordered startup with predictable names and stable DNS entries for each Pod.
 
-We'll start with a StatefulSet running Nginx. While Nginx doesn't truly need a StatefulSet, this example demonstrates the StatefulSet pattern without complex database logic.
+Let's dive into the practical side of StatefulSets and see how they manage this stability in a real Kubernetes cluster.
 
-This deployment includes:
-- A **headless Service** for stable network identities
-- **External Services** (LoadBalancer and NodePort) for external access
-- A **ConfigMap** with shell scripts for initialization
-- A **StatefulSet** with init containers modeling a stable startup workflow
+## When to Use StatefulSets vs Deployments
 
-The pattern simulates a primary-secondary architecture where:
-- Pod-0 acts as the primary
-- Pods 1 and 2 act as secondaries and wait for the primary to be ready
+Before we start deploying, it's worth taking a moment to understand when you actually need a StatefulSet versus a regular Deployment. This matters because StatefulSets are more complex and slower to work with than Deployments.
 
-### 1.2 Examining the Specs (90 seconds)
+You'll want a StatefulSet when your application needs stable, predictable Pod names like app-zero, app-one, app-two instead of random hash-based names. You'll need one when Pods must start in a specific order, waiting for previous Pods to be ready before the next one begins. StatefulSets become essential when you need stable network identities where each Pod has its own DNS entry, or when you need persistent storage that's tied to a specific Pod replica. They shine in primary-secondary architectures where there's a leader Pod that followers need to connect to by name.
 
-Let's look at the key files:
+On the other hand, you'll stick with Deployments when Pod names can be random and all instances are identical. Deployments work great when all Pods can start in parallel without dependencies, when simple load-balanced access through a Service is sufficient, and when your application is stateless or uses shared storage. Common examples include web applications, API services, and frontend applications where any Pod can handle any request.
 
-**First, the headless Service** (`labs/statefulsets/specs/simple/services.yaml`):
+The key insight is that databases like MySQL or PostgreSQL, distributed databases like Cassandra or MongoDB, message queues like RabbitMQ or Kafka, and coordination services like Zookeeper typically need StatefulSets. Meanwhile, web servers, REST APIs, microservices, and background workers are perfectly happy in Deployments.
 
+## API specs
 
-Note the `clusterIP: None` - this is mandatory for StatefulSets.
+Let's start by looking at a StatefulSet YAML file. I'll open the statefulset.yaml file from the simple specs directory. StatefulSet definitions have the usual metadata with a name, but the spec has some unique requirements compared to Deployments.
 
-**The StatefulSet spec** (`labs/statefulsets/specs/simple/statefulset.yaml`) includes:
-- `serviceName: simple-statefulset` - links to the headless Service
-- `replicas: 3` - we'll create three Pods
-- Init containers that implement the startup logic
-- The main Nginx container
+The spec includes a selector with matchLabels, just like a Deployment, and it has a template section for the Pod spec. However, there's one critical addition called serviceName. This field references a headless Service that must exist before the StatefulSet can function properly. The headless Service is what enables the stable network identities for each Pod.
 
-**The ConfigMap** contains two shell scripts:
-1. `wait-service.sh` - ensures secondaries wait for the primary
-2. `write-message.sh` - creates HTML content based on Pod identity
+Speaking of headless Services, let me show you what makes them special. Looking at the services.yaml file, you'll see a standard Service definition but with one crucial difference. The clusterIP field is set to None. This is mandatory for StatefulSets. A headless Service doesn't get a ClusterIP for load balancing. Instead, it manages DNS entries for individual Pods, which is exactly what we need for stable network identities.
 
-### 1.3 Deploying the StatefulSet (90 seconds)
+The selector in the headless Service must match the Pod labels in the StatefulSet template. This is how Kubernetes knows which Pods belong to this StatefulSet and should get individual DNS entries. Unlike regular Services that provide a single DNS name that load balances to all Pods, a headless Service provides DNS entries for each individual Pod using a predictable pattern.
 
-Now let's deploy everything:
+## Deploy a simple StatefulSet
 
+Let's deploy our first StatefulSet and watch how it behaves differently from a Deployment. Your cluster should be empty if you cleared down from the last lab. We'll start with a StatefulSet running Nginx. While Nginx doesn't truly need the features of a StatefulSet, it makes a great example because we can focus on the StatefulSet behavior without getting distracted by complex database logic.
 
-Immediately watch the Pod creation:
+This deployment includes several components working together. There's a headless Service for stable network identities, external Services using LoadBalancer and NodePort for access from outside the cluster, a ConfigMap containing shell scripts that the Pods will use during initialization, and the StatefulSet itself which uses init containers to model a stable startup workflow.
 
+The pattern we're demonstrating here simulates a primary-secondary architecture. Pod-zero will act as the primary, while Pod-one and Pod-two act as secondaries. The init containers implement logic where the secondaries wait for the primary to be ready before they proceed with their own initialization.
 
-**What to observe**:
-- Pod-0 appears first and goes through Init stages
-- Pod-0 must reach Running status before Pod-1 is created
-- This sequential pattern continues for Pod-2
-- Unlike Deployments, Pod names are predictable: `simple-statefulset-0`, `simple-statefulset-1`, `simple-statefulset-2`
+When I apply this StatefulSet, something interesting happens that's completely different from Deployments. Immediately watch the Pod creation and you'll notice a deliberate sequence. Pod-zero appears first and goes through its initialization stages. The StatefulSet controller waits until Pod-zero reaches Running and Ready status before it even creates Pod-one. Once Pod-one is Running and Ready, only then does Pod-two get created. This sequential pattern is the key distinguishing behavior of StatefulSets.
 
-This sequential creation is the key behavior of StatefulSets. Press Ctrl+C once all three Pods are Running.
+Also notice the Pod names. Unlike Deployments where you get random suffixes like whoami-7f8b9c-x4k2p, StatefulSets give you predictable names: simple-statefulset-zero, simple-statefulset-one, simple-statefulset-two. These names are stable across Pod restarts and rescheduling.
 
-### 1.4 Examining the Startup Workflow (90 seconds)
+Let's verify the init container logic worked correctly by examining the logs. Looking at the wait-service init container logs from Pod-zero, you should see output indicating this Pod recognizes itself as the primary because its hostname ends in -0. The init container checks the hostname and says essentially, I'm Pod-zero so I must be the primary, no need to wait for anything.
 
-Let's verify the init container logic worked correctly. Check the logs from the `wait-service` init container:
+Now look at Pod-one's wait-service init container logs. This Pod knows it's a secondary because its hostname doesn't end in -0. The script tries to resolve the DNS entry for simple-statefulset-zero.simple-statefulset in the cluster DNS. If the DNS entry doesn't exist yet, the init container waits and keeps checking. Once the primary is ready and has a DNS entry, the secondary's init container completes and allows the main container to start.
 
-**For Pod-0 (the primary)**:
+This demonstrates a powerful pattern. Init containers can use the Pod's own hostname combined with DNS lookups to implement conditional startup logic. This is a common approach in StatefulSet deployments where followers need to wait for leaders.
 
+## Communication with StatefulSet Pods
 
-You should see output indicating Pod-0 recognizes itself as the primary because its hostname ends in `-0`.
+Now let's explore how networking works differently with StatefulSets. The StatefulSet registers all Pod IPs with the associated Service, just like a Deployment would. When you check the Service endpoints, you should see three IP addresses listed, one for each Pod. The headless Service knows about all Pods even though it doesn't provide load-balancing at the network level.
 
-**For Pod-1 (a secondary)**:
+What makes StatefulSets special is DNS resolution. Let me deploy a sleep Pod that we can use for testing DNS from inside the cluster. From this sleep Pod, we can perform DNS lookups using nslookup.
 
+First, try looking up the Service name without any Pod-specific information. This returns all three Pod IP addresses. The Service name resolves to the complete set of Pods, which is similar to how regular Services work.
 
-This log should show Pod-1 waiting for the DNS entry of `simple-statefulset-0.simple-statefulset` to exist before proceeding. Once the primary was ready, the secondary continued its initialization.
+Now here's where it gets interesting. Lookup a specific Pod using its full DNS name. When you query simple-statefulset-two.simple-statefulset.default.svc.cluster.local, you get back only the IP address for Pod-two. This is unique to StatefulSets. Each Pod gets its own DNS entry following a predictable pattern.
 
-**Key Insight**: This demonstrates how init containers can use the Pod's hostname and DNS to implement conditional startup logic, a common pattern in StatefulSet deployments.
+The DNS naming follows a specific format: pod-name.service-name.namespace.svc.cluster.local. For our example, Pod-two has the DNS name simple-statefulset-two.simple-statefulset.default.svc.cluster.local. If you're working within the same namespace, you can use the shorter form simple-statefulset-two.simple-statefulset.
 
----
+This capability is transformative for stateful applications. For databases, it means secondary replicas can reliably connect to the primary at a known DNS name like postgres-zero.postgres.default.svc.cluster.local. For message queues, it means nodes can form clusters using stable addresses. For distributed systems, it means each instance can be individually addressable.
 
-## Section 2: Communication with StatefulSet Pods (4-5 minutes)
+The example also includes LoadBalancer and NodePort Services for external access. These Services behave like normal Services, providing load-balanced access to all the Pods. When you access the application through the LoadBalancer on port 8010 or NodePort on port 30010 and refresh multiple times, you'll see responses from different Pods as requests are load-balanced across the replicas.
 
-### 2.1 Verifying Service Endpoints (60 seconds)
+Here's an interesting technique. StatefulSets automatically add the Pod name as a label on each Pod. This means you can update the external Service selector to target a specific Pod by adding the statefulset.kubernetes.io/pod-name label. When you update the Service to select only Pod-one, all traffic now goes to that specific Pod. This is useful in database scenarios where you might want to route read-only queries specifically to secondary replicas while keeping write traffic on the primary.
 
-StatefulSets register all their Pod IPs with the associated Service. Let's verify:
+## Deploy a replicated SQL database
 
+Now we're ready for a real stateful application: PostgreSQL with primary-replica replication. This example truly requires StatefulSet features because Pod-zero needs to be the primary database while Pod-one needs to be a replica that streams changes from the primary. Each Pod needs its own PersistentVolumeClaim for database storage that persists even if the Pod is rescheduled.
 
-You should see three IP addresses listed - one for each Pod. The headless Service knows about all Pods, even though it doesn't provide load-balancing at the network level.
+The complexity of setting up PostgreSQL replication is handled by a custom Docker image with initialization scripts, so we can focus on the StatefulSet configuration rather than database administration details.
 
-Compare this with the Pod IPs:
+Here's where StatefulSets really shine: volumeClaimTemplates. This is a feature that Deployments don't have. In the StatefulSet spec, you define a volumeClaimTemplates section that works like a template for creating PersistentVolumeClaims. When the StatefulSet creates Pod-zero, Kubernetes automatically creates a PVC named data-products-db-zero. When Pod-one is created, Kubernetes creates data-products-db-one. Each PVC is bound to a PersistentVolume from the default StorageClass.
 
+The critical benefit is persistence across Pod lifecycles. If Pod-one is deleted for any reason and recreated, the new Pod-one reattaches to the exact same data-products-db-one PVC. The data persists even though the Pod itself is new. You don't need to manually create PVCs for each replica; the StatefulSet controller handles this automatically.
 
-The IPs should match the endpoint addresses.
+When you deploy the complete database stack and watch the PVC creation, you'll see a clear sequence. First, data-products-db-zero PVC is created and becomes Bound to a PersistentVolume. Then Pod-zero starts and uses this PVC to store its database files. Once Pod-zero reaches Running and Ready status, data-products-db-one PVC is created. Finally, Pod-one starts and uses the second PVC. This tight coupling between StatefulSet Pod creation and PVC provisioning ensures each Pod has storage ready before it tries to start the database.
 
-### 2.2 DNS Resolution Testing (2 minutes)
+Let's verify the database replication worked correctly by examining the logs. Pod-zero's logs should show PostgreSQL initializing as a primary database, going through startup procedures, and eventually logging that the database system is ready to accept connections. This Pod detected its hostname ends in -0 and configured itself as the primary.
 
-Now let's explore the unique DNS capabilities of StatefulSets. First, deploy a sleep Pod for testing:
+Pod-one's logs tell a different story. This Pod started in replica mode, connected to the primary for replication using the stable DNS name products-db-zero.products-db.default.svc.cluster.local, started a replication stream, and then became ready to accept read-only connections. The stable DNS names make this automatic discovery possible without any manual configuration.
 
+## Lab
 
-**Test 1: Service-wide DNS**
+StatefulSets are complex and less common than Deployments, but they have one significant advantage: the ability to dynamically provision a PVC for each Pod using volumeClaimTemplates. Deployments can use ephemeral volumes for similar functionality, but StatefulSets make it more straightforward.
 
-Perform a DNS lookup for the Service name:
+For this lab challenge, you'll work with a Deployment that runs an Nginx proxy over the StatefulSet website we have running. The deployment spec uses an emptyDir volume for cache files at /var/cache/nginx. EmptyDir volumes are temporary; they're lost when a Pod is deleted.
 
+Deploy the proxy and test that it works by accessing the application through the proxy's LoadBalancer or NodePort Service. You should see the proxied content from the StatefulSet web application.
 
-This returns all three Pod IP addresses. The Service name resolves to all Pods.
+Your task is to replace this Deployment with a StatefulSet that uses persistent storage via volumeClaimTemplates for the cache. Each Pod should have its own PVC so cache data persists across Pod restarts. The proxy doesn't need Pods to be managed consecutively since they don't depend on each other, so your spec should set podManagementPolicy to Parallel for faster startup.
 
-**Test 2: Individual Pod DNS**
+Think about what needs to change. You'll need to create a headless Service since StatefulSets require one. You'll need to change the kind from Deployment to StatefulSet and add the serviceName field. You'll need to replace the volumes section with volumeClaimTemplates. And you'll want to set podManagementPolicy to Parallel so all Pods start simultaneously rather than waiting for each other.
 
-Now lookup a specific Pod using the full DNS name:
+## **EXTRA** Testing the replicated database
 
+For those interested in exploring further, the lab includes extra material on deploying a SQL client in the cluster to interact with the database. This demonstrates a common production pattern where databases aren't publicly exposed, but you can deploy client Pods within the cluster for administration and testing.
 
-This returns only the IP address for Pod-2.
+The approach involves deploying a Pod with a PostgreSQL client, connecting to specific database Pods using their stable DNS names, and running queries to verify replication is working correctly. You can connect to the primary to run write queries and connect to the replica to run read queries, confirming that data written to the primary appears on the replica.
 
-**DNS Pattern Breakdown**:
-- Format: `<pod-name>.<service-name>.<namespace>.svc.cluster.local`
-- Example: `simple-statefulset-2.simple-statefulset.default.svc.cluster.local`
+This pattern is useful in production for database maintenance, running migrations, or troubleshooting issues without exposing the database to external networks. The detailed walkthrough is available in the statefulsets-sql-client.md file if you want to explore this further.
 
-**Why This Matters**: Applications can connect to specific Pod instances by name. For databases, this means secondaries can reliably connect to the primary at `postgres-0.postgres.default.svc.cluster.local`.
+## Cleanup
 
-### 2.3 External Access and Load Balancing (90 seconds)
+When you're finished with the lab, let's clean up the resources. Remove all Deployments, StatefulSets, Services, ConfigMaps, Secrets, and Pods with the kubernetes.courselabs.co label set to statefulsets.
 
-This lab includes LoadBalancer and NodePort Services for external access. Let's test the application:
+Now check the PVCs and you'll notice something important: they're still there. This is a safety mechanism built into StatefulSets. PVCs are not automatically deleted when you delete a StatefulSet or scale it down. This design prevents accidental data loss.
 
-**Access via LoadBalancer** (if your cluster supports it):
+To completely clean up, you need to explicitly delete the PVCs. You can delete them by label to remove all PVCs associated with the StatefulSet. This manual deletion requirement is intentional. In production, you'd need explicit policies for PVC cleanup when StatefulSets are removed to ensure data isn't lost unintentionally.
 
-
-**Or via NodePort**:
-
-
-Refresh multiple times (or use Ctrl+Refresh in a browser) and observe responses from different Pods. The external Services provide traditional load-balancing behavior.
-
-**Updating Service Selectors**:
-
-StatefulSets add the Pod name as a label. We can pin the external Service to a specific Pod:
-
-
-This update modifies the Service selector to target only Pod-1. Now test again:
-
-
-All responses now come from the same Pod. This demonstrates how you can selectively route traffic to specific StatefulSet replicas (useful for read-only secondaries in database clusters).
-
----
-
-## Section 3: Deploy a Replicated SQL Database (6-7 minutes)
-
-### 3.1 Introduction to the Postgres Example (60 seconds)
-
-Now we'll deploy a real stateful application: PostgreSQL with primary-replica replication. This example truly requires StatefulSet features:
-- Pod-0 will be the primary database
-- Pod-1 will be a replica that streams changes from the primary
-- Each Pod needs its own PersistentVolumeClaim for database storage
-
-The complexity of setting up PostgreSQL replication is handled by a custom Docker image with initialization scripts (available in the sixeyed/widgetario repository if you're interested in the details).
-
-### 3.2 Understanding volumeClaimTemplates (90 seconds)
-
-This is where StatefulSets shine. Let's examine the volumeClaimTemplates section in `labs/statefulsets/specs/products-db/statefulset-with-pvc.yaml`:
-
-
-**How This Works**:
-- When Pod-0 is created, Kubernetes automatically creates a PVC named `data-products-db-0`
-- When Pod-1 is created, Kubernetes creates `data-products-db-1`
-- Each PVC is bound to a PersistentVolume from the default StorageClass
-- If a Pod is deleted and recreated, it reattaches to its same PVC
-
-**Key Benefit**: You don't need to manually create PVCs for each replica. The StatefulSet controller handles this automatically.
-
-### 3.3 Deploying the Database (2 minutes)
-
-Let's deploy the complete database stack:
-
-
-Immediately watch the PVC creation:
-
-
-**Observe the sequence**:
-1. `data-products-db-0` PVC is created and becomes Bound
-2. Pod-0 starts and uses this PVC
-3. Once Pod-0 is Running, `data-products-db-1` PVC is created
-4. Pod-1 starts and uses the second PVC
-
-This demonstrates the tight coupling between StatefulSet Pod creation and PVC provisioning.
-
-### 3.4 Verifying Database Replication (2 minutes)
-
-Let's confirm the primary and replica roles were configured correctly.
-
-**Check the primary (Pod-0)**:
-
-
-Look for log messages indicating:
-- PostgreSQL initializing as a primary
-- Database starting up
-- "Database system is ready to accept connections"
-
-**Check the replica (Pod-1)**:
-
-
-Look for log messages indicating:
-- Pod starting in replica mode
-- Connecting to the primary for replication
-- Starting replication stream
-- "Database system is ready to accept connections"
-
-**Verify both are running**:
-
-
-Both Pods should show they're ready to accept connections.
-
-**What's Happening Behind the Scenes**:
-- Pod-0 detected its hostname ends in `-0` and configured itself as primary
-- Pod-1 detected it's not Pod-0 and configured replication pointing to `products-db-0.products-db.default.svc.cluster.local`
-- The stable DNS names enable this automatic discovery
-
----
-
-## Section 4: Lab Challenge - Convert Deployment to StatefulSet (4-5 minutes)
-
-### 4.1 Challenge Overview (45 seconds)
-
-Now it's time to apply what you've learned. The lab provides an Nginx proxy Deployment that uses an emptyDir volume for cache files. Your challenge is to convert it to a StatefulSet with a PVC for each Pod.
-
-**Requirements**:
-1. Replace the Deployment with a StatefulSet
-2. Use volumeClaimTemplates instead of emptyDir
-3. Configure parallel Pod creation (since Pods don't depend on each other)
-4. The proxy should continue working correctly
-
-Let's first deploy and test the current Deployment.
-
-### 4.2 Testing the Original Deployment (60 seconds)
-
-Deploy the proxy as it currently exists:
-
-
-Test that it works:
-
-
-You should see the proxied content from the StatefulSet web application. The Deployment uses an emptyDir volume at `/var/cache/nginx` for caching.
-
-Now you need to convert this to use persistent storage via a StatefulSet.
-
-### 4.3 Solution Walkthrough (2-3 minutes)
-
-Here's how to approach this conversion:
-
-**Step 1: Create a headless Service** (required for StatefulSets):
-
-
-**Step 2: Convert Deployment to StatefulSet**:
-
-Key changes needed:
-- Change `kind: Deployment` to `kind: StatefulSet`
-- Add `serviceName: simple-proxy`
-- Add `podManagementPolicy: Parallel` (Pods don't need sequential startup)
-- Replace the `volumes` section with `volumeClaimTemplates`
-
-**Step 3: Define volumeClaimTemplates**:
-
-
-**Step 4: Deploy and verify**:
-
-
-**Key Points**:
-- With `podManagementPolicy: Parallel`, all Pods start simultaneously
-- Each Pod gets its own PVC: `cache-simple-proxy-0`, `cache-simple-proxy-1`, etc.
-- Cache data persists across Pod restarts
-- The proxy continues functioning correctly with persistent cache storage
-
-You can check the full solution in `labs/statefulsets/solution.md` if you need reference.
-
----
-
-## Section 5: Extra Content - SQL Client Deployment (2 minutes, optional)
-
-### 5.1 Accessing the Database (60 seconds)
-
-For the curious, the lab includes an extra section on deploying a SQL client to interact with the database. This is useful for testing but not required for CKAD.
-
-The approach involves:
-- Deploying a Pod with a PostgreSQL client
-- Connecting to specific database Pods using their DNS names
-- Running queries to verify replication
-
-This demonstrates a real-world pattern: databases aren't publicly exposed, but you can deploy client Pods within the cluster for administration.
-
-The detailed walkthrough is in the lab's `statefulsets-sql-client.md` file.
-
-### 5.2 Production Considerations (60 seconds)
-
-In production StatefulSet deployments, you'd also consider:
-
-**Backup and Recovery**:
-- Regular PVC snapshots using VolumeSnapshots
-- Backup to external storage systems
-
-**Monitoring**:
-- Track Pod-specific metrics
-- Alert on replication lag for databases
-- Monitor PVC capacity usage per Pod
-
-**High Availability**:
-- Anti-affinity rules to spread Pods across nodes
-- Pod Disruption Budgets to limit simultaneous disruptions
-- ReadinessProbes and LivenessProbes for automatic recovery
-
-**Security**:
-- Use Secrets for database credentials (as shown in this lab)
-- NetworkPolicies to restrict database access
-- Pod Security Standards for container restrictions
-
----
-
-## Section 6: Cleanup and Key Observations (2 minutes)
-
-### 6.1 Cleanup Process (60 seconds)
-
-Let's clean up the lab resources:
-
-
-**Important Observation**:
-
-Now check the PVCs:
-
-
-The PVCs are still there! This is StatefulSet's safety mechanism - PVCs are not automatically deleted when you delete a StatefulSet or scale it down.
-
-**To completely clean up**:
-
-
-**Why This Design?**: It prevents accidental data loss. In production, you'd need explicit policies for PVC cleanup when StatefulSets are removed.
-
-### 6.2 Key Observations from the Lab (60 seconds)
-
-Let's recap what we've learned through hands-on practice:
-
-**1. Sequential Startup**: We saw Pods created one at a time, each waiting for the previous to be Ready.
-
-**2. Stable Names**: Pod names were predictable (web-0, web-1, web-2), unlike the random names in Deployments.
-
-**3. DNS Resolution**: Each Pod got its own DNS name, enabling direct Pod-to-Pod communication.
-
-**4. Automatic PVC Management**: volumeClaimTemplates created dedicated storage for each Pod without manual intervention.
-
-**5. PVC Persistence**: PVCs survived StatefulSet deletion, protecting data from accidental loss.
-
-**6. Init Container Patterns**: We saw how init containers use Pod identity to implement conditional startup logic.
-
-**7. Parallel Option**: We learned that `podManagementPolicy: Parallel` overrides sequential creation when appropriate.
-
----
-
-## Conclusion (60 seconds)
-
-This concludes our hands-on StatefulSets lab. You've now:
-- Deployed StatefulSets with multiple configurations
-- Explored stable network identities and DNS resolution
-- Worked with volumeClaimTemplates for persistent storage
-- Deployed a real replicated database
-- Converted a Deployment to a StatefulSet
-
-**Key Skills for CKAD**:
-- Know how to create a headless Service
-- Understand volumeClaimTemplates syntax
-- Remember the `serviceName` field is required
-- Be prepared for sequential Pod creation times in timed scenarios
-- Know that PVCs persist after StatefulSet deletion
-
-**Practice Recommendations**:
-1. Repeat this lab until you can deploy a StatefulSet from scratch in under 5 minutes
-2. Practice the DNS naming format: `<pod>.<service>.<namespace>.svc.cluster.local`
-3. Experiment with scaling StatefulSets up and down
-4. Try the OnDelete update strategy for manual rollout control
-
-**Next Steps**: In the CKAD exam prep session, we'll work through timed scenarios, practice common exam questions, and review troubleshooting techniques for StatefulSets.
-
----
-
-## Presentation Notes
-
-**Demo Environment**:
-- Pre-create a working cluster before the session
-- Test all commands beforehand
-- Have the lab files ready and accessible
-- Consider using tmux or split terminals for watching resources
-
-**Timing Flexibility**:
-- Core sections (1-4): 15-17 minutes
-- Optional section 5: +2 minutes
-- Q&A buffer: 3-5 minutes
-
-**Common Demo Issues**:
-- PVC provisioning delays: Acknowledge and wait
-- LoadBalancer pending on local clusters: Use NodePort alternative
-- DNS propagation delays: Give it 5-10 seconds if lookups fail initially
-
-**Interactive Elements**:
-- Pause for questions after Section 2 (DNS)
-- Allow participants to attempt the lab challenge independently
-- Encourage participants to run commands in their own environments
-
-**Engagement Tips**:
-- Ask: "What do you notice about the Pod creation order?"
-- Ask: "Why do you think PVCs aren't automatically deleted?"
-- Encourage predictions: "What will happen when we scale this down?"
-
-**Total Duration**: 18-22 minutes (flexible based on audience interaction)
+That wraps up our hands-on exploration of StatefulSets. We've seen how StatefulSets create Pods sequentially with stable names, how each Pod gets its own DNS entry for direct access, how volumeClaimTemplates automatically provision persistent storage for each Pod, how primary-secondary patterns work with stable network identities, and why PVCs persist even after StatefulSet deletion. These are powerful features for stateful applications but come with added complexity compared to Deployments. In the next video, we'll dive deeper into CKAD-specific scenarios including exam strategies, troubleshooting techniques, and advanced StatefulSet patterns like parallel Pod management and partition updates.
