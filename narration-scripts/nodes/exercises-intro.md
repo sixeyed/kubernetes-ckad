@@ -1,68 +1,13 @@
-# Nodes - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of nodes and how they form the foundation of your Kubernetes cluster, it's time to put that knowledge into practice with some hands-on work. This is where the theory starts to become tangible, and you'll see exactly how Kubernetes tracks and manages the compute resources that actually run your containers.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises, we're going to explore how to work with nodes using kubectl, starting with the basics of querying node information. You'll use the get and describe commands to see what Kubernetes knows about the machines in your cluster, from their capacity and available resources to their current workload and health status. This is the foundation of understanding your cluster's compute layer, and you'll find yourself using these commands constantly as you work with Kubernetes.
 
----
+We'll then dive deeper into working with kubectl itself, exploring the built-in help system that makes it easier to discover commands and options without constantly referring to external documentation. You'll learn how to use kubectl explain to understand resource types, and you'll get comfortable with the command structure that you'll be using throughout your Kubernetes journey. The kubectl tool is your primary interface to the cluster, so becoming fluent with it early on will pay dividends in everything you do with Kubernetes.
 
-## Transition to Practice
+The exercises will also cover querying and formatting, which is where kubectl really shows its power. You'll learn how to output node information in different formats like JSON and YAML, and you'll explore JSONPath queries that let you extract specific fields from the output. This is particularly valuable for automation and scripting, but it's also incredibly useful when you just need to quickly check a specific piece of information without wading through pages of output. You'll see how to query things like CPU capacity, memory availability, and container runtime versions with precision.
 
-Welcome back! Now that we've covered the fundamental concepts of Nodes - what they are, how they form the foundation of your Kubernetes cluster, and the key node components - it's time to work with node operations hands-on.
+Finally, there's a lab challenge where you'll work with node labels, which are key-value pairs that record additional information about your nodes. You'll discover the standard labels that Kubernetes platforms provide, including details about CPU architecture and operating system. This introduces you to the labeling system that becomes crucial later when you need to direct workloads to specific types of nodes based on their characteristics.
 
-In the upcoming exercises video, we're going to query node information, label nodes for workload placement, and perform node maintenance operations. You'll understand how to manage the compute resources that run your workloads.
+Before you start the exercises, make sure you have a Kubernetes cluster running and kubectl installed and configured. A single-node cluster like Docker Desktop or Minikube works perfectly fine for these exercises, though if you have access to a multi-node cluster, you'll see even more interesting information in the output. Have a terminal ready and perhaps a text editor open for taking notes or experimenting with commands.
 
-## What You'll Learn
-
-In the hands-on exercises, we'll explore practical node operations:
-
-First, you'll query node information using kubectl commands. You'll see node status, capacity, allocatable resources, and conditions. You'll understand what the output tells you about node health and available resources.
-
-Then, we'll work with node labels - adding custom labels to nodes so you can target specific hardware or capabilities. You'll label nodes with characteristics like disk type, GPU availability, or environment designation. You'll then use these labels with node selectors and affinity rules.
-
-Next, you'll explore node taints for controlling Pod placement. You'll taint nodes to repel workloads unless Pods explicitly tolerate the taint. You'll see how this mechanism reserves nodes for special purposes or prevents scheduling on unhealthy nodes.
-
-After that, you'll perform node maintenance using cordon and drain. You'll cordon a node to prevent new Pods from scheduling, drain it to gracefully evict existing Pods, perform maintenance, and uncordon it to resume normal operations. This is the safe workflow for node updates and repairs.
-
-You'll also view node metrics using kubectl top nodes (if metrics-server is available). You'll see CPU and memory usage across your cluster, understanding resource consumption patterns.
-
-Finally, you'll troubleshoot node issues - diagnosing NotReady nodes, understanding node conditions, and checking node events for problems.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A Kubernetes cluster with multiple nodes (or single-node for basic operations)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that some operations require admin permissions
-
-The exercises demonstrate node operations that are essential for cluster administration and appear in CKAD troubleshooting scenarios.
-
-## Why This Matters
-
-Node operations are important for CKAD. While you won't administer clusters from scratch, you'll need to query node information, understand node issues that affect Pod scheduling, and potentially perform basic maintenance operations during the exam.
-
-Beyond the exam, understanding node operations is essential for diagnosing scheduling issues, planning capacity, and maintaining cluster health in production environments.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness about node-level operations
-- Reassure that node concepts build on earlier topics
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+These node operations might seem basic at first, but they're absolutely essential for working with Kubernetes. Understanding how to query your cluster's compute resources, how to navigate kubectl's features, and how to extract exactly the information you need will serve you well throughout your CKAD preparation and beyond. When you're troubleshooting scheduling issues or planning capacity in production environments, these are exactly the skills you'll rely on. Let's get started with the hands-on exercises and see how to work with nodes in practice!

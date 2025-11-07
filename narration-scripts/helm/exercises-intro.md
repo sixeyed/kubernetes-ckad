@@ -1,68 +1,13 @@
-# Helm - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Helm, what it is, why it's valuable for packaging Kubernetes applications, and how Charts provide reusable templates, it's time to work with Helm hands-on. In the upcoming exercises video, we're going to install applications using Helm Charts, customize deployments with values, and understand how Helm manages releases throughout their lifecycle.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+Before we dive into the practical work, you'll want to make sure you have the Helm CLI installed on your system. The exercises will walk you through the installation process, but it's worth having that ready beforehand if you can. You'll need a running Kubernetes cluster, any distribution works fine, and of course kubectl installed and configured to connect to it. Having Helm version 3 is important because earlier versions had some security concerns with server-side components, but version 3 is purely a client-side tool which makes things much simpler.
 
----
+The hands-on work starts with deploying a chart using its default values, which gives you a feel for how straightforward Helm can make application deployment. You'll see how a single install command creates all the necessary Kubernetes resources, and how the release name becomes part of how Helm tracks and manages everything. From there, you'll move into installing releases with custom values, which is where Helm really shows its power. Instead of editing YAML files directly, you can override specific values using command-line flags, making the same chart work for different environments or use cases.
 
-## Transition to Practice
+One of the most practical aspects we'll explore is upgrading releases with custom values. You'll learn how Helm manages application updates, how it tracks the history of changes, and importantly, how you can roll back to previous versions if something goes wrong. This revision history is one of Helm's key features, giving you confidence to make changes knowing you can always revert if needed. The exercises will show you how upgrades work under the hood, creating new ReplicaSets and rolling out changes just like you'd see with standard Kubernetes deployments.
 
-Welcome back! Now that we've covered the fundamental concepts of Helm - what it is, why it's valuable for packaging Kubernetes applications, and how Charts provide reusable templates - it's time to work with Helm hands-on.
+We'll also work with chart repositories, which is how teams share and distribute Helm packages. You'll add repositories, search for charts, examine their default values, and install applications from remote sources. This mirrors the workflow you'd use in real environments where you might deploy third-party applications like monitoring tools, ingress controllers, or databases. The exercises include working with actual public charts, so you'll get a sense of how the Helm ecosystem operates and how easily you can deploy complex applications that would otherwise require extensive YAML configuration.
 
-In the upcoming exercises video, we're going to install applications using Helm Charts, customize deployments with values, and understand how Helm manages releases. You'll see how Helm simplifies complex application deployment.
+The lab exercise at the end brings everything together by having you deploy the Nginx Ingress controller using Helm with a custom values file. This is a realistic scenario where you'd use Helm to deploy infrastructure components with environment-specific settings, demonstrating how values files can capture complex configurations more maintainably than command-line flags alone.
 
-## What You'll Learn
-
-In the hands-on exercises, we'll work through practical Helm workflows:
-
-First, you'll add Helm repositories that host Charts for popular applications. You'll search for Charts, view Chart information, and understand the Helm ecosystem. You'll see how repositories make it easy to discover and share applications.
-
-Then, we'll install applications using `helm install`. You'll deploy complete applications with single commands, seeing how Helm creates all necessary Kubernetes resources - Deployments, Services, ConfigMaps, and more - from the Chart template.
-
-Next, you'll customize installations using values files and --set flags. You'll override default configurations to match your requirements, seeing how Helm's templating makes Charts flexible and reusable across environments.
-
-After that, you'll manage releases - the Helm term for deployed Chart instances. You'll upgrade releases with new configurations, rollback to previous versions, and uninstall releases cleanly. You'll see how Helm tracks deployment history.
-
-You'll also explore Chart structure by examining a Chart's templates and values. You'll understand how Go templates combine with values to generate Kubernetes manifests, giving you insight into how Charts work.
-
-Finally, you'll troubleshoot Helm installations - diagnosing failed deployments, viewing release status, and understanding Helm's revision system.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- Helm v3 installed (check with `helm version`)
-- kubectl installed and configured
-- A terminal and text editor ready
-
-The exercises use public Helm Charts from standard repositories, demonstrating real-world Helm usage patterns.
-
-## Why This Matters
-
-Helm is beyond core CKAD requirements but appears in many production environments. Understanding Helm helps you work with pre-packaged applications and understand how complex deployments are managed. While you won't need deep Helm expertise for CKAD, basic familiarity is valuable.
-
-Beyond the exam, Helm is widely used in production Kubernetes. Many organizations use Helm Charts to package and deploy applications. Understanding Helm makes you more effective in real-world environments.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness that Helm is advanced but valuable
-- Reassure that basic concepts are accessible
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Throughout the exercises, you'll see references to the Helm documentation and CLI commands, giving you the resources you'll need to explore further on your own. While Helm is beyond the core CKAD requirements and won't be directly tested on the exam, understanding it provides valuable context for real-world Kubernetes operations. Many production environments use Helm extensively, and being familiar with it makes you more effective in those settings. The exercises are designed to give you hands-on experience with the most common Helm workflows, so by the end you'll be comfortable adding repositories, installing and upgrading releases, customizing values, and understanding how Helm manages the complete lifecycle of applications on Kubernetes. Let's get started with the hands-on work!

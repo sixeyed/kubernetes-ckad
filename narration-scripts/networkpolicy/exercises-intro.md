@@ -1,68 +1,17 @@
-# Network Policy - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of NetworkPolicy, what it is, how it provides network segmentation within Kubernetes, and why it's essential for security, it's time to see network isolation in action. In the upcoming exercises video, we're going to create NetworkPolicies that control Pod-to-Pod communication, and you'll see how to allow and deny traffic based on labels, namespaces, and ports. You'll understand how Kubernetes implements microsegmentation for zero-trust networking.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the hands-on exercises, we'll work through practical network security patterns. First, you'll deploy the APOD application, a simple distributed app with a REST API that provides NASA's daily astronomy picture, a logging API, and a web application that ties them together. Nothing special in the specs, just Deployments and Services, but it's perfect for demonstrating network policies because you'll see all the communication patterns between components working freely in a default Kubernetes environment.
 
----
+Once you've got the APOD application running, we'll enforce a deny-all network policy that should block all traffic between the Pods. But here's the interesting part: your Kubernetes cluster probably doesn't enforce network policy, so the policy gets created but not applied, and the app keeps working. This is a critical insight because not all network plugins actually implement NetworkPolicy, and you need to understand when your policies are being enforced and when they're just sitting there doing nothing.
 
-## Transition to Practice
+That's why we'll install the k3d CLI, a tool for creating local Kubernetes clusters where each node runs inside a Docker container. It's not as user-friendly as Docker Desktop, but it gives you advanced options for configuring your cluster. You'll use the install instructions from the k3d site, or if you have a package manager like Chocolatey on Windows or Homebrew on Mac, you can install it the simple way. We'll verify you're on version five because options have changed a lot since older versions.
 
-Welcome back! Now that we've covered the fundamental concepts of NetworkPolicy - what it is, how it provides network segmentation within Kubernetes, and why it's essential for security - it's time to see network isolation in action.
+Then we'll try a new cluster with NetworkPolicy support. You'll create a k3d cluster with no networking initially, with no Flannel CNI installed. You'll see that the cluster isn't ready because there's no network plugin, and even the DNS server isn't running because DNS requires a network plugin. Then you'll install Calico, a network plugin that supports NetworkPolicy. It's open-source and very commonly used where network policy is required. The network plugin runs as a DaemonSet, and it uses privileged init containers to modify the network configuration on the node. Once Calico is running, you'll deploy the APOD application again, apply the deny-all policy, and this time it will actually be enforced. You'll watch the app time out because there's no egress policy allowing communication from the web app to the API or even to the DNS server.
 
-In the upcoming exercises video, we're going to create NetworkPolicies that control Pod-to-Pod communication. You'll see how to allow and deny traffic based on labels, namespaces, and ports. You'll understand how Kubernetes implements microsegmentation for zero-trust networking.
+Next, you'll deploy policies for application components. You'll often see a default deny-all policy to prevent any accidental network communication, and in that case you need to explicitly model all the communication lines between your components. You'll create policies for the log API that allows ingress from the web Pod to the API port with no egress because this component doesn't make any outgoing calls. You'll create policies for the web app that allows ingress from any location and egress to the two API Pods and the DNS server so the app can get the IP addresses of the API Pods. You'll create policies for the API that allows ingress from the web Pod and egress to the DNS server and to the IP address ranges where the third-party NASA API is hosted. If you want to restrict access to IP blocks like this, the services you use need to have static addresses, which you can find using tools like dig.
 
-## What You'll Learn
+Finally, you'll work through the lab challenge, where we've got the APOD app running with a nicely secured network, but the policies are not as tightly controlled as they could be. Traffic is allowed based on label selectors, and a malicious user could deploy a Pod with the expected labels and gain access. There's a basic sleep Pod with the label that lets it bypass security and use the API. This can be prevented by deploying the app to a custom namespace, which could be secured with RBAC. You'll change the app to use a dedicated namespace and change the network policies to restrict ingress traffic to Pods from that namespace only.
 
-In the hands-on exercises, we'll work through practical network security patterns:
+Before starting the exercises video, make sure you have a Kubernetes cluster that can run k3d and Docker, kubectl installed and configured, a terminal and text editor ready, and an understanding that not all clusters enforce NetworkPolicy by default. Docker Desktop Kubernetes and some cloud providers don't enforce NetworkPolicy out of the box, which is exactly why we're using k3d with Calico in these exercises. The exercises will walk you through verifying NetworkPolicy support.
 
-First, you'll deploy applications without NetworkPolicies and verify that all Pods can communicate freely. This establishes the baseline - Kubernetes allows all Pod-to-Pod traffic by default. Then you'll apply NetworkPolicies and watch traffic get blocked, understanding the shift from permissive to restrictive networking.
-
-Then, we'll create ingress rules to allow specific incoming traffic. You'll write policies that allow traffic from Pods with certain labels, from specific namespaces, or on particular ports. You'll see how these rules build up to create precise access controls.
-
-Next, you'll work with egress rules to control outgoing traffic. You'll restrict which external services Pods can access, implementing data exfiltration protection and limiting attack surface.
-
-After that, you'll combine ingress and egress policies to create complete network isolation. You'll build multi-tier application security where frontend Pods can reach backend Pods, but backend Pods can't initiate connections to the frontend.
-
-You'll also explore namespace selectors and pod selectors together. You'll create policies that allow traffic from specific Pods in specific namespaces, demonstrating complex multi-tenant security patterns.
-
-Finally, you'll troubleshoot NetworkPolicy issues. You'll diagnose why traffic is being blocked unexpectedly, understand policy evaluation order, and verify NetworkPolicy enforcement.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A Kubernetes cluster with a CNI that supports NetworkPolicy (Calico, Cilium, Weave)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that not all clusters enforce NetworkPolicy by default
-
-Note: Docker Desktop Kubernetes and some cloud providers don't enforce NetworkPolicy by default. The exercises will explain how to verify NetworkPolicy support.
-
-## Why This Matters
-
-NetworkPolicy is core CKAD exam content. You'll be asked to create policies that allow or deny specific traffic patterns. The exam expects you to understand NetworkPolicy syntax and common security patterns.
-
-Beyond the exam, NetworkPolicy is fundamental to Kubernetes security. Production clusters use NetworkPolicies to implement defense-in-depth, isolate tenants, and meet compliance requirements. Understanding network segmentation is essential for secure cloud-native applications.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness about security importance
-- Reassure about NetworkPolicy complexity
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+NetworkPolicy is core CKAD exam content, and you'll be asked to create policies that allow or deny specific traffic patterns. The exam expects you to understand NetworkPolicy syntax and common security patterns. Beyond the exam, NetworkPolicy is fundamental to Kubernetes security. Production clusters use NetworkPolicies to implement defense-in-depth, isolate tenants, and meet compliance requirements. Understanding network segmentation is essential for secure cloud-native applications. Let's get started with the hands-on exercises!

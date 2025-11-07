@@ -1,68 +1,19 @@
-# Secrets - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Kubernetes Secrets, understanding what they are, why they're critical for security, and how they differ from ConfigMaps, it's time to work with them hands-on. In the upcoming exercises video, we're going to create Secrets using multiple methods and see how they provide sensitive data to running applications. You'll understand the crucial distinction between encoding and encryption, and you'll practice the patterns you'll need for the CKAD exam.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+The exercises begin with the API specs section, where we'll explore the official Kubernetes Secret API documentation to understand the resource structure. From there, we move into creating Secrets from encoded YAML, where you'll see how base64-encoded values work in Secret definitions and how Kubernetes presents them to containers. This is the traditional approach you'll encounter in existing manifests, though it's not the most convenient method.
 
----
+Next, we'll explore creating Secrets from plaintext YAML, which uses the stringData field instead of the data field. This approach is more readable during development and when your YAML files are properly secured. You'll understand when it's appropriate to use plaintext definitions and when encoded values are necessary.
 
-## Transition to Practice
+We then move into working with base-64 Secret values, where you'll practice decoding Secret data using kubectl and command-line tools. This section is critical for understanding that encoding is not encryption - it's merely obfuscation that prevents casual viewing. You'll learn how anyone with kubectl access can decode Secrets, which emphasizes why proper RBAC and encryption at rest are essential.
 
-Welcome back! Now that we've covered the fundamental concepts of Kubernetes Secrets - what they are, why they're critical for security, how they differ from ConfigMaps - it's time to work with them hands-on.
+The creating Secrets from files section shows you how to generate Secrets from existing credential files, configuration files containing sensitive data, and certificate files. This is particularly useful when secrets are managed by a separate team or come from external systems. You'll see how file-based Secret creation decouples the configuration management workflow from application deployment.
 
-In the upcoming exercises video, we're going to create Secrets using multiple methods and see how they provide sensitive data to running applications. You'll understand the crucial distinction between encoding and encryption, and you'll practice the patterns you'll need for the CKAD exam.
+Throughout the exercises, you'll work with multiple consumption patterns. You'll inject Secret values as environment variables using both env and envFrom fields. You'll mount Secrets as files using volumes, understanding when each approach is appropriate based on your application's needs. You'll explore selective Secret mounting, choosing which keys from a Secret to expose, and you'll use mounting techniques to place Secret files precisely where your application expects them.
 
-## What You'll Learn
+The lab challenge at the end ties everything together, asking you to implement configuration updates that trigger automatic Pod rollouts when Secrets change. This is a common production requirement, and the lab helps you understand the relationship between volume-mounted Secrets, which update automatically, and environment variables, which remain static for the Pod's lifetime.
 
-In the hands-on exercises, we'll work through different Secret patterns and consumption methods:
+The exercises also include two extra sections for those who want to dive deeper. The environment variable overrides section explores the precedence rules when the same key appears in multiple configuration sources, showing you how Kubernetes determines which value wins. The managing config updates section demonstrates hot reloads versus manual rollouts, cache behavior, and the rollout restart command for forcing Pod recreation.
 
-First, you'll create Secrets using literal values with `kubectl create secret generic`. You'll see how Kubernetes base64-encodes the values automatically. You'll also decode Secret data to understand that encoding is not encryption - it's just obfuscation that prevents casual viewing.
+Before starting the exercises video, make sure you have a running Kubernetes cluster with kubectl configured, a terminal and text editor ready, and permission to create and view Secrets. The exercises demonstrate Secret creation and consumption clearly, showing exactly how sensitive data flows from Secrets into containers. You can follow along on your own cluster, or watch first and practice afterward.
 
-Then, you'll create Secrets from files - perfect for TLS certificates, SSH keys, and configuration files that contain sensitive data. You'll see how the file content becomes the Secret value, and you'll understand when this approach is more convenient than literals.
-
-Next, you'll work with specialized Secret types. You'll create docker-registry Secrets for pulling images from private registries, and TLS Secrets for HTTPS certificates. These typed Secrets have specific fields that Kubernetes validates and uses appropriately.
-
-After that, you'll consume Secrets in Pods using different methods. You'll inject Secret values as environment variables using `env` and `envFrom`. You'll mount Secrets as files using volumes. You'll understand when to use each approach based on your application's needs.
-
-You'll also explore selective Secret mounting - choosing which keys from a Secret to expose, similar to ConfigMap patterns. And you'll use the `subPath` feature to mount individual Secret files without replacing entire directories.
-
-Finally, you'll work with Secret update behavior. You'll see that volume-mounted Secrets update automatically (with a delay), while environment variables are immutable after Pod creation. This understanding is critical for managing credential rotation and updates.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Permission to create and view Secrets
-
-The exercises demonstrate Secret creation and consumption clearly, showing exactly how sensitive data flows from Secrets into containers. You can follow along on your own cluster, or watch first and practice afterward.
-
-## Why This Matters
-
-Secrets are core CKAD exam content. You'll be asked to create Secrets, use them in Pods as both environment variables and volumes, and potentially troubleshoot Secret-related issues. The exam expects you to work quickly with all Secret creation methods.
-
-Beyond the exam, proper Secret management is fundamental to application security. Every production application has passwords, API keys, or certificates. Understanding how to handle these securely in Kubernetes is essential for building trusted systems.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness about security importance
-- Reassure that Secret patterns mirror ConfigMap patterns
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Secrets are core CKAD exam content. You'll be asked to create Secrets, use them in Pods as both environment variables and volumes, and potentially troubleshoot Secret-related issues. The exam expects you to work quickly with all Secret creation methods. Beyond the exam, proper Secret management is fundamental to application security. Every production application has passwords, API keys, or certificates. Understanding how to handle these securely in Kubernetes is essential for building trusted systems. Let's get started with the hands-on exercises!

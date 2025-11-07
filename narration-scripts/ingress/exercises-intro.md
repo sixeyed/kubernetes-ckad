@@ -1,68 +1,17 @@
-# Ingress - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Ingress, what it is, how it provides HTTP and HTTPS routing, and why it's more efficient than multiple LoadBalancer Services, it's time to work with Ingress controllers and rules in practice.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to walk through the complete Ingress setup process, starting from nothing and building up to sophisticated routing patterns. The first thing we'll tackle is deploying an Ingress controller itself, which is the actual component that handles the routing. This is really important to understand because Ingress resources by themselves don't do anything, they're just configuration that tells the controller how to route traffic. We'll be using the NGINX Ingress Controller, but you'll also learn about other popular options like Traefik and Contour that work in similar ways.
 
----
+Once we have the controller running, we'll explore the API specs for Ingress resources so you understand the structure of these objects and how they map to the routing behavior you're trying to achieve. Then we'll move into practical deployments, starting with publishing a default app through ingress. This default backend is really useful because it means users never see a raw 404 error from the ingress controller itself, they always get a friendly response even if they're hitting a URL that doesn't match any of your routing rules.
 
-## Transition to Practice
+From there, we'll progress to publishing an app to a specific host address, which is where Ingress really starts to show its power. You'll see how to configure host-based routing so that requests for different domain names get routed to different backend Services, all through a single load balancer. This is the pattern that makes Ingress so cost-effective in production environments.
 
-Welcome back! Now that we've covered the fundamental concepts of Ingress - what it is, how it provides HTTP/HTTPS routing, and why it's more efficient than multiple LoadBalancer Services - it's time to work with Ingress controllers and rules.
+Next, we'll explore how to use ingress with response caching, which demonstrates how you can configure controller-specific features through annotations. This is a great example of how Ingress isn't just about routing, it can also add valuable middleware functionality like caching, compression, or rate limiting without any changes to your application code.
 
-In the upcoming exercises video, we're going to install an Ingress controller, create Ingress resources with routing rules, and see how a single load balancer can route to multiple backend Services based on hostnames and paths.
+After working through these guided exercises, you'll encounter a lab challenge where you'll apply everything you've learned to configure ingress for a new application from scratch. This is your chance to practice the complete workflow without step-by-step instructions. If you want to push further into advanced territory, there's also an extra section on Ingress for HTTPS that covers TLS termination, SSL certificates, and secure routing patterns. Finally, we'll make sure you know how to properly clean up all the resources we've created.
 
-## What You'll Learn
+Before starting the exercises video, make sure you have a Kubernetes cluster that can provision LoadBalancers or at least support port-forwarding, kubectl installed and configured, and a terminal and text editor ready to go. The exercises will guide you through the Ingress controller installation, but be aware that the specific steps can vary depending on whether you're using Docker Desktop, a cloud provider cluster, or a local cluster like kind or minikube.
 
-In the hands-on exercises, we'll work through practical Ingress patterns:
+Ingress is core CKAD exam content, and you'll definitely be asked to create Ingress resources with routing rules, possibly configure TLS, and troubleshoot routing issues when they're not working as expected. Beyond the exam, this is really how production Kubernetes clusters expose HTTP services efficiently. Using one LoadBalancer with routing rules is vastly more cost-effective and manageable than provisioning separate LoadBalancers for every Service in your cluster.
 
-First, you'll install an Ingress controller - the component that actually implements Ingress rules. You'll see that Ingress resources by themselves don't do anything; they're configuration that tells the Ingress controller how to route traffic. You'll learn about popular controllers like NGINX Ingress, Traefik, and cloud provider integrations.
-
-Then, you'll create your first Ingress resource with simple host-based routing. You'll deploy multiple Services and configure an Ingress that routes traffic based on the hostname in the HTTP request. You'll see how `app.example.com` routes to one Service while `api.example.com` routes to another.
-
-Next, we'll work with path-based routing. You'll configure an Ingress that routes requests to different Services based on the URL path. Requests to `/app` go to the app Service, requests to `/api` go to the API Service. You'll understand path types: Prefix, Exact, and ImplementationSpecific.
-
-After that, you'll combine host and path routing in a single Ingress resource. You'll create complex routing patterns that use both hostname and path to determine the backend Service. This demonstrates how Ingress consolidates multiple routing rules.
-
-You'll also work with TLS termination. You'll create a Secret containing TLS certificates and configure Ingress to handle HTTPS traffic, decrypting it before forwarding to backend Services. You'll see how this offloads SSL processing from application Pods.
-
-Finally, you'll explore Ingress troubleshooting. You'll learn to check Ingress status, examine Ingress controller logs, and verify that backend Services have ready endpoints. These skills are essential when Ingress routing isn't working as expected.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A Kubernetes cluster that can provision LoadBalancers OR use port-forwarding
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that Ingress requires a controller installation
-
-The exercises will guide you through Ingress controller installation, but the specific steps depend on your cluster type. Docker Desktop, cloud providers, and local clusters each have different controller options.
-
-## Why This Matters
-
-Ingress is core CKAD exam content. You'll be asked to create Ingress resources with routing rules, configure TLS, and troubleshoot routing issues. The exam expects you to understand Ingress syntax and common patterns.
-
-Beyond the exam, Ingress is how production Kubernetes clusters expose HTTP services efficiently. Using one LoadBalancer with routing rules is vastly more cost-effective than provisioning separate LoadBalancers for every Service.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing sophisticated routing
-- Reassure about controller installation complexity
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Let's get started with the hands-on exercises and see Ingress in action!

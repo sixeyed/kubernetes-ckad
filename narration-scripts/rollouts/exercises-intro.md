@@ -1,68 +1,19 @@
-# Rollouts - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Deployment rollouts, it's time to see these mechanisms in action through hands-on practice. In the upcoming exercises video, you're going to work with real deployments, trigger updates, monitor their progress, and see exactly how Kubernetes manages application updates safely and reliably.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+We're going to start by exploring the deployment strategies overview, where you'll understand the different approaches Kubernetes offers for rolling out changes. You'll see that there's no one-size-fits-all solution, and understanding when to use each strategy is crucial for real-world operations. The exercises will take you through rolling updates, blue-green deployments, canary deployments, and recreate strategies, so you can experience firsthand how each one behaves and what tradeoffs they involve.
 
----
+First up, you'll work with fast staged rollouts, where you'll trigger updates that create new pods quickly while maintaining zero downtime. You'll watch Kubernetes create a new ReplicaSet and rapidly scale it up while the old one scales down. This is where you'll see the maxSurge and maxUnavailable parameters in action, controlling how aggressively the update proceeds. You'll make HTTP requests during the rollout and see both versions responding simultaneously, which demonstrates an important requirement that your application must support running multiple versions concurrently.
 
-## Transition to Practice
+Then we'll shift to slow staged rollouts, where you'll configure the update to proceed more cautiously. You'll modify the deployment strategy to replace pods one at a time, and you'll observe how this creates a much longer transition period between versions. This is particularly important for critical services where you want to minimize risk by observing each pod's behavior before replacing the next one. You'll also learn how to use the rollout history command to see all previous revisions and how to execute rollbacks without touching any YAML files, which is incredibly powerful when you need to revert quickly.
 
-Welcome back! Now that we've covered the fundamental concepts of Deployment rollouts - how they enable zero-downtime updates, the rolling update strategy, and rollback capabilities - it's time to see these mechanisms in action.
+After that, you'll experiment with big-bang rollouts using the Recreate strategy. This is where things get interesting because you'll see what happens when all existing pods are terminated before new ones are created. You'll deploy a broken update that fails to start, and you'll experience firsthand why this strategy is risky. The application will go completely offline, and you'll need to execute a rollback to bring it back. This exercise really drives home the importance of choosing the right deployment strategy for your application's requirements.
 
-In the upcoming exercises video, we're going to perform rolling updates, monitor rollout progress, pause and resume updates, and execute rollbacks. You'll see exactly how Kubernetes manages application updates safely and reliably.
+Moving forward, you'll dive into blue-green deployments, which take a completely different approach to updates. You'll deploy two full versions of your application side by side, with only one receiving production traffic. You'll test the new version thoroughly without affecting users, then switch traffic instantly by updating the Service selector. You'll see how this provides the ultimate safety net because you can switch back just as quickly if anything goes wrong. The tradeoff, of course, is that you need double the resources since both versions run simultaneously.
 
-## What You'll Learn
+Next comes canary deployments, where you'll roll out changes to just a small percentage of users first. You'll start by deploying a canary version with only one replica alongside four stable replicas, giving you about twenty percent canary traffic. You'll make multiple requests and observe the load balancing between versions. Then you'll gradually increase the canary percentage while monitoring for issues, and you'll learn how to scale it back immediately if problems arise. This strategy is fantastic for high-risk changes because you limit the blast radius if something goes wrong.
 
-In the hands-on exercises, we'll explore the complete rollout lifecycle:
+Throughout the exercises, you'll reference the deployment strategy decision matrix, which helps you choose the right approach based on your specific requirements. You'll see when rolling updates make sense as the default choice, when blue-green is worth the resource cost for zero-risk deployments, when canary deployments are ideal for limiting user exposure, and when recreate strategy is appropriate despite the downtime.
 
-First, you'll trigger rolling updates by changing container images in Deployments. You'll watch Kubernetes create a new ReplicaSet, scale it up while scaling down the old one, and maintain application availability throughout. You'll see the rollout in action.
+Finally, you'll tackle the lab challenge, which involves implementing a blue-green deployment using Helm charts. You'll start with a chart that's not quite working correctly, where both versions are receiving traffic when only one should be live. Your goal is to fix the chart templates so you can switch between blue and green releases with a simple Helm upgrade command. If you get that working, you'll even experiment with Helm's automatic rollback capabilities when a bad update is deployed.
 
-Then, we'll monitor rollout progress using `kubectl rollout status`. You'll see real-time updates as Pods are replaced, and you'll understand when a rollout is complete versus still in progress. You'll learn to interpret rollout status messages.
-
-Next, you'll work with rollout history using `kubectl rollout history`. You'll see all previous revisions, examine their details, and understand how Kubernetes tracks deployment changes. This history is what enables rollbacks.
-
-After that, you'll pause rollouts mid-update using `kubectl rollout pause`. You'll see how this freezes the update, allowing you to verify the new version before continuing. You'll resume updates with `kubectl rollout resume`, completing the controlled rollout.
-
-You'll also execute rollbacks using `kubectl rollout undo`. When an update introduces problems, you'll revert to the previous working version immediately. You'll see how rollbacks use the preserved old ReplicaSet for instant recovery.
-
-Finally, you'll explore update strategy parameters - maxSurge and maxUnavailable. You'll configure how aggressively updates proceed and understand the tradeoffs between speed and resource consumption.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that rollouts are Deployment-specific behavior
-
-The exercises use simple web applications that make version changes visible, helping you see exactly which version is running at each stage.
-
-## Why This Matters
-
-Rollouts are core CKAD exam content. You'll trigger updates, monitor rollout status, and execute rollbacks. The exam expects you to use rollout commands confidently and understand update behavior.
-
-Beyond the exam, rollout management is critical for production operations. Every application update uses these mechanisms. Understanding how to update safely, monitor progress, and rollback when needed is essential for reliable service delivery.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing zero-downtime updates
-- Reassure that rollout concepts build on Deployment knowledge
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Before starting the exercises video, make sure you have a running Kubernetes cluster, kubectl installed and configured, and a terminal ready. The exercises use simple web applications that respond with their version number, making it easy to see exactly which version is serving traffic at each stage. Rollouts are core CKAD exam content, and beyond the exam, this is critical for production operations since every application update uses these mechanisms. Understanding how to update safely, monitor progress, choose the right strategy, and rollback when needed is essential for reliable service delivery. Let's get started with the hands-on exercises!

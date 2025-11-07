@@ -1,66 +1,21 @@
-# Admission Control - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of admission control in Kubernetes, it's time to see these mechanisms in action through hands-on practice.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to work with actual admission webhooks and policy enforcement tools. You'll deploy custom validation webhooks, watch them accept and reject resource requests, and see how mutating webhooks automatically modify your configurations. We'll also explore OPA Gatekeeper, which provides a more discoverable and maintainable approach to policy management compared to writing custom webhook code.
 
----
+The exercises build up progressively through different admission control patterns. We'll start by setting up the infrastructure for secure webhook communication. Since admission webhooks must use HTTPS with trusted certificates, you'll deploy cert-manager to handle TLS certificate generation and rotation automatically. This is a common pattern in production Kubernetes environments, and understanding how webhook servers communicate securely over HTTPS is fundamental to working with admission control.
 
-## Transition to Practice
+Once the certificate infrastructure is in place, we'll deploy a custom validating webhook that enforces a specific security policy. This webhook will require all Pods to explicitly disable automatic service account token mounting. You'll see how the webhook accepts compliant Pods while rejecting those that don't meet the policy. More importantly, you'll learn the critical troubleshooting skill of finding admission errors when deployments fail. These errors don't appear in Pod events where you might expect them - they show up in ReplicaSet events, which is often a source of confusion when debugging.
 
-Welcome back! Now that we've covered the fundamental concepts of admission control in Kubernetes, it's time to see these mechanisms in action.
+After working with validating webhooks, we'll explore mutating webhooks that automatically modify resources before they're persisted. You'll deploy a webhook that injects security contexts into all Pods, enforcing a non-root user policy. This is where things get interesting because you'll witness how automatic mutations can cause unexpected behavior. When the mutating webhook adds a runAsNonRoot requirement but the container image runs as root by default, you'll see CreateContainerConfigError failures. This demonstrates both the power and the potential pitfalls of automatic policy enforcement.
 
-In the upcoming exercises video, we're going to work with actual admission webhooks. You'll deploy custom validation webhooks, watch them accept and reject resource requests, and see how mutating webhooks automatically modify your configurations. We'll also explore OPA Gatekeeper, which provides a declarative approach to policy management.
+Then we'll transition to working with OPA Gatekeeper, which offers significant advantages over custom webhooks. Unlike custom webhook code that's essentially a black box, Gatekeeper policies are defined as Kubernetes resources that you can inspect and query with kubectl. You'll create constraint templates that define generic rules and then create specific constraints that apply those rules to your cluster. We'll work with policies for required labels and resource limits, seeing how Gatekeeper creates custom resource definitions for each constraint template, making policies discoverable and manageable through the standard Kubernetes API.
 
-## What You'll Learn
+The lab challenge brings everything together. You'll need to deploy an application that must satisfy multiple Gatekeeper policies simultaneously - requiring specific labels on Pods and namespaces, and enforcing resource limits for containers. This exercise simulates real-world scenarios where multiple organizational policies must be satisfied, and you'll practice the essential skill of reading constraint requirements and adapting your manifests accordingly.
 
-In the hands-on exercises, we'll build up progressively through different admission control patterns:
+Throughout the exercises, we'll emphasize the cleanup procedures. Admission controllers operate at the cluster level, and OPA Gatekeeper installs custom resource definitions and webhooks that persist beyond individual namespaces. You'll learn the proper sequence for removing these components, including cleaning up constraint templates, webhook configurations, and custom resource definitions.
 
-First, you'll set up cert-manager to handle TLS certificates for webhooks. Admission webhooks must use HTTPS, and you'll see exactly how to configure trusted certificates for your webhook servers.
+While admission control is advanced material beyond core CKAD requirements, understanding how it works is crucial for troubleshooting in real environments. When your deployments mysteriously fail during the exam or in production clusters, admission controllers are often the reason. Knowing where to look for admission errors, understanding ResourceQuota violations, and recognizing Pod Security Standard restrictions will save you valuable time. The exam won't ask you to implement admission controllers, but you must quickly diagnose when they block your deployments.
 
-Then, we'll deploy a custom validating webhook that enforces a specific policy - requiring Pods to disable automatic service account token mounting. You'll see how this webhook accepts compliant Pods while rejecting those that don't meet the policy. More importantly, you'll learn where to find admission errors when deployments fail - they appear in ReplicaSet events, not Pod events.
+Make sure you have a running Kubernetes cluster with sufficient permissions to install cluster-scoped resources before starting. You'll need kubectl configured and the ability to deploy cert-manager, webhook servers, and OPA Gatekeeper. The exercises move at a comfortable pace with explanations of what's happening at each step. You can follow along on your own cluster, or watch first and practice afterward using the lab materials available in the repository.
 
-Next, we'll explore mutating webhooks that automatically modify resources. You'll deploy a webhook that injects security contexts into all Pods, and you'll witness how this can cause unexpected behavior when the modifications conflict with container requirements.
-
-After that, we'll transition to OPA Gatekeeper. You'll create constraint templates and constraints, which provide discoverable, declarative policies. Unlike custom webhooks that are black boxes, Gatekeeper policies are Kubernetes resources you can inspect with kubectl.
-
-Finally, you'll tackle a lab challenge that requires fixing an application to satisfy multiple Gatekeeper policies simultaneously - requiring specific labels and resource limits.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster with sufficient permissions to install cluster-scoped resources
-- kubectl installed and configured
-- Ability to install cert-manager and webhook deployments
-- A terminal and text editor ready
-
-The exercises move at a comfortable pace with explanations of what's happening at each step. You can follow along on your own cluster, or watch first and practice afterward using the lab materials.
-
-## Why This Matters
-
-While admission control is advanced material beyond core CKAD requirements, understanding how it works is crucial for troubleshooting. When your deployments mysteriously fail in the exam or production environments, admission controllers are often the reason. Knowing where to look for admission errors - checking ReplicaSet events, understanding ResourceQuota violations, recognizing Pod Security Standard restrictions - will save you valuable time.
-
-The exam won't ask you to implement admission controllers, but you must quickly diagnose when they block your deployments.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for hands-on work with advanced features
-- Reassure that exercises build progressively
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Let's get started with the hands-on exercises and see admission control in action!

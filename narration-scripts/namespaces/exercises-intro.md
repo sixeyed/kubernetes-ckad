@@ -1,68 +1,15 @@
-# Namespaces - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of namespaces and why they're essential for organizing and isolating workloads in Kubernetes, it's time to put that knowledge into practice. In the upcoming exercises video, you're going to see firsthand how namespaces provide logical separation within a cluster and how they enable you to confidently run multiple workloads without compromising security or scale.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+We'll start by exploring the API specs for namespaces, which are remarkably simple compared to other Kubernetes resources. You'll see just how straightforward the YAML structure is, and you'll understand why namespaces are one of the easiest resources to work with. Then we'll dive into creating and using namespaces, beginning with the system namespaces that already exist in your cluster. You'll discover that Kubernetes itself runs in pods within the kube-system namespace, and you'll learn how to work with resources in different namespaces using the namespace flag. We'll also explore contexts, which are how kubectl manages connections to clusters and default namespaces, and you'll practice switching your context to avoid typing the namespace flag repeatedly.
 
----
+As we move into deploying objects to namespaces, you'll see how object specifications can include the target namespace in the YAML, or how you can set it with kubectl at deployment time. You'll work with multiple applications deployed across different namespaces, understanding how the namespace becomes a container for all the related resources. We'll look at naming conventions like prefixing namespace files with numbers to ensure they're created in the correct order, since namespaces must exist before objects can be deployed into them. You'll also see how using namespaces to group applications means your top-level objects don't need as many labels for filtering, since the namespace itself provides that organizational structure.
 
-## Transition to Practice
+Next, we'll explore namespaces and Service DNS, which is where things get particularly interesting. You'll learn that networking in Kubernetes is flat, so any pod can reach another pod by IP address, but services are namespace-scoped. We'll work through the DNS naming patterns for services, understanding when to use local names versus fully qualified domain names. You'll practice DNS lookups from within pods to see how the same service name resolves differently depending on whether you include the namespace in the query. This cross-namespace communication pattern is fundamental to building multi-tier applications that span multiple namespaces.
 
-Welcome back! Now that we've covered the fundamental concepts of Namespaces - what they are, why they're essential for organization and isolation, and how they enable multi-tenancy - it's time to work with them hands-on.
+Then we'll move into applying resource limits at the namespace level. You'll work with ResourceQuotas that limit the total resources available to a namespace, and you'll see how resource limits and requests at the pod level interact with these namespace-level constraints. We'll deploy a compute-intensive application with different CPU allocations and watch how the quota enforcement prevents pods from exceeding their allocated resources. You'll see what happens when you try to exceed a quota and how Kubernetes provides clear error messages to help you understand why a deployment isn't scaling.
 
-In the upcoming exercises video, we're going to create namespaces, deploy resources into them, and see how namespaces provide logical separation within a cluster. You'll understand DNS naming patterns and cross-namespace communication.
+The exercises also include a lab challenge where you'll add a caching proxy in front of an application, with the twist that the proxy must be deployed in a specific namespace according to operational requirements. This simulates real-world scenarios where different teams or policies dictate which namespaces certain types of resources should live in. Finally, we'll touch on context switching tools and cleanup patterns, showing you how deleting a namespace removes everything inside it, which is both powerful and potentially dangerous if you're not careful.
 
-## What You'll Learn
+Before starting the exercises video, make sure you have a running Kubernetes cluster of any distribution, kubectl installed and configured, and a terminal and text editor ready. The exercises demonstrate practical namespace patterns you'll use constantly in multi-tenant clusters. You can follow along on your own cluster, or watch first and practice afterward at your own pace.
 
-In the hands-on exercises, we'll explore namespace usage and patterns:
-
-First, you'll create namespaces using both imperative commands and declarative YAML. You'll see how simple namespace creation is and how it immediately provides a new logical partition in your cluster.
-
-Then, we'll deploy resources into specific namespaces. You'll use the `-n` or `--namespace` flag to specify where resources should be created. You'll understand that most resources are namespaced (Pods, Services, Deployments) while some are cluster-scoped (Nodes, PersistentVolumes).
-
-Next, you'll work with namespace context switching. You'll use `kubectl config set-context --current --namespace` to change your default namespace, making it easier to work within a specific namespace without constantly specifying `-n`. You'll see how this improves workflow when focusing on one namespace.
-
-After that, you'll explore cross-namespace communication. You'll see how Services in one namespace can be accessed from Pods in another namespace using fully qualified DNS names. You'll understand the pattern: `service-name.namespace.svc.cluster.local`.
-
-You'll also work with namespace isolation patterns. You'll see how ResourceQuotas limit resources per namespace, how LimitRanges set defaults per namespace, and how NetworkPolicies can control traffic between namespaces.
-
-Finally, you'll practice namespace cleanup and the implications of deleting namespaces - all resources within are deleted cascade-style.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that namespace operations are quick and safe
-
-The exercises demonstrate practical namespace patterns you'll use constantly in multi-tenant clusters. You can follow along on your own cluster, or watch first and practice afterward.
-
-## Why This Matters
-
-Namespaces are core CKAD exam content. You'll be asked to create resources in specific namespaces, switch namespace contexts, and understand cross-namespace communication. The exam expects you to work efficiently with namespace-scoped commands.
-
-Beyond the exam, namespaces are fundamental to organizing production Kubernetes clusters. Every real-world cluster uses namespaces to separate environments, teams, or applications. Understanding namespace patterns is essential for effective cluster management.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing logical organization
-- Reassure that namespace concepts are straightforward
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Why does this matter? Namespaces are core CKAD exam content, and you'll be asked to create resources in specific namespaces, switch namespace contexts, and understand cross-namespace communication throughout the exam. Beyond certification, namespaces are fundamental to organizing production Kubernetes clusters. Every real-world cluster uses namespaces to separate environments, teams, or applications, so understanding these patterns is essential for effective cluster management. Let's get started with the hands-on exercises!

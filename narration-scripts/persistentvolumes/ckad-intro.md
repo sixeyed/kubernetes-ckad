@@ -1,78 +1,21 @@
-# Persistent Volumes - CKAD Introduction
+Excellent work on the hands-on exercises! You've now practiced creating persistent volume claims, mounting them in pods, working with access modes, and understanding dynamic provisioning with storage classes. Here's what you need to know for CKAD, persistent volumes are core exam content, and understanding the CKAD exam relevance is crucial for your preparation. You'll create PVCs and mount them in pods, often as part of deploying stateful applications. The exam expects you to know PVC syntax and mounting patterns without hesitation, which is what we're going to focus on in this next section.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with exam resources visible
-**Purpose:** Bridge from basic exercises to exam-focused preparation
+The CKAD exam tests practical storage usage with real-world scenarios. You'll see requirements like "create a pod with persistent storage" or "deploy a database with a 5Gi volume," and you need to create PVCs and mount them in pods quickly and correctly. For persistent volumes specifically, the exam will test you on rapid PVC creation using kubectl create or writing concise YAML manifests. PVCs need resources requests storage for size, access modes for access pattern, and optionally a storage class name. You must know this structure by heart. The quick reference section in the CKAD materials covers common kubectl commands for listing storage resources, describing PVCs for troubleshooting, checking pod volume mounts, and deleting PVCs, all of which you'll need to execute fluently under exam time pressure.
 
----
+Understanding access modes is critical, choosing the correct mode whether it's read-write-once for single-node access, read-write-many for multi-node access, or read-only-many for read-only sharing. The exam may specify requirements that dictate which mode to use, and getting this wrong can cause your pods to fail scheduling. You'll need to master mounting PVCs in pods by adding volumes referencing the PVC by name, and volume mounts in container specs connecting volumes to mount paths. Getting the syntax right matters, volumes use persistent volume claim claim name, while volume mounts specify name and mount path, and mixing these up is a common mistake under pressure.
 
-## Transition to Exam Preparation
+Storage class selection is another key skill, referencing the correct storage class in PVCs using storage class name, or omitting it to use the default storage class. Understanding that the exam cluster will have pre-configured storage classes means you need to know how to inspect what's available. The CKAD scenarios section covers everything from creating a PVC and mounting it in a pod, to shared volumes between containers, using specific storage classes for different performance characteristics, troubleshooting pending PVCs, working with pods that have multiple volumes, and demonstrating data persistence after pod deletion.
 
-Excellent work on the hands-on exercises! You've now practiced creating PersistentVolumeClaims, mounting them in Pods, working with access modes, and understanding dynamic provisioning with StorageClasses.
+You'll need to develop skills in troubleshooting PVC binding by checking PVC status with kubectl get pvc, seeing whether it's bound or pending, using kubectl describe pvc to see binding errors, and understanding common issues like "no persistent volume matches" or "insufficient storage." Understanding pod-PVC-PV relationships is fundamental, knowing that pods reference PVCs, PVCs bind to PVs, and deleting a PVC doesn't immediately delete the PV since that depends on the reclaim policy. Understanding these relationships helps troubleshoot storage issues efficiently.
 
-Here's what you need to know for CKAD: PersistentVolumes are core exam content. You'll create PVCs and mount them in Pods, often as part of deploying stateful applications. The exam expects you to know PVC syntax and mounting patterns without hesitation.
+The advanced CKAD topics section introduces more sophisticated patterns you might encounter. Volume sub-paths let you mount specific files or subdirectories from a volume, which is useful when you need to mount a single config file without hiding other files in the target directory, or when organizing multiple applications on shared storage. Volume expansion allows you to increase PVC size without recreating resources when the storage class supports it, though you need to understand that this is a one-way operation and not all storage types support it. Read-write-many volumes enable scenarios requiring shared storage across multiple pods, but this typically requires network storage like NFS or cloud-specific solutions, and the default storage classes usually only support read-write-once.
 
-That's what we're going to focus on in this next section: exam-specific storage scenarios and rapid configuration techniques.
+The CKAD practice exercises section provides hands-on drills for quick PVC creation, debugging storage issues, multi-container shared storage patterns, and working with stateful sets that use volume claim templates. These exercises simulate exam time pressure and help you build the muscle memory you need. You'll practice creating resources quickly, work on complete scenarios that combine multiple skills, and time yourself to ensure you can handle storage questions within four to five minutes.
 
-## What Makes CKAD Different
+Common exam pitfalls you need to avoid include putting PVCs in the wrong namespace since they're namespaced resources, choosing access modes that aren't compatible with your storage class, forgetting to wait for PVC binding before trying to use them in pods, mismatching volume names between the pod spec and volume mounts, and getting the case sensitivity wrong in access modes since "ReadWriteOnce" is correct but "readwriteonce" will fail validation.
 
-The CKAD exam tests practical storage usage. You'll see requirements like "create a pod with persistent storage" or "deploy a database with a 5Gi volume." You need to create PVCs and mount them in Pods quickly and correctly.
+The exam tips section emphasizes using kubectl create for speed when possible, learning the dry-run pattern for generating YAML templates, practicing without autocomplete since the exam environment has limited autocomplete, bookmarking kubectl docs so you know how to quickly find examples, checking resources immediately after creation, and managing your time by not spending too long troubleshooting one resource. The quick command reference card gives you the essential commands for creating PVCs, listing storage resources, describing for troubleshooting, checking pod volume mounts, and cleaning up resources.
 
-For PersistentVolumes specifically, the exam will test you on:
+Remember, PVC creation and mounting is straightforward with the right syntax. The structure is consistent, create PVC with size and access modes, reference it in pod volumes, mount it in volume mounts. This three-step process handles most storage scenarios. When you see "persistent storage" in exam requirements, immediately think create PVC, reference in volumes, mount in volume mounts, and execute that workflow automatically. The additional resources section points you to the official Kubernetes documentation for PVs and PVCs, storage class documentation, volume types reference, and the CKAD exam curriculum. The next steps guide you to practice creating PVCs and pods under time pressure, experiment with different storage classes in your cluster, and move on to the stateful sets lab for advanced persistent storage patterns.
 
-**Rapid PVC creation** - Using `kubectl create` or writing concise YAML manifests. PVCs need `resources.requests.storage` for size, `accessModes` for access pattern, and optionally `storageClassName`. You must know this structure by heart.
-
-**Understanding access modes** - Choosing the correct mode: ReadWriteOnce (RWO) for single-node access, ReadWriteMany (RWX) for multi-node access, ReadOnlyMany (ROX) for read-only sharing. The exam may specify requirements that dictate which mode to use.
-
-**Mounting PVCs in Pods** - Adding `volumes` referencing the PVC by name, and `volumeMounts` in container specs connecting volumes to mount paths. Getting the syntax right: volumes use `persistentVolumeClaim.claimName`, while volumeMounts specify `name` and `mountPath`.
-
-**StorageClass selection** - Referencing the correct StorageClass in PVCs using `storageClassName`, or omitting it to use the default StorageClass. Understanding that the exam cluster will have pre-configured StorageClasses.
-
-**Troubleshooting PVC binding** - Checking PVC status with `kubectl get pvc`, seeing whether it's Bound or Pending, using `kubectl describe pvc` to see binding errors, and understanding common issues like "no PersistentVolume matches" or "insufficient storage."
-
-**Understanding Pod-PVC-PV relationships** - Knowing that Pods reference PVCs, PVCs bind to PVs, and deleting a PVC doesn't immediately delete the PV (depends on reclaim policy). Understanding these relationships helps troubleshoot storage issues.
-
-## What's Coming
-
-In the upcoming CKAD-focused video, we'll drill on exam scenarios. You'll practice creating PVCs in under 60 seconds. You'll mount PVCs in Pods efficiently. You'll troubleshoot common storage issues quickly.
-
-We'll cover exam patterns: creating simple PVCs with default StorageClass, mounting PVCs in Deployments for persistent application data, creating multiple PVCs for different application components, understanding emptyDir for temporary storage (doesn't require PVC), and combining PVCs with StatefulSets for scaled stateful applications.
-
-We'll also explore time-saving techniques: using YAML templates for PVCs since the structure is consistent, knowing that `kubectl explain pvc.spec` shows required fields, verifying PVC binding before creating Pods (saves troubleshooting time), and understanding that most exam environments have default StorageClasses configured.
-
-Finally, we'll practice complete scenarios including creating PVCs and Pods together, timing ourselves to ensure we can handle storage questions within 4-5 minutes.
-
-## Exam Mindset
-
-Remember: PVC creation and mounting is straightforward with the right syntax. The structure is consistent: create PVC with size and accessModes, reference it in Pod volumes, mount it in containers. Practice until this workflow is automatic.
-
-When you see "persistent storage" in exam requirements, immediately think: create PVC, reference in volumes, mount in volumeMounts. This three-step process handles most storage scenarios.
-
-Let's dive into CKAD-specific PersistentVolume scenarios!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can show terminal with storage demonstrations
-- Serious but encouraging tone - this is exam preparation
-
-**Tone:**
-- Shift from learning to drilling
-- Emphasize syntax accuracy for volumes
-- Build confidence through systematic approaches
-
-**Key Messages:**
-- PersistentVolumes are core CKAD content
-- PVC creation and mounting is straightforward
-- Know the three-step process: PVC, volumes, volumeMounts
-- The upcoming content focuses on exam techniques
-
-**Timing:**
-- Transition opening: 30 sec
-- What Makes CKAD Different: 1 min
-- What's Coming: 45 sec
-- Exam Mindset: 30 sec
-
-**Total: ~2.75 minutes**
+Practice until this workflow is automatic. The exam is performance-based, and fluency with persistent volumes will help you complete storage tasks quickly and move on to other questions. Let's dive into CKAD-specific persistent volume scenarios and build that exam-ready confidence!

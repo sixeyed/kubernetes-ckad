@@ -1,68 +1,23 @@
-# ConfigMaps - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of ConfigMaps in Kubernetes, it's time to work with them hands-on. You've learned what they are, why they matter, and how they enable environment-independent configuration. In the upcoming exercises video, we're going to create ConfigMaps using multiple methods and see how they provide configuration to running applications.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+Before we dive into the exercises themselves, let's orient ourselves with what we'll be working through. We'll start by examining the API specs to understand the official Kubernetes documentation for ConfigMaps. This is always your first stop when learning any new Kubernetes resource, and it's especially important for CKAD exam preparation where you'll have access to the official docs during the test.
 
----
+The exercises begin with running the configurable demo app. This is a specially designed application that visually displays its configuration, making it easy to see exactly how ConfigMaps affect your containers. You'll first run it without any ConfigMaps to see its default behavior. This establishes a baseline and demonstrates that applications always have some default configuration baked into their images.
 
-## Transition to Practice
+From there, we move into setting config with environment variables in the Pod spec. This isn't using ConfigMaps yet, but it shows the traditional approach and sets up the comparison for why ConfigMaps are better. You'll add configuration directly in the Pod definition, which works but isn't maintainable at scale.
 
-Welcome back! Now that we've covered the fundamental concepts of ConfigMaps in Kubernetes - what they are, why they matter, and how they enable environment-independent configuration - it's time to work with them hands-on.
+Next comes the pivotal shift to setting config with environment variables in ConfigMaps. You'll create your first ConfigMap from literal values and see how these simple key-value pairs can be injected into Pods as environment variables, overriding the defaults without changing the container image. This is where you start to see the power of separating configuration from code.
 
-In the upcoming exercises video, we're going to create ConfigMaps using multiple methods and see how they provide configuration to running applications. You'll work with a demo application that visually displays its configuration, making it easy to see exactly how ConfigMaps affect your containers.
+Then we progress to setting config with files in ConfigMaps. This is a game-changer because many applications need complete configuration files rather than individual environment variables. You'll create ConfigMaps from files using multiple methods, both individual configuration files and entire directories, and mount these as volumes in your containers. This section really drives home how ConfigMaps can provide complete configuration files like nginx.conf or application.properties.
 
-## What You'll Learn
+The exercises include a lab challenge where you'll apply what you've learned to solve a practical problem. This is your chance to work independently and reinforce the concepts before moving on. The lab asks you to create ConfigMaps using methods we haven't explicitly demonstrated, pushing you to think about the different approaches available.
 
-In the hands-on exercises, we'll progress through different ConfigMap patterns:
+We also have an extra section on being careful with volume mounts. This covers a critical gotcha that trips up many developers: volume mounts can overwrite existing directories. You'll see firsthand what happens when you mount a ConfigMap to a directory that already contains essential files, like mounting to the app directory itself. Understanding this behavior is crucial for avoiding production incidents.
 
-First, you'll run the demo application without any ConfigMaps to see its default behavior. This establishes a baseline and demonstrates that applications always have some default configuration baked into their images.
+Finally, every exercise ends with cleanup. Kubernetes makes it easy to create resources, but you also need to know how to remove them properly. The cleanup section shows you how to use label selectors to delete all the resources created during the lab in a single command.
 
-Then, you'll add configuration through environment variables defined directly in Pod specs. This isn't using ConfigMaps yet, but it shows the traditional approach and sets up the comparison for why ConfigMaps are better.
+Before starting the exercises video, make sure you have a running Kubernetes cluster. Any distribution works for this: Docker Desktop, K3s, minikube, kind, or a cloud provider. You'll also need kubectl installed and configured, a terminal and text editor ready, and the ability to access applications via port-forward or NodePort. The exercises use that custom demo application called "configurable" that makes configuration visible through a web interface. You can follow along and deploy it yourself, or watch first and practice afterward.
 
-Next, you'll create your first ConfigMap from literal values using `kubectl create configmap --from-literal`. You'll see how these simple key-value pairs can be injected into Pods as environment variables, overriding the defaults without changing the container image.
+Here's why this matters, especially for CKAD. ConfigMaps are a core exam topic. You'll absolutely encounter questions that ask you to create ConfigMaps and use them in Pods, both as environment variables and as mounted volumes. The exam tests your ability to work quickly with all ConfigMap creation methods and consumption patterns. Beyond the exam, ConfigMaps are fundamental to running applications in Kubernetes. Every real-world deployment uses ConfigMaps to separate configuration from code, enabling the same container images to run in different environments with different settings.
 
-After that, you'll create ConfigMaps from files - both individual configuration files and entire directories. You'll mount these as volumes in your containers, seeing how ConfigMaps can provide complete configuration files like nginx.conf or application.properties.
-
-You'll also work with selective mounting - choosing which keys from a ConfigMap to expose, and using the `subPath` feature to mount individual files without overwriting entire directories.
-
-Finally, you'll explore how ConfigMap updates propagate to running Pods. You'll see that volume-mounted ConfigMaps update automatically, while environment variables require Pod restarts. This understanding is critical for managing configuration changes in production.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Ability to access applications via port-forward or NodePort
-
-The exercises use a custom demo application called "configurable" that makes configuration visible through a web interface. You can follow along and deploy it yourself, or watch first and practice afterward.
-
-## Why This Matters
-
-ConfigMaps are a core CKAD exam topic. You'll absolutely encounter questions that ask you to create ConfigMaps and use them in Pods - both as environment variables and as mounted volumes. The exam tests your ability to work quickly with all ConfigMap creation methods and consumption patterns.
-
-Beyond the exam, ConfigMaps are fundamental to running applications in Kubernetes. Every real-world deployment uses ConfigMaps to separate configuration from code, enabling the same container images to run in different environments with different settings.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing configuration in action
-- Reassure that exercises build progressively from simple to complex
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+The exercises build progressively from simple to complex. We start with basic environment variables, move through file-based configuration, explore volume mounting patterns, and finally examine how configuration updates propagate to running applications. By the end, you'll have hands-on experience with every ConfigMap pattern you need for both the CKAD exam and real-world Kubernetes deployments. Let's get started with the hands-on exercises!

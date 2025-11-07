@@ -1,78 +1,35 @@
-# Docker and Container Basics - CKAD Introduction
+Excellent work on the hands-on exercises! You've now practiced working with container images, building custom images with Dockerfiles, running containers, and pushing to registries. Now we need to shift our focus from general Docker skills to specifically what CKAD expects you to know about containers in a Kubernetes context.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with exam resources visible
-**Purpose:** Bridge from basic exercises to exam-focused preparation
+Let's start with why container images matter for CKAD. The exam is part of the Application Design and Build domain, which represents twenty percent of the total exam weight. The exam doesn't test Docker commands directly, but it absolutely tests container concepts. You'll specify container images in Pods, understand image pull behavior, troubleshoot image pull failures, and diagnose container crashes. The exam assumes you already understand how containers work - that foundation we just built in the exercises - and now you need to apply that knowledge within Kubernetes pod specifications and troubleshooting scenarios.
 
----
+The CKAD guide provides a quick reference for the exam that covers the essential Dockerfile structure and patterns you need to recognize. When you see a question about images on the exam, you should be able to quickly recall the basic Dockerfile structure - FROM, WORKDIR, COPY, RUN, ENV, EXPOSE, and CMD - and understand what each instruction does. You also need to know the multi-stage build pattern cold, because it's the standard approach for building production images. The quick reference helps you review these patterns rapidly when you need them.
 
-## Transition to Exam Preparation
+You'll encounter several exam scenarios that test your container knowledge. These scenarios might ask you to create a basic Dockerfile, build a multi-stage image to minimize size, modify an existing Dockerfile to add security features like running as a non-root user, or build an image and then deploy it in Kubernetes with the correct imagePullPolicy. Each of these scenarios has a clear pattern you can follow, and practicing these patterns until they're automatic will save you valuable time during the exam.
 
-Excellent work on the hands-on exercises! You've now practiced working with container images, building custom images with Dockerfiles, running containers, and pushing to registries.
+Understanding essential Dockerfile instructions is crucial because you need to know what they do and when to use each one. The difference between COPY and ADD, when to use RUN versus CMD versus ENTRYPOINT, and how to properly set working directories and users - these details matter. You won't be writing complex Dockerfiles from scratch on the exam, but you might need to modify one or understand why a container isn't working as expected. Knowing these instructions helps you troubleshoot efficiently.
 
-Here's what you need to know for CKAD: The exam doesn't test Docker commands directly, but it absolutely tests container concepts. You'll specify container images in Pods, understand image pull behavior, troubleshoot image pull failures, and diagnose container crashes. Container knowledge is foundational.
+Multi-stage builds are especially important for CKAD. The exam guide emphasizes this repeatedly because it's the standard pattern for compiled languages and the best practice for keeping images small and secure. Multi-stage builds let you have all your build tools in one stage and only the runtime dependencies in the final stage. Understanding this pattern means you can recognize it quickly, modify it when needed, and explain why smaller images are better - they deploy faster, use fewer resources, and have a smaller attack surface.
 
-That's what we're going to focus on in this next section: applying container knowledge to Kubernetes Pod specifications and troubleshooting.
+The exam tips and time savers section gives you practical guidance on what to do and what not to do. Combine RUN commands to reduce layers. Copy dependencies before source code to leverage build caching. Use specific tags instead of latest. Run as non-root for security. These aren't just best practices - they're patterns that will help you build correct solutions faster during the exam. Knowing what not to do is equally important: don't use latest in production, don't leave secrets in images, and don't install unnecessary packages that bloat your image size.
 
-## What Makes CKAD Different
+You should be familiar with common base images for the major languages. Python, Node.js, Java, Go, and .NET all have official images with different variants - full versions for building, alpine versions for smaller sizes, and specialized runtime images. There are also special images like scratch for static binaries, alpine for minimal Linux environments, and ubuntu for full-featured systems. Knowing which image to use for which purpose helps you make good architectural decisions quickly.
 
-The CKAD exam assumes container knowledge. You won't build Docker images during the exam, but you'll work with containers constantly through Pod specifications. Understanding how containers work helps you troubleshoot faster and configure Pods correctly.
+Using images in Kubernetes requires understanding how imagePullPolicy works. For local development, you might use Never to ensure Kubernetes uses your locally-built image. For production with versioned tags, IfNotPresent makes sense because you want to use cached images when available. For the latest tag, Always is the default because that tag is mutable. Understanding these policies helps you debug why Kubernetes isn't finding your image or why it's pulling when you don't expect it to.
 
-For container-related CKAD content, the exam may test you on:
+Troubleshooting on the exam is where your container knowledge really pays off. When you see errors like "COPY failed," you know to check the build context. When you see "no such file or directory" at runtime, you check the WORKDIR and COPY instructions. When images are too large, you know to implement multi-stage builds. These troubleshooting skills come from understanding how images are built and how containers run, which is why we spent time on the fundamentals in the exercises.
 
-**Image specification in Pods** - Setting `image` in container specs using proper naming: `registry/repository:tag`. Understanding that missing tags default to `latest`. Knowing how to reference images from private registries.
+The practice scenarios give you timed exercises to simulate exam conditions. Eight minutes per question is the target time, and you should practice these scenarios until you can complete them within that window. Creating a basic Dockerfile for Node.js, building a multi-stage Go application, adding a non-root user for security, and building then deploying to Kubernetes - these are all realistic exam tasks. Time yourself, and if you can't finish in eight to ten minutes, you need more practice with that pattern.
 
-**Image pull policies** - Understanding `imagePullPolicy`: Always (always pull), Never (never pull, must exist locally), IfNotPresent (pull if not cached). Knowing that `latest` tag uses Always by default, while versioned tags use IfNotPresent.
+Common exam patterns help you recognize what a question is really asking for. When you see "build a container image," you know the pattern: create or modify the Dockerfile, use docker build with proper tags, verify the image exists, and test it with docker run. When you see "optimize image size," you know to implement multi-stage builds, use alpine base images, combine RUN commands, and remove build artifacts. When you see "create Pod using custom image," you know to build with a specific tag, create the Pod YAML, set imagePullPolicy to Never for local images, and verify it's running. Recognizing these patterns helps you respond efficiently.
 
-**Container commands and arguments** - Using `command` to override ENTRYPOINT and `args` to override CMD from the Dockerfile. Understanding how these interact and when to use each.
+The exam day checklist gives you a systematic way to verify your solutions before moving on. Check your Dockerfile syntax. Verify WORKDIR is set. Confirm you're using multi-stage if size matters. Ensure your build command has the correct tag and context. Test that docker run actually works. Verify imagePullPolicy is set correctly in your Kubernetes manifests. This checklist prevents silly mistakes that cost you points.
 
-**Working directories** - Setting `workingDir` in container specs to change the starting directory, overriding Dockerfile WORKDIR.
+Key points to remember distill everything down to the essentials. FROM is required in every Dockerfile. Multi-stage builds save space by separating build and runtime. COPY dependencies before source code for better caching. Combine RUN commands to reduce layers. Use specific tags, not latest. Run as non-root for security. EXPOSE is just documentation. imagePullPolicy Never is for local images in Kubernetes. These points should become automatic.
 
-**Troubleshooting image pull failures** - Diagnosing "ImagePullBackOff" or "ErrImagePull" errors. Understanding authentication failures for private registries, checking image name spelling, and verifying image tags exist.
+Time management is critical because container questions can consume more time than you realize. A typical exam question should take eight to ten minutes - one minute to read requirements, three to four minutes to write or modify the Dockerfile, two to three minutes to build the image, and two to three minutes to test and verify. If you're stuck beyond ten minutes, flag the question and move on. You can always come back if you have time at the end.
 
-**Understanding container exit codes** - Knowing that exit code 0 means success, non-zero means failure. Recognizing common codes: 137 (OOMKilled), 143 (SIGTERM), 1 (general error). Using these to diagnose crashes.
+The additional resources section reminds you what documentation you can access during the exam. The Dockerfile reference, multi-stage build documentation, and best practices guide are all available. You should bookmark these before the exam so you can find them quickly when you need them. Don't waste time searching - know where the information lives.
 
-## What's Coming
+The summary brings it all together. You need to master basic Dockerfile syntax, multi-stage builds for optimization, docker build commands with proper tagging, using images in Kubernetes, imagePullPolicy options, security practices like non-root users, and layer caching optimization. Container images are part of the Application Design and Build domain, which is twenty percent of the exam weight. Each question takes eight to ten minutes on average, and the difficulty is medium - you need hands-on practice to get comfortable with the patterns.
 
-In the upcoming CKAD-focused video, we'll focus on container concepts as they apply to Kubernetes. You'll practice specifying images correctly in Pod specs. You'll troubleshoot image pull failures and container crashes. You'll understand how Dockerfile instructions translate to Pod configurations.
-
-We'll cover exam patterns: specifying container images with full registry paths, setting image pull policies appropriately, overriding container commands and args, using imagePullSecrets for private registries, and diagnosing why containers won't start or keep crashing.
-
-We'll also explore troubleshooting workflows: when you see ImagePullBackOff, check image name, tag, and registry authentication. When you see CrashLoopBackOff, check container logs and exit code. When you see OOMKilled, check memory limits and requests.
-
-Finally, we'll ensure you can translate container knowledge to Kubernetes pod specifications quickly and accurately.
-
-## Exam Mindset
-
-Remember: CKAD tests Kubernetes, not Docker. But container knowledge makes you faster and more effective. Understanding how images, commands, and containers work helps you configure Pods correctly and troubleshoot efficiently.
-
-When you see container errors in the exam, your container knowledge helps you diagnose faster. Don't waste time guessing - use systematic troubleshooting based on container fundamentals.
-
-Let's dive into applying container knowledge to CKAD scenarios!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can show terminal with Pod configurations
-- Serious but encouraging tone - this is exam preparation
-
-**Tone:**
-- Shift from Docker commands to Kubernetes applications
-- Emphasize troubleshooting value
-- Build confidence through knowledge transfer
-
-**Key Messages:**
-- CKAD doesn't test Docker commands directly
-- Container knowledge helps troubleshooting
-- Image pull and crash issues are common
-- The upcoming content connects containers to Kubernetes
-
-**Timing:**
-- Transition opening: 30 sec
-- What Makes CKAD Different: 1 min
-- What's Coming: 45 sec
-- Exam Mindset: 30 sec
-
-**Total: ~2.75 minutes**
+Remember that CKAD tests Kubernetes, not Docker, but your container knowledge makes you faster and more effective. When you see container errors in the exam, you can diagnose them systematically instead of guessing. That speed and accuracy comes from understanding the fundamentals we covered in the exercises and knowing how to apply them in Kubernetes contexts. Let's dive into the CKAD-specific scenarios and make sure you're ready for whatever container questions the exam throws at you!

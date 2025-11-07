@@ -1,68 +1,15 @@
-# Advanced Troubleshooting Part 2 - Exercises Introduction
+Welcome back! Now that we've covered the fundamentals of troubleshooting individual Kubernetes resources, it's time to tackle something more realistic and more challenging. Real applications in Kubernetes rarely consist of just a single Pod or Deployment. Instead, they're composed of multiple interconnected resources that all need to work together harmoniously. This is what we call application modeling, and when something goes wrong, troubleshooting becomes significantly more interesting.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In this lab, we're going to work with a web application that represents a typical Kubernetes deployment. This app reads its configuration from a ConfigMap, stores sensitive database credentials in a Secret, persists data using a PersistentVolume, and runs in its own custom namespace. Each of these resources serves a specific purpose, and each one needs to be configured correctly for the application to work. When you deploy real applications to Kubernetes, you'll almost always use this same pattern of multiple resources working together.
 
----
+The challenge here is that something is wrong with this deployment. Actually, several things are wrong. When you apply the specs and try to run this app, it won't work. Your goal is to diagnose the problems systematically and fix them until you can successfully browse to the application and see it displaying its configuration. This requires thinking about how all these different resources interact with each other, understanding the relationships between namespaces, volumes, and configuration data, and methodically tracking down each issue.
 
-## Transition to Practice
+What makes this type of troubleshooting different from what we've done before is that the problems can cascade. A misconfigured namespace means your ConfigMap might not be accessible. A problem with your Secret format means your Pod can't start. A StorageClass that doesn't exist means your PersistentVolumeClaim can't bind, which keeps your Pod in a pending state. Each issue needs to be identified and resolved before you can move on to discover the next one. This is exactly how troubleshooting works in production environments, where one configuration error can mask or trigger other problems.
 
-Welcome back! Now that we've covered advanced troubleshooting concepts - performance issues, storage problems, and complex multi-component failures - it's time to diagnose and fix these sophisticated problems.
+Before you start the hands-on exercises, make sure you have a running Kubernetes cluster and kubectl properly configured. You'll need a terminal and text editor ready, and you should be comfortable with the basic troubleshooting commands we covered earlier. The key to success here is being systematic. Don't just guess at fixes or randomly edit YAML files. Instead, use describe commands to understand what's happening, check logs when Pods fail, verify that resources exist in the namespaces where they're expected, and work through each issue methodically.
 
-In the upcoming exercises video, we're going to troubleshoot scenarios that involve multiple interacting components, diagnose subtle performance issues, and resolve complex storage and networking problems.
+The lab provides hints if you get stuck, and there's a complete solution available, but I encourage you to spend real time diagnosing the problems yourself before looking at either. These kinds of configuration issues are incredibly common in real Kubernetes deployments. Someone creates a ConfigMap in the default namespace when the Pod expects it elsewhere. Someone specifies a StorageClass that doesn't exist in the cluster. Someone uses plaintext in a Secret's data field when it should be base64 encoded. Practicing with these scenarios now will make you much more effective when you encounter similar issues in production.
 
-## What You'll Learn
+When you've successfully fixed all the problems and the application is running, you'll be able to access it through your browser and see it displaying its configuration. That's your success criteria. And when you're done, there's a cleanup section that shows you how to remove all the objects you created, including the custom namespace and any resources that might have been created in other namespaces. Proper cleanup is always important when you're working through lab exercises.
 
-In the hands-on exercises, we'll troubleshoot complex, real-world scenarios:
-
-First, you'll diagnose performance degradation issues. You'll investigate slow response times, identify resource bottlenecks, check for CPU throttling and memory pressure, and optimize resource configurations. You'll use metrics and logs to identify root causes.
-
-Then, we'll troubleshoot persistent storage issues. You'll diagnose PVC binding failures, resolve storage provisioning problems, fix volume mount permission errors, and understand storage class configuration issues. You'll work through the complete PVC-to-PV binding lifecycle.
-
-Next, you'll resolve complex networking problems involving multiple components. You'll diagnose Service misconfiguration, DNS resolution issues, NetworkPolicy conflicts, and ingress routing problems. You'll test connectivity between components systematically.
-
-After that, you'll troubleshoot multi-container Pod issues. You'll diagnose init container failures, sidecar communication problems, and shared volume access issues. You'll understand how containers in a Pod interact and affect each other.
-
-You'll also work through StatefulSet problems - Pods stuck during rolling updates, PVC template issues, and headless Service configuration problems. You'll understand StatefulSet-specific troubleshooting patterns.
-
-Finally, you'll diagnose cascading failures where one component's problem affects multiple other components, requiring systematic analysis to identify the root cause.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster with metrics-server
-- kubectl installed and configured
-- A terminal and text editor ready
-- Strong foundation in basic troubleshooting from Part 1
-
-The exercises build on basic troubleshooting, adding complexity and component interactions that mirror production scenarios.
-
-## Why This Matters
-
-Advanced troubleshooting represents real-world complexity. While CKAD focuses on fundamentals, understanding complex scenarios prepares you for production work and builds diagnostic thinking that helps even with simple problems.
-
-These scenarios teach you to think systematically when multiple components interact, a skill that's valuable throughout your Kubernetes career.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Acknowledge increased complexity
-- Build confidence through systematic approaches
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+This lab builds directly on the troubleshooting skills we've developed, but it adds the complexity of multiple resources and the relationships between them. Take your time, be systematic, and use the diagnostic tools we've learned. Let's get started with troubleshooting this multi-resource application!
