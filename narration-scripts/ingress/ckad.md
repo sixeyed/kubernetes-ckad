@@ -1,393 +1,245 @@
-# Ingress CKAD Exam Preparation - Narration Script
+# Ingress - CKAD Narration Script
 
-**Duration:** 20-25 minutes
-**Format:** Exam-focused tutorial with practical demonstrations
-**Prerequisite:** Basic Ingress lab completed
-**Target Audience:** CKAD exam candidates
-
----
-
-## Introduction (0:00-1:30)
-**Duration:** 90 seconds
-
-**Screen:** Terminal with Kubernetes cluster ready
-
-**Narration:**
-"Welcome to the CKAD-focused Ingress session. Ingress is classified as supplementary content for CKAD, meaning it may appear on the exam but isn't guaranteed. However, when it does appear, it's often combined with other topics like services, deployments, and troubleshooting, making it a high-value skill to master.
-
-In the CKAD exam, you'll work under time pressure with limited access to external resources. The good news is that kubernetes.io documentation is available, including Ingress examples and API references.
-
-In this session, we'll cover exactly what you need to know for the exam: path types and how they match URLs, host and path-based routing patterns, IngressClass selection, TLS configuration, troubleshooting broken Ingress resources, and time-saving kubectl commands. We'll work through practical examples that mirror real exam questions.
-
-Let's start by ensuring you have the Ingress Controller from the basic lab still running. If not, deploy it now."
-
-**Commands:**
+**Duration:** 25-30 minutes
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Completed basic Ingress exercises
 
 ---
 
-## Part 1: Path Types Deep Dive (1:30-5:00)
-**Duration:** 3 minutes 30 seconds
+Welcome to the CKAD exam preparation module for Kubernetes Ingress. This session covers the advanced Ingress topics you'll encounter on the exam, building on what we learned in the exercises lab.
 
-### Understanding Path Matching (1:30-2:30)
+The CKAD exam expects you to understand and work with Ingress resource structure and rules, path types including Prefix and Exact matching, host-based and path-based routing, multiple paths and backends in a single Ingress, IngressClass and controller selection, TLS and HTTPS configuration, default backends, annotations for controller-specific features, cross-namespace considerations, and troubleshooting Ingress issues. These topics separate basic understanding from exam-ready competence, so let's dive deep into each one.
 
-**Screen:** Terminal and editor
+## CKAD Ingress Requirements
 
-**Narration:**
-"Path types are critical for the CKAD exam because they determine exactly which requests match your Ingress rules. There are three path types, but you'll primarily use two: Prefix and Exact.
+Ingress is classified as supplementary content for CKAD, meaning it may appear on the exam but isn't guaranteed. However, when it does appear, it's often combined with other topics like Services, Deployments, and troubleshooting, making it a high-value skill to master. In the CKAD exam, you'll work under time pressure with limited access to external resources, but the good news is that kubernetes.io documentation is available, including Ingress examples and API references.
 
-Prefix is the most common. It matches the beginning of the URL path, including everything after it. If your path is '/api', it matches '/api', '/api/', '/api/users', and '/api/v2/products'. Think of it as 'starts with' matching.
+We'll cover exactly what you need to know for the exam in this session. You need to understand how Ingress resources define routing rules, how path types determine which requests match your rules, how to route traffic based on hostnames and URL paths, how to work with multiple backends in a single Ingress, how to select the right IngressClass when multiple controllers exist, how to configure TLS certificates for HTTPS, how default backends provide fallback behavior, how annotations enable controller-specific features, how to handle services across multiple namespaces, and how to systematically troubleshoot broken Ingress configurations.
 
-Exact requires an exact match with no trailing content. If your path is '/health', it matches only '/health', not '/health/' or '/health/check'. Use Exact when you need precise control over specific endpoints.
+## API Specs
 
-There's also ImplementationSpecific, which depends on your Ingress Controller. Avoid this in the exam unless specifically instructed, as behavior varies between controllers."
+Before we dive into the practical work, let's review the API resources you'll work with. The Ingress resource is part of the networking.k8s.io/v1 API group and defines routing rules for HTTP and HTTPS traffic. The IngressClass resource, also in networking.k8s.io/v1, allows multiple Ingress controllers to coexist in the same cluster by identifying which controller should handle which Ingress resources. You should be comfortable looking up both of these in the Kubernetes documentation during the exam.
 
-### Prefix Path Type Example (2:30-3:45)
+## Ingress Architecture Review
 
-**Screen:** Terminal
+Let's quickly review the architecture from the basic lab to make sure we're on the same page. The Ingress Controller is a reverse proxy, typically Nginx, Traefik, or Contour, that runs as Pods in your cluster and watches for Ingress resources. Ingress Resources are Kubernetes objects that define routing rules, telling the controller how to route traffic to your services. Services are the backends that Ingress routes to, and they must be ClusterIP or NodePort type. The controller watches for Ingress resources and automatically reconfigures itself when rules change.
 
-**Narration:**
-"Let's create a practical example. I'll deploy a simple application and create an Ingress with Prefix path matching."
+## Path Types
 
-**Commands:**
+Path types are critical for the CKAD exam because they determine exactly which requests match your Ingress rules. There are three path types, but you'll primarily use two. Understanding how path matching works will help you solve routing problems quickly during the exam.
 
-**Narration (continued):**
-"Notice I used the kubectl create ingress command with the asterisk indicating Prefix matching. This is much faster than writing YAML from scratch. Now let's verify what was created."
+### Prefix Path Type
 
-**Commands:**
+Prefix is the most common path type. It matches the beginning of the URL path, including everything after it. Think of it as starts-with matching. If your path is /app, it matches /app, /app/, /app/page, and /app/admin/dashboard. However, it does not match /application or /apps because those don't start with exactly /app followed by a separator. Let me deploy an example to demonstrate this behavior.
 
-**Narration (continued):**
-"Perfect - the pathType is set to Prefix. This Ingress will match '/api', '/api/users', '/api/v1/products', and so on."
+Notice how I used the kubectl create ingress command. This is much faster than writing YAML from scratch during the exam. The asterisk in the rule indicates Prefix matching. When I check the created Ingress, you can see the pathType is set to Prefix. This Ingress will match the base path and anything under it.
 
-### Exact Path Type Example (3:45-5:00)
+### Exact Path Type
 
-**Screen:** Terminal
+Exact requires an exact match with no trailing content. If your path is /api/health, it matches only /api/health, not /api/health/ or /api/health/check. Use Exact when you need precise control over specific endpoints like health checks or metrics endpoints. Unfortunately, kubectl create ingress doesn't have a flag for Exact paths, so you need to write the YAML directly. In the exam, you might use kubectl create to generate a template, then edit it to change the pathType to Exact.
 
-**Narration:**
-"Now let's create an Ingress with Exact matching for a health check endpoint."
+### ImplementationSpecific Path Type
 
-**Commands:**
+There's also ImplementationSpecific, which depends on your Ingress Controller. The behavior varies between controllers, so you should avoid this in the exam unless specifically instructed. Stick with Prefix and Exact for predictable behavior.
 
-**Narration (continued):**
-"Unfortunately, kubectl create ingress doesn't have a flag for Exact paths, so we need to write the YAML directly. In the exam, you might use kubectl create to generate a template, then edit it to change the pathType to Exact. Let's verify both Ingresses."
+### Understanding Path Matching
 
-**Commands:**
+Let me create a practical example with overlapping paths to show you how priority works. When multiple paths could match the same request, understanding priority is essential. The rules are straightforward. Exact matches always win over Prefix matches. Among Prefix matches, longer paths take priority over shorter ones. Some controllers also consider the order of rules in your spec, so it's good practice to put more specific rules first.
 
----
+Watch what happens when I create an Ingress with both /api and /api/v2 paths. A request to /api/users goes to the /api backend because it matches the /api Prefix. But /api/v2/users goes to the /api/v2 backend because /api/v2 is a longer, more specific match. Even though both paths match as Prefixes, the longer one takes priority. This is exactly the kind of question you might see on the CKAD exam. You're given an Ingress with overlapping rules and asked which service handles a specific request. Always remember that more specific matches win.
 
-## Part 2: Path Priority and Overlapping Rules (5:00-7:30)
-**Duration:** 2 minutes 30 seconds
+## Host-Based Routing
 
-### Understanding Priority (5:00-6:00)
+Route traffic based on the HTTP Host header. This is how you can host multiple applications on the same cluster, each with its own domain name, all routing through the same Ingress controller.
 
-**Screen:** Terminal
+### Single Host
 
-**Narration:**
-"A common exam scenario involves multiple paths that could match the same request. Understanding priority is essential. The rules are: Exact matches always win over Prefix matches. Among Prefix matches, longer paths take priority over shorter ones. And some controllers consider the order of rules in your spec, so put more specific rules first.
+The simplest case is routing a single hostname to a service. When you specify a host in your Ingress rule, requests must include that exact hostname in the Host header, or the rule won't match. Let me deploy an example with a single host configured. The host field is app.example.com, and all requests to that hostname route to app-service on port 80.
 
-Let's create a scenario with overlapping paths."
+### Multiple Hosts
 
-**Commands:**
+You can configure multiple hosts in a single Ingress resource, each routing to different services. This is common when you have related applications that should be managed together. Let me show you an Ingress with three different hosts. Each host has its own rule section with its own paths and backends. When a request comes in, the Ingress controller looks at the Host header first to determine which rule section to use, then looks at the path to determine which backend to route to.
 
-### Testing Priority (6:00-7:30)
+### Wildcard Hosts
 
-**Screen:** Terminal with curl commands
+Some controllers support wildcard domains like *.example.com, which matches any subdomain. This is useful for multi-tenant applications or development environments where you want to dynamically create subdomains. However, not all controllers support wildcards, so check your controller documentation. Specific hosts take precedence over wildcards, so if you have both app.example.com and *.example.com defined, requests to app.example.com use the specific rule.
 
-**Narration:**
-"Now we have two overlapping Prefix paths. Let's test how requests are routed. Add api.local to your hosts file first."
+For local testing without DNS, you can add entries to /etc/hosts. This maps hostnames to IP addresses locally, allowing you to test host-based routing without setting up actual DNS records. This is particularly useful during exam preparation.
 
-**Commands:**
+## Path-Based Routing
 
-**Narration (continued):**
-"The request to '/api/users' goes to api-v1 because it matches the '/api' Prefix. But '/api/v2/users' goes to api-v2 because '/api/v2' is a longer, more specific match. Even though both paths match as Prefixes, the longer one takes priority.
+Route to different backends based on URL path. This is how you typically structure a three-tier application, with the frontend at the root path, the API under /api, and the admin interface under /admin, all behind a single hostname.
 
-This is exactly the kind of question you might see on the CKAD exam - you're given an Ingress with overlapping rules and asked which service handles a specific request. Always remember: more specific matches win."
+Let me deploy a multi-path Ingress to demonstrate. The Ingress has three path rules under a single host. The /api path routes to api-service on port 8080, the /web path routes to web-service on port 80, and the /admin path routes to admin-service on port 3000. Notice the order. I put the most specific paths first, then the broader catch-all paths. While Kubernetes should handle priority correctly, this is good practice and matches how you'd configure most web servers.
 
----
+### Path Priority and Ordering
 
-## Part 3: Multi-Path and Multi-Host Routing (7:30-11:00)
-**Duration:** 3 minutes 30 seconds
+Understanding path priority prevents routing bugs. When multiple paths could match, Kubernetes uses a clear priority system. Exact matches take priority over Prefix matches. Among Prefix matches, longer paths take priority over shorter ones. The order in the spec may matter depending on your controller implementation, so always list more specific paths before more general ones.
 
-### Creating a Complex Routing Scenario (7:30-9:00)
+Let me demonstrate with overlapping paths. If I have /api/v2 and /api both defined as Prefix paths, a request to /api/v2/users matches both. However, Kubernetes routes it to the /api/v2 backend because that's the longer, more specific match. This priority system ensures that you can have both general and specific rules without conflicts.
 
-**Screen:** Terminal
+## Combining Host and Path Routing
 
-**Narration:**
-"A typical CKAD exam question asks you to create an Ingress that routes different paths to different services, possibly with multiple hostnames. Let's build a realistic example - a three-tier application with frontend, API, and admin components."
+Complex routing scenarios combine both host and path rules. This is a typical CKAD exam question where you need to create an Ingress that routes different hosts and different paths to different services. Let me build a realistic example showing a three-tier application with multiple hostnames.
 
-**Commands:**
+The Ingress has multiple host sections. Under api.example.com, we have /v1 routing to api-v1 and /v2 routing to api-v2. Under admin.example.com, the root path routes to admin-portal. This pattern is extremely common in real-world applications and frequently appears in CKAD exam questions. You might be asked to expose multiple services through a single Ingress or to combine host and path-based routing.
 
-**Narration (continued):**
-"Now we need to create an Ingress that routes traffic intelligently. The frontend should serve the root path, the backend should handle '/api', and the admin should be accessible at '/admin'. Let's create this in one Ingress resource."
+When testing, remember to include the Host header in your curl commands. The Host header determines which rule section matches, then the path determines which backend within that section receives the traffic.
 
-**Commands:**
+## IngressClass
 
-**Narration (continued):**
-"Notice the order - I put the most specific paths first: '/admin', then '/api', then the root catch-all. While Kubernetes should handle priority correctly, this is good practice and matches how you'd configure most web servers."
+IngressClass is important when you have multiple Ingress Controllers in a cluster. For example, you might have both Nginx and Traefik running, and you need to tell Kubernetes which controller should handle which Ingress resources. The IngressClass object provides this separation.
 
-### Adding Multiple Hosts (9:00-11:00)
+Let me check what IngressClasses exist in our cluster. You'll typically see at least one IngressClass, and one might be marked as default with an annotation. Ingress resources without an ingressClassName specified automatically use the default class. This is convenient but can be confusing if you're not aware which controller is handling your Ingress.
 
-**Screen:** Terminal
+When creating an Ingress, you can explicitly specify which IngressClass to use with the ingressClassName field in the spec. In the exam, if you're asked to create an Ingress for a specific controller, make sure to include the ingressClassName field. However, if there's only one controller or one is marked as default, you can omit this field and it will work correctly. Always check what's in the cluster with kubectl get ingressclass before making assumptions.
 
-**Narration:**
-"Now let's extend this with multiple hostnames. Suppose you also want a separate hostname for the API only."
+## TLS/HTTPS Configuration
 
-**Commands:**
+HTTPS support is a common exam requirement. The process involves two steps. First, create a TLS secret containing your certificate and private key. Second, reference that secret in your Ingress resource. For the exam, you'll either be given pre-existing certificate files or asked to create self-signed certificates for testing.
 
-**Narration (continued):**
-"Now we have host-based routing - 'myapp.local' goes to the frontend, 'api.myapp.local' goes to the backend, and 'admin.myapp.local' goes to the admin portal. Each hostname can have its own path rules as well.
+### Creating a TLS Secret
 
-This pattern is extremely common in real-world applications and frequently appears in CKAD exam questions. You might be asked to expose multiple services through a single Ingress, or to combine host and path-based routing."
+Let me create a self-signed certificate for demonstration. The openssl command generates a private key and certificate in one step, valid for 365 days, covering myapp.example.com. Now I'll create the TLS secret using kubectl create secret tls. The secret type must be kubernetes.io/tls, which the kubectl create secret tls command handles automatically. The secret must contain two keys, tls.crt for the certificate and tls.key for the private key. If you're troubleshooting a broken TLS setup in the exam, verify these keys exist with kubectl describe.
 
-**Commands:**
+### Creating an HTTPS Ingress
 
----
+Now let's create an Ingress that uses this TLS certificate for HTTPS. The TLS section comes before the rules section in the spec. Each TLS entry specifies which hosts it covers and which secret contains the certificate. The hosts in the TLS section should match the hosts in your rules. I've also added an annotation for automatic HTTP to HTTPS redirection. This is Nginx-specific but very common in production. Most Ingress controllers have similar annotations for SSL redirect.
 
-## Part 4: IngressClass Configuration (11:00-13:00)
-**Duration:** 2 minutes
+When I test the HTTP endpoint, the request returns a 308 Permanent Redirect to HTTPS. The HTTPS request works correctly. The -k flag tells curl to accept our self-signed certificate. In production, you'd use certificates from a trusted CA like Let's Encrypt.
 
-### Understanding IngressClass (11:00-11:45)
+### Multiple TLS Certificates
 
-**Screen:** Terminal
+You can configure different certificates for different hosts. Each entry in the tls section can specify different hosts and different secrets. This is useful when you have multiple domains, each with its own certificate. Let me show you an example where app1.example.com uses app1-tls and app2.example.com uses app2-tls.
 
-**Narration:**
-"IngressClass is important when you have multiple Ingress Controllers in a cluster - for example, both Nginx and Traefik. The IngressClass object tells Kubernetes which controller should handle which Ingress resources.
+### Wildcard TLS Certificates
 
-Let's check what IngressClasses exist in our cluster."
+A wildcard certificate like *.example.com covers multiple subdomains with a single certificate. This simplifies certificate management when you have many subdomains. Just create one certificate, one secret, and list all the hosts it should cover in the tls section.
 
-**Commands:**
+## Default Backend
 
-**Narration (continued):**
-"You'll typically see at least one IngressClass. Notice the annotation showing which one is the default. Ingress resources without an ingressClassName specified use the default class automatically."
+Fallback service when no rules match. Most controllers have built-in default backends that return a 404 page, but you can customize this with your own service.
 
-### Specifying IngressClass (11:45-13:00)
+When you specify a defaultBackend in your Ingress spec, requests that don't match any rules route to that service. This includes requests to unknown hosts, requests to paths that don't match any defined paths, and requests that would otherwise return 404. Let me deploy an example with a custom default backend. The defaultBackend section specifies a service name and port, just like regular backend definitions.
 
-**Screen:** Terminal and editor
+Now when I make a request that doesn't match any rules, it routes to the default service instead of getting the controller's built-in 404 page. This is useful for providing custom error pages, handling legacy URLs with redirects, catching typos in URLs, or providing a branded experience for all unmatched requests.
 
-**Narration:**
-"When creating an Ingress, you can explicitly specify which IngressClass to use. This is done with the ingressClassName field in the spec."
+## Annotations
 
-**Commands:**
+Controller-specific features via annotations. Annotations enable advanced functionality that's not part of the core Ingress specification. Different controllers support different annotations, so always check your controller's documentation.
 
-**Narration (continued):**
-"In the exam, if you're asked to create an Ingress for a specific controller, make sure to include the ingressClassName field. However, if there's only one controller or one is marked as default, you can omit this field and it will work correctly. Always check what's in the cluster with 'kubectl get ingressclass' before making assumptions."
+### Common Nginx Annotations
 
----
+Let me show you the most common Nginx annotations you'll encounter. The rewrite-target annotation transforms request paths before sending them to the backend. The enable-cors annotation adds CORS headers to responses. The ssl-redirect annotation forces HTTPS. The limit-rps annotation provides rate limiting. The proxy-body-size annotation controls maximum upload size. These annotations go in the metadata.annotations section of your Ingress.
 
-## Part 5: TLS/HTTPS Configuration (13:00-16:30)
-**Duration:** 3 minutes 30 seconds
+### Rewrite Target
 
-### Creating a TLS Secret (13:00-14:30)
+Rewrite target is particularly important for the exam. It transforms request paths before sending them to the backend service. For example, if clients request /api/users but your backend expects just /users, you can use rewrite-target to strip the /api prefix. Let me deploy an example showing how this works. The path uses a regex with capture groups, and the rewrite-target references those groups with $1 and $2. Understanding this pattern is crucial for exam scenarios involving path transformation.
 
-**Screen:** Terminal
+### HTTP to HTTPS Redirect
 
-**Narration:**
-"HTTPS support is a common exam requirement. The process involves two steps: first, create a TLS secret containing your certificate and private key, then reference that secret in your Ingress resource.
+Most production applications require HTTPS. The ssl-redirect annotation automatically redirects HTTP requests to HTTPS. Combined with force-ssl-redirect, this ensures all traffic uses encryption. Let me add these annotations to an Ingress. Now when I make an HTTP request, I get a redirect to HTTPS instead of serving content over HTTP.
 
-For the exam, you'll either be given pre-existing certificate files or asked to create self-signed certificates for testing. Let's create a self-signed certificate now."
+### Custom Timeouts
 
-**Commands:**
+Some backends are slow to respond. Custom timeout annotations prevent premature connection failures. The proxy-connect-timeout controls connection establishment time. The proxy-send-timeout controls sending the request. The proxy-read-timeout controls reading the response. These are particularly useful for long-running API calls or file uploads.
 
-**Narration (continued):**
-"The secret type must be 'kubernetes.io/tls' - the kubectl create secret tls command handles this automatically. The secret must contain two keys: 'tls.crt' for the certificate and 'tls.key' for the private key. If you're troubleshooting a broken TLS setup in the exam, verify these keys exist with kubectl describe."
+For the CKAD exam, you don't need to memorize all annotations. The kubernetes.io documentation includes annotation references you can look up during the exam. However, knowing the common ones like rewrite-target and ssl-redirect will save you time.
 
-### Creating an HTTPS Ingress (14:30-16:30)
+## Cross-Namespace Considerations
 
-**Screen:** Terminal
+An important limitation to understand is that Ingress resources can only reference Services in the same namespace. This is a fundamental architectural constraint that affects how you design multi-namespace applications.
 
-**Narration:**
-"Now let's create an Ingress that uses this TLS certificate for HTTPS."
+### Ingress and Service Namespaces
 
-**Commands:**
+When you create an Ingress in a namespace, it can only route to Services in that same namespace. If you try to reference a Service in a different namespace, the Ingress will create but won't work. There will be no endpoints, and requests will fail with 503 errors. Let me demonstrate this limitation by trying to create a cross-namespace reference. The Ingress creates successfully, but when I check endpoints, there are none because the Service is in a different namespace.
 
-**Narration (continued):**
-"The TLS section comes before the rules section in the spec. Each TLS entry specifies which hosts it covers and which secret contains the certificate. The hosts in the TLS section should match the hosts in your rules.
+### Multi-Namespace Routing Pattern
 
-I also added an annotation for automatic HTTP to HTTPS redirection. This is Nginx-specific but very common in production. Now let's test it."
+If you need to route traffic to Services in different namespaces, you create separate Ingress resources in each namespace. Let me show you the correct pattern. I'll create an Ingress in the frontend namespace routing to frontend-service, and another Ingress in the api namespace routing to api-service. Both Ingresses can use the same hostname but with different paths. The frontend Ingress handles the root path, and the api Ingress handles /api. The Ingress Controller merges these rules and routes requests correctly based on the path.
 
-**Commands:**
+This pattern is the standard approach for multi-namespace applications. Each namespace has its own Ingress, and the controller coordinates them. This provides namespace isolation while still allowing unified routing.
 
-**Narration (continued):**
-"The HTTP request returns a 308 Permanent Redirect to HTTPS, and the HTTPS request works correctly. The '-k' flag tells curl to accept our self-signed certificate. In the exam, you'll use the kubernetes.io documentation to look up the exact annotation syntax if needed."
+### ExternalName Service Workaround
 
----
+For advanced scenarios, you can use ExternalName Services to work around the namespace limitation. Create an ExternalName Service in your namespace that points to a service in another namespace using the internal DNS name. Then reference that ExternalName Service in your Ingress. This is a more complex pattern and not commonly needed in CKAD scenarios, but it's good to know it exists.
 
-## Part 6: Troubleshooting Ingress Issues (16:30-20:00)
-**Duration:** 3 minutes 30 seconds
+## Troubleshooting Ingress
 
-### Common Issue 1: Service Not Found (16:30-17:30)
+Troubleshooting is a critical CKAD skill. Let's work through common issues and debugging workflows. The exam frequently includes broken configurations that you need to fix quickly.
 
-**Screen:** Terminal
+### Common Issues
 
-**Narration:**
-"Let's walk through common Ingress problems you'll encounter in the CKAD exam. The first and most common issue is referencing a service that doesn't exist or is in the wrong namespace.
+The most common issue is an Ingress that creates successfully but doesn't work. When this happens, first check if the Ingress has an address assigned. If the Address field is empty, the controller might not be running or the IngressClass might be wrong. Next, check the Service exists in the same namespace. A common mistake is referencing a Service in a different namespace. Then check the Service has endpoints. No endpoints means no Pods are backing the Service.
 
-Let me create a broken Ingress to demonstrate."
+404 errors usually indicate path or host matching problems. Verify the path in your request matches the path in your Ingress, and check the pathType is correct. Exact paths are very strict, while Prefix paths are more forgiving. Also verify the Host header matches the host in your Ingress rules.
 
-**Commands:**
+502 Bad Gateway or 503 Service Unavailable errors mean the Ingress found the Service but can't connect to Pods. Check if Pods exist and are ready. Check if the Service selector matches the Pod labels. Check if the Service port matches the container port. Test the Service directly with kubectl port-forward to isolate whether the problem is with the Ingress or the Service.
 
-**Narration (continued):**
-"When you describe the Ingress, look at the Events section at the bottom. You might see warnings about the service not existing. The fix is straightforward: verify the service name with 'kubectl get svc', check you're in the correct namespace, and update the Ingress to reference the correct service name.
+TLS issues usually involve missing or incorrect secrets. Check the secret exists in the same namespace as the Ingress. Check the secret type is kubernetes.io/tls. Check the certificate is valid and matches the hostname. Use openssl commands to inspect the certificate contents.
 
-Remember, Ingress resources can only reference services in the same namespace. You cannot route to a service in a different namespace without creating a proxy service."
+### Troubleshooting Decision Tree
 
-### Common Issue 2: Wrong Path Type (17:30-18:30)
+The systematic approach for the exam starts with checking if the Ingress exists and has an address assigned. If there's no address, the controller might not be running or the IngressClass might be wrong. Next, describe the Ingress and look for Events or warnings. Then verify the Service exists in the same namespace with kubectl get svc. Check the Service has endpoints with kubectl get endpoints. If there are no endpoints, check if Pods exist with the right labels. Finally, test the Service directly with kubectl port-forward to isolate Ingress-specific issues.
 
-**Screen:** Terminal
+Let me walk through debugging a broken Ingress. First I describe the Ingress and look at the Events section at the bottom. I might see warnings about the Service not existing. Next I verify the Service name with kubectl get svc and check I'm in the correct namespace. I compare the Service name in the Ingress to the actual Service name. If they don't match, I fix the Ingress to reference the correct Service name. This systematic approach will help you quickly identify and fix Ingress issues under exam time pressure.
 
-**Narration:**
-"The second common issue is using the wrong pathType. Let's say you want to match only the exact path '/api', but you used Prefix by mistake."
+## Port References
 
-**Commands:**
+You can reference Service ports by name or number in Ingress backends. Both approaches work, but they have different use cases.
 
-**Narration (continued):**
-"With Prefix, requests to '/api/users' will also match, which might not be what you want. If the exam question says 'exactly /api' or 'only /api', you need pathType Exact. The symptom is that too many requests are being routed to this service. Fix it by changing pathType to Exact and reapplying."
+Referencing by port number is the most straightforward. You specify the port number directly in the backend configuration. This is clear and unambiguous. However, if the port number changes, you need to update the Ingress.
 
-### Common Issue 3: No Endpoints (18:30-19:30)
+Referencing by port name provides more flexibility. You define a name for each port in the Service, then reference that name in the Ingress. This means the port number can change without updating the Ingress, as long as the name stays the same. Named ports are particularly useful when you have multiple versions of an application that might use different port numbers but the same name.
 
-**Screen:** Terminal
+For the CKAD exam, using numeric ports is usually faster unless the scenario specifically requires named ports. But understanding this capability is important for real-world scenarios where you need flexibility.
 
-**Narration:**
-"The third issue is when the Ingress and Service exist, but there are no pods backing the service. This causes 502 or 503 errors."
+## CKAD Exam Tips
 
-**Commands:**
+Let's talk about strategies and techniques for working efficiently with Ingress during the exam.
 
-**Narration (continued):**
-"Notice the endpoints list is empty or shows 'none'. The Ingress is configured correctly, but there are no pods to receive traffic. Check the service selector with 'kubectl describe svc', then verify pods exist with those labels. Create or fix the deployment to match the service selector."
+### Speed Commands
 
-### Troubleshooting Workflow (19:30-20:00)
+The kubectl create ingress command generates YAML quickly. The syntax is rule equals hostname/path asterisk equals service colon port. Let me show you some examples. For a simple ingress, the command is kubectl create ingress simple --rule="app.example.com/=app-svc:80". For multiple paths, you add multiple --rule flags. For TLS, you add tls=secret-name to the rule. Use --dry-run=client -o yaml to preview the generated YAML, then pipe it to a file or directly to kubectl apply. This saves minutes compared to writing YAML from scratch.
 
-**Screen:** Terminal showing systematic checks
+### Quick Verification
 
-**Narration:**
-"Here's a systematic troubleshooting workflow for the exam. First, verify the Ingress exists with 'kubectl get ingress'. Second, describe the Ingress and check for events or warnings. Third, verify the service exists in the same namespace. Fourth, check the service has endpoints. Fifth, test the service directly with port-forward to isolate Ingress issues. And finally, check the Ingress Controller logs if needed.
+During the exam, you need to verify your work quickly. Use kubectl get ingress to check basic status. Use kubectl describe ingress to see detailed configuration and events. Test with curl using the -H flag to set the Host header. Check controller logs if nothing else works. These quick checks will help you catch mistakes before moving to the next question.
 
-This systematic approach will help you quickly identify and fix Ingress issues under exam time pressure."
+### Common Exam Patterns
 
-**Commands:**
+The exam loves certain patterns that appear repeatedly. You might need to expose an existing Deployment, which means creating a Service first, then an Ingress. You might need to fix a broken Ingress by checking the definition, verifying the Service exists, and looking at events. You might need to add TLS to an existing Ingress by creating a TLS secret and editing the Ingress to add the tls section. Practice these patterns until they become muscle memory.
 
----
+### Using Documentation Effectively
 
-## Part 7: Cross-Namespace Patterns (20:00-21:30)
-**Duration:** 90 seconds
+In the exam, you have access to kubernetes.io documentation. Know where to find Ingress examples quickly. Navigate to the API reference for Ingress, or search for Ingress on kubernetes.io. The documentation includes complete examples you can copy and modify. Pay attention to the version and make sure you're looking at documentation matching your cluster version. Use kubectl version to check your cluster version. Also remember how to find annotation documentation for your Ingress Controller. For Nginx, the annotations page lists every available feature with examples.
 
-**Screen:** Terminal
+### Rapid-Fire CKAD Practice Scenarios
 
-**Narration:**
-"A key limitation to understand is that Ingress resources can only reference services in the same namespace. This is an important architectural constraint for the exam.
+Let me walk through some rapid-fire scenarios that mimic exam questions. Create an Ingress for a deployment called store exposed on port 8080, accessible at store.example.com/shop. You have 2 minutes. The solution is to create the service first, then use kubectl create ingress with the appropriate rule.
 
-If you need to route traffic to services in different namespaces, you create separate Ingress resources in each namespace. Let me demonstrate."
+Add HTTPS to an existing Ingress called webapp using a TLS secret called webapp-tls for the host webapp.example.com. You have 3 minutes. The solution is to edit the Ingress and add the tls section referencing the secret and host.
 
-**Commands:**
+An Ingress called broken returns 404 errors. The Service exists. Find and fix the issue. You have 3 minutes. The solution is to describe the Ingress, check the path and pathType, compare to what the application actually serves, and fix the mismatch.
 
-**Narration (continued):**
-"Now we have two Ingress resources in different namespaces, both routing the same hostname 'multins.local' but with different paths. The Ingress Controller merges these rules and routes '/api' to the api namespace and everything else to the frontend namespace. This is the correct pattern for multi-namespace routing."
+These rapid-fire scenarios train your muscle memory for common exam tasks. Practice creating Ingress resources until you can do it without thinking about the syntax.
 
----
+## Lab Challenge: Complete Multi-Service Application
 
-## Part 8: Exam Speed Techniques (21:30-23:30)
-**Duration:** 2 minutes
+The lab challenge asks you to build a production-ready Ingress configuration with multiple advanced features. This integrates all the concepts we've covered. You'll deploy a complete three-tier application with sophisticated routing, TLS, authentication, and multi-environment support.
 
-### Using kubectl create ingress (21:30-22:30)
+The requirements include a three-tier application with frontend, backend API, and admin portal, all with multiple replicas. Path-based routing to three services with a custom default backend. TLS configuration with HTTPS enabled and HTTP redirecting automatically. Advanced features using annotations including rate limiting on the API, basic authentication on the admin portal, response caching for static assets, and CORS enabled for API endpoints. Multi-environment setup with dev, staging, and prod namespaces, each with different hostnames. And troubleshooting tasks where you fix five intentionally broken Ingress configurations.
 
-**Screen:** Terminal with fast typing
+This comprehensive challenge tests your understanding of all the Ingress concepts in a realistic application architecture. Work through it methodically, testing each component as you build it. The challenge provides a complete solution you can reference if you get stuck, but try to solve it yourself first.
 
-**Narration:**
-"Time management is critical in the CKAD exam. Let me show you speed techniques for working with Ingress.
+## Quick Reference Card
 
-First, the kubectl create ingress command generates YAML quickly. The syntax is: rule equals 'hostname/path asterisk equals service colon port'."
+For quick reference during practice and the exam, here are the essential patterns. A basic Ingress has the networking.k8s.io/v1 API version, a rules section with host and paths, and backends referencing services. With TLS, you add a tls section with hosts and secretName before the rules. With IngressClass, you specify ingressClassName in the spec. Multiple paths go in the paths array under a single host. Common annotations go in metadata.annotations.
 
-**Commands:**
+Keep these patterns handy during practice. They cover the vast majority of exam scenarios. Focus on being able to write them quickly from memory.
 
-**Narration (continued):**
-"Use --dry-run=client -o yaml to preview the generated YAML, then pipe it to a file or directly to kubectl apply. This saves minutes compared to writing YAML from scratch."
+## Cleanup
 
-### Using Documentation Effectively (22:30-23:30)
+When you're finished practicing, remove all resources with kubectl delete all,secret,ingress,ingressclass -l kubernetes.courselabs.co=ingress. If you created test namespaces, delete those with kubectl delete namespace dev staging prod.
 
-**Screen:** Browser showing kubernetes.io
-
-**Narration:**
-"In the exam, you have access to kubernetes.io documentation. Know where to find Ingress examples quickly. Navigate to the API reference for Ingress, or search for 'Ingress' on kubernetes.io. The documentation includes complete examples you can copy and modify.
-
-Pay attention to the version - make sure you're looking at documentation matching your cluster version. Use 'kubectl version' to check.
-
-Also bookmark or remember how to find annotation documentation for your Ingress Controller. For Nginx, the annotations page lists every available feature with examples."
-
-**Commands:**
-
----
-
-## Part 9: Practice Scenarios (23:30-25:00)
-**Duration:** 90 seconds
-
-### Rapid-Fire Scenarios (23:30-24:30)
-
-**Screen:** Terminal
-
-**Narration:**
-"Let's run through three rapid-fire scenarios that mimic exam questions.
-
-Scenario one: Create an Ingress for a deployment called 'store' exposed on port 8080, accessible at 'store.example.com/shop'. You have 2 minutes."
-
-**Commands:**
-
-**Narration (continued):**
-"Scenario two: Add HTTPS to an existing Ingress called 'webapp' using a TLS secret called 'webapp-tls' for the host 'webapp.example.com'. You have 3 minutes."
-
-**Commands:**
-
-**Narration (continued):**
-"Scenario three: An Ingress called 'broken' returns 404 errors. The service exists. Find and fix the issue. You have 3 minutes."
-
-**Commands:**
-
-### Building Exam Confidence (24:30-25:00)
-
-**Narration:**
-"These scenarios train your muscle memory for common exam tasks. Practice creating Ingress resources until you can do it without thinking about the syntax. Focus on: routing with both host and path rules, adding TLS configuration, troubleshooting systematically, and using kubectl create ingress to save time.
-
-Remember, Ingress questions often combine with other topics. You might need to create a deployment, expose it as a service, then create an Ingress - all in one question. Practice the full workflow, not just Ingress in isolation."
-
----
-
-## Conclusion (25:00-26:00)
-**Duration:** 60 seconds
-
-**Screen:** Terminal
-
-**Narration:**
-"Congratulations! You now have the Ingress knowledge required for the CKAD exam. Let's recap the essential points.
-
-Know your path types - Prefix for starts-with matching, Exact for precise endpoints. Understand that longer and more specific paths take priority. Use kubectl create ingress to generate YAML quickly. Ingress resources must be in the same namespace as their services. For TLS, create a secret with kubectl create secret tls, then reference it in the Ingress TLS section. Troubleshoot systematically - check the Ingress, verify the service, check endpoints, test the service directly.
-
-Practice these patterns until they become second nature. In the exam, you'll likely have 10-15 minutes per question, so efficiency is key. Use the time you save with kubectl generate commands to double-check your work and handle troubleshooting scenarios.
-
-The skills you've learned today apply directly to production Kubernetes clusters as well. Ingress is how most real-world applications expose HTTP services to users.
-
-Now clean up your practice resources, and good luck on your CKAD exam!"
-
-**Commands:**
-
----
-
-**End of Script**
-
-**Total Runtime:** Approximately 26 minutes
-
-**Key Exam Topics Covered:**
-- ✅ Path types (Prefix, Exact) with examples
-- ✅ Host-based routing
-- ✅ Path-based routing
-- ✅ Multi-path and multi-host routing
-- ✅ IngressClass configuration
-- ✅ TLS/HTTPS setup
-- ✅ Cross-namespace considerations
-- ✅ Troubleshooting workflow
-- ✅ Speed techniques with kubectl
-- ✅ Documentation usage
-- ✅ Practice scenarios
-
-**Time Management for CKAD:**
-- Simple Ingress creation: 2-3 minutes
-- TLS configuration: 4-5 minutes
-- Troubleshooting: 3-4 minutes
-- Complex multi-service routing: 5-7 minutes
+That completes our CKAD preparation for Kubernetes Ingress. You now have the knowledge and hands-on experience required for Ingress on the CKAD exam. Practice these scenarios multiple times until they become muscle memory. Set yourself time-based challenges to build speed. Use the kubernetes.io documentation during practice since it's available during the exam. Master these concepts, and you'll be well-prepared for this portion of the CKAD exam.

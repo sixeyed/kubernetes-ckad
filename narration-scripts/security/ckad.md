@@ -1,397 +1,105 @@
-# Security Contexts - CKAD Exam Preparation
-## Narration Script for Exam-Focused Training
-**Duration:** 20-25 minutes
+# CKAD Exam Guide: Application Security & SecurityContexts
 
----
+Welcome to the CKAD exam preparation session focused on Security Contexts. This is one of the most critical topics for the exam, and you'll definitely face questions about it. Security falls under the Application Environment, Configuration and Security domain, which represents 25 percent of your total score, making it the highest-weighted domain on the exam. You absolutely must master this material to pass.
 
-## Introduction (0:00 - 1:00)
+## Why Security Matters for CKAD
 
-"Welcome to CKAD exam preparation for Security Contexts. Security is a major focus in the CKAD exam, and SecurityContext questions appear frequently."
+In the CKAD exam, you will be tested on your ability to add SecurityContext to Pods or containers, configure runAsUser, runAsGroup, and runAsNonRoot settings, work with capabilities by adding and dropping them, set readOnlyRootFilesystem, configure allowPrivilegeEscalation, and use fsGroup for volume permissions. These aren't theoretical questions. You'll need to actually implement these configurations under time pressure, typically spending between five and eight minutes per security question.
 
-"What you'll face in the exam:
-- Add security context to existing Deployments
-- Make containers run as non-root
-- Implement read-only filesystems
-- Manage capabilities
-- Debug security-related Pod failures
-- Combine multiple security features"
+The exam emphasizes security because it's fundamental to production Kubernetes deployments. You need to know not just what these fields do, but how to apply them quickly and accurately when given requirements like making an existing deployment secure or troubleshooting why a Pod with security restrictions won't start.
 
-"Time pressure is real:
-- Security questions: 4-6 minutes each
-- Must understand the YAML structure perfectly
-- Need to know common patterns by heart
-- Debugging is often required"
+## Quick Reference for the Exam
 
-**Setup:**
+Let me walk you through the essential YAML structures you need to have memorized. At the Pod level, the securityContext field applies to all containers in the Pod. You can set runAsUser to specify which user ID the containers should run as, runAsGroup to set the primary group, fsGroup to control volume ownership, supplementalGroups for additional group memberships, and seccompProfile to apply seccomp filtering. These settings provide baseline security for all containers in your Pod.
 
----
+At the container level, the securityContext provides more specific controls that can override Pod-level settings. Container-level settings include runAsUser which can override the Pod-level value, runAsNonRoot to enforce that the container can't run as root, readOnlyRootFilesystem to make the container immutable, allowPrivilegeEscalation to prevent privilege gains, privileged to control full host access, and capabilities to add or drop specific Linux capabilities. Understanding which fields belong at which level is crucial for the exam.
 
-## Section 1: Essential SecurityContext Patterns (1:00 - 5:00)
+When both Pod and container levels have the same field, the container-level setting takes precedence. For example, if the Pod specifies runAsUser as 1000 but a container specifies runAsUser as 2000, that container will run as user 2000. However, some fields only exist at certain levels. Fields like fsGroup and supplementalGroups only exist at the Pod level. Fields like capabilities, privileged, and readOnlyRootFilesystem only exist at the container level. Fields like runAsUser and runAsGroup exist at both levels, with the container value winning when both are specified.
 
-### Pattern 1: Basic Non-Root (1:00 - 2:00)
+## Exam Scenarios You'll Face
 
-"The most common exam requirement: make a Pod run as non-root."
+Let me walk you through the most common exam scenarios and how to approach them. The first scenario is being asked to create a Pod that runs as a non-root user. The question might say something like "Create a Pod named secure-app with image nginx that runs as user ID 1000." The solution is straightforward: you set the securityContext at the Pod level with runAsUser specified as 1000. To verify your work, you would exec into the Pod and run the id command, which should show uid equals 1000.
 
-**Quick YAML snippet to memorize:**
+The second scenario involves enforcing non-root execution more strictly. The question might say "Ensure the container fails to start if the image tries to run as root." For this, you use the runAsNonRoot field set to true at the container level. This tells Kubernetes to validate that the container process isn't running as root, and if it is, the container won't start at all. This provides defense-in-depth by catching configuration errors or image changes that might reintroduce root execution.
 
-"Two lines. That's it. Memorize this exact format."
+The third scenario is implementing read-only root filesystems. You'll be asked something like "Make the container's root filesystem read-only but allow writes to /tmp." The solution requires setting readOnlyRootFilesystem to true at the container level, then adding a volumeMount for /tmp that points to an emptyDir volume. This pattern comes up frequently in the exam, so you need to be able to add volumes and volume mounts quickly.
 
-**Where to place it:**
+The fourth scenario involves managing capabilities. A typical question would be "Run a container with all Linux capabilities dropped except NET_BIND_SERVICE." You accomplish this by setting the capabilities field with drop set to an array containing ALL, then add set to an array containing NET_BIND_SERVICE. Remember that capabilities is a container-level field, and you should always drop ALL first before adding specific capabilities.
 
-**Exam tip:** "If the question doesn't specify, use Pod level - it's safer and affects all containers."
+The fifth scenario deals with volume permissions. The question might state "Create a Pod with a volume that's owned by group ID 2000." You would set fsGroup to 2000 at the Pod level, which causes Kubernetes to set the group ownership of mounted volumes. You can verify this worked by execing into the Pod and checking the permissions on the mount point with ls -ld.
 
-### Pattern 2: Read-Only with Temp Volume (2:00 - 3:30)
+## Essential SecurityContext Fields (Memorize These!)
 
-"Second most common: read-only filesystem with /tmp volume."
+You need to have certain field names and their purposes memorized for the exam. The runAsUser field sets the user ID and can be specified at either Pod or container level with an integer value like 1000. The runAsGroup field sets the primary group and similarly exists at both levels. The runAsNonRoot field enforces non-root execution and only exists at the container level, taking a boolean value of true. The fsGroup field controls volume ownership, exists only at the Pod level, and takes an integer like 2000. The readOnlyRootFilesystem field makes containers immutable, exists only at the container level, and uses a boolean value of true. The allowPrivilegeEscalation field blocks privilege gains, is container-level only, and should be set to false. The privileged field controls full host access, is container-level, and should almost always be false. The capabilities.drop field removes capabilities and typically uses an array with ALL. The capabilities.add field adds specific capabilities using an array with values like NET_BIND_SERVICE.
 
-**Memorize this pattern:**
+For Linux capabilities specifically, you need to know when you need them. NET_BIND_SERVICE is required for binding to ports below 1024, which web servers need for port 80 or 443. NET_ADMIN allows network configuration for network tools or VPNs. SYS_TIME allows changing the system clock for time synchronization services. CHOWN allows changing file ownership for file management applications. SETUID and SETGID allow setting user and group IDs for applications that switch users.
 
-**Fast typing tip:**
+## Exam Tips & Time Savers
 
-### Pattern 3: Drop All Capabilities (3:30 - 4:30)
+Let me share some critical exam strategies. First, when working with capabilities, always drop ALL capabilities first, then add specific ones. This ensures you start from a secure baseline. When you combine this with runAsNonRoot, you get both enforcement of non-root execution and an extra safety check that fails if the image somehow ignores the runAsUser setting.
 
-"Third pattern: minimal capabilities."
+Second, when setting readOnlyRootFilesystem, you almost always need to add volumes for writable directories. The pattern is to set readOnlyRootFilesystem to true at the container level, identify which paths need write access like /tmp, and mount emptyDir volumes at those paths. This is such a common pattern that you should practice it until you can type it without thinking.
 
-"Or if you need to bind to port 80:"
+Third, always verify your work using kubectl exec. Check that the user ID is correct by running the id command. Check that the filesystem is read-only by trying to touch a file in the root directory. If you have time, check capabilities by examining /proc/1/status and grepping for Cap, though this is less critical in the exam.
 
-**Exam scenario:** "Configure nginx to run on port 80 as non-root user."
+Fourth, don't confuse Pod and container levels. Some fields only work at one level, and putting them at the wrong level means they'll be ignored. For example, putting fsGroup at the container level does nothing, it must be at the Pod level. Similarly, capabilities only work at the container level.
 
-**Solution components:**
-- runAsUser: 101 (nginx user)
-- runAsNonRoot: true
-- capabilities: drop ALL, add NET_BIND_SERVICE
-- readOnlyRootFilesystem: true (best practice)
-- Volumes for /var/cache/nginx and /var/run
+Fifth, never use privileged set to true unless the question explicitly requires it. Instead, use specific capabilities to grant only the privileges actually needed. Privileged containers are dangerous and almost never the right answer for application workloads.
 
-### Pattern 4: Complete Secure Baseline (4:30 - 5:00)
+Sixth, don't forget to mount volumes when using readOnlyRootFilesystem. Applications often need to write temporary files, cache data, or runtime state. Without writable volumes at the right paths, your application will fail with read-only filesystem errors.
 
-"The gold standard - memorize this for any 'make it secure' question:"
+## Troubleshooting on the Exam
 
-"Practice typing this from memory. You should be able to write it in under 60 seconds."
+You'll likely encounter security-related failures that you need to debug and fix. The most common error is "container has runAsNonRoot and image will run as root." This happens when the image is configured to run as root but you set runAsNonRoot to true. The fix is to add runAsUser with a non-zero value like 1000 to override the image's default user. This overrides what the image specifies and satisfies the runAsNonRoot requirement.
 
----
+Another common error is "read-only file system" when the application tries to write files. This occurs when you set readOnlyRootFilesystem to true but the application needs to write somewhere. The fix is to mount an emptyDir volume for writable locations like /tmp. You add the volume definition at the Pod level and add a volumeMount at the container level pointing to the path that needs to be writable.
 
-## Section 2: Common Exam Scenarios (5:00 - 10:00)
+A third common error is "operation not permitted" when the application tries to perform privileged operations. This happens when you've dropped capabilities that the application actually needs or blocked privilege escalation. The fix is to add the specific capability required. For example, if a web server needs to bind to port 80, you need to add the NET_BIND_SERVICE capability after dropping ALL.
 
-### Scenario 1: Modify Existing Deployment (5:00 - 7:00)
+A fourth error is "permission denied" when accessing volumes. This occurs when the volume has wrong ownership and the container's user can't access it. The fix is to set fsGroup at the Pod level to a group ID that the container's user belongs to. This causes Kubernetes to set the volume's group ownership, allowing the container to read and write.
 
-"Very common: 'Add a security context to this deployment to run as non-root user 1000.'"
+## Production Security Best Practices (Exam Favorite!)
 
-**Fastest approach:**
+The exam loves to ask you to make a deployment "production-ready" from a security perspective. Every production Pod should have a minimum security baseline. Set runAsUser to a non-zero value like 1000 to avoid running as root. Set runAsGroup and fsGroup for proper group ownership. At the container level, set runAsNonRoot to true to enforce the requirement, set readOnlyRootFilesystem to true to make the container immutable, set allowPrivilegeEscalation to false to prevent escalation, and drop ALL capabilities in the capabilities field. Mount an emptyDir volume at /tmp for temporary file writes.
 
-**Time-saving edit technique:**
+For maximum security in hardened production environments, you would add even more controls. Include seccompProfile with type RuntimeDefault at both Pod and container levels. Never use the latest tag for images, always use specific versions. Set resource requests and limits for both memory and CPU to prevent resource exhaustion. Mount emptyDir volumes for any paths that need write access, identifying these by understanding your application's requirements.
 
-In vi, search for  under template:
+## Practice Scenarios (Time Yourself: 6 minutes each)
 
-"Two minutes max for this task if you're practiced."
+Let me walk you through some practice exercises you should time yourself on. For the first exercise, create a Pod that runs as user 1000, enforces non-root with runAsNonRoot set to true, has a read-only root filesystem, and has a writable /tmp directory. You should be able to complete this in about six minutes including verification.
 
-### Scenario 2: Debug Security Failures (7:00 - 9:00)
+For the second exercise, create a Pod that drops all capabilities except NET_BIND_SERVICE. This tests your knowledge of the capabilities syntax and the pattern of dropping everything then adding back only what's needed. Practice until you can write the YAML correctly without references.
 
-"Another common scenario: 'A Pod won't start. Fix the security configuration.'"
+For the third exercise, create a Pod with fsGroup set to 2000 and verify volume ownership. This tests your understanding of how fsGroup works and how to verify it's applied correctly.
 
-**Systematic debugging:**
+For the fourth exercise, take an existing Deployment and add security context to make it production-ready. This is probably the most realistic exam scenario, where you need to edit an existing resource rather than create one from scratch. Practice using kubectl edit efficiently and knowing exactly where to add the security fields in the YAML structure.
 
-**Common issues and fixes:**
+## Common Exam Patterns
 
-**Issue 1: Image runs as root, runAsNonRoot is true**
+Certain patterns appear repeatedly in the exam. One pattern is being given an insecure Pod and asked to secure it. You should systematically check whether it's running as root and add runAsUser and runAsNonRoot if so. Check if it can write to the filesystem and add readOnlyRootFilesystem with necessary volumes if not secured. Check if it has all capabilities and drop ALL then add specific ones. Check if it can escalate privileges and add allowPrivilegeEscalation set to false.
 
-Fix: Add runAsUser
+Another pattern is fixing permission errors where an app can't access files on a volume. The solution is to add fsGroup at the Pod level and ensure the runAsUser is compatible with that group ownership.
 
-**Issue 2: Read-only filesystem, app needs /tmp**
+A third pattern is troubleshooting why a Pod won't start. Common causes include runAsNonRoot set to true but the image runs as root, which you fix by adding runAsUser. Another cause is readOnlyRootFilesystem set to true but the app writes logs, which you fix by adding a writable volume mount. A third cause is missing capabilities, which you fix by adding the specific capability needed.
 
-Fix: Add emptyDir volume for /tmp
+## Exam Day Checklist
 
-**Issue 3: Can't bind to port 80**
+Before you consider a security question complete, run through this verification checklist. Did you put fields at the correct level, Pod versus container? Did you set both runAsUser and runAsNonRoot? If you set readOnlyRootFilesystem, did you add writable volumes where needed? When working with capabilities, did you drop ALL first, then add? If you're using volumes, do you need fsGroup for permissions? Finally, did you verify everything works by testing with kubectl exec before moving on? This last step is critical because points come from working configurations, not close attempts.
 
-Fix: Add NET_BIND_SERVICE capability
+## Key Points to Remember
 
-### Scenario 3: Secure an Existing App (9:00 - 10:00)
+Let me summarize the absolute essentials. Kubernetes provides SecurityContext at two levels: Pod-level and container-level. When the same field exists at both levels, container-level wins. Always drop ALL capabilities first, then add specific ones to follow least privilege. When using readOnlyRootFilesystem, you need volumes for writable locations, this is not optional. The fsGroup field only exists at the Pod level and sets volume ownership. The runAsNonRoot field enforces non-root execution and will fail the container if the image tries to run as root. Never use privileged set to true unless the question explicitly requires it, and even then question if there's a better approach. Always test your work with kubectl exec, running commands like id to verify user, touch /test.txt to verify filesystem restrictions, and checking that your application actually works.
 
-"Comprehensive question: 'Make this deployment production-ready with security best practices.'"
+## Time Management
 
-**Checklist approach (in order):**
-
-1. Add runAsUser and runAsNonRoot
-2. Add allowPrivilegeEscalation: false
-3. Add readOnlyRootFilesystem: true
-4. Identify needed writable paths, add volumes
-5. Add capabilities: drop ALL
-6. Add specific capabilities if needed
-7. Add seccompProfile: RuntimeDefault
-8. Verify with kubectl apply
-
-"Practice this checklist until it's automatic. In the exam, you can quickly verify you haven't missed anything."
-
----
-
-## Section 3: Field-Level Details (10:00 - 14:00)
-
-### Pod-Level vs Container-Level (10:00 - 11:00)
-
-"Understanding the difference is crucial for the exam."
-
-**Pod-level only:**
-- fsGroup
-- fsGroupChangePolicy
-- supplementalGroups
-- sysctls
-
-**Container-level only:**
-- capabilities
-- privileged
-- readOnlyRootFilesystem
-
-**Both levels:**
-- runAsUser
-- runAsGroup
-- runAsNonRoot
-- seLinuxOptions
-- seccompProfile
-
-**Override behavior:**
-
-### Capabilities Quick Reference (11:00 - 12:00)
-
-"Know these for the exam:"
-
-| Capability | When You Need It |
-|------------|------------------|
-| NET_BIND_SERVICE | Web server on port 80/443 |
-| NET_ADMIN | Network configuration tools |
-| SYS_TIME | Time synchronization |
-| CHOWN | Change file ownership |
-| DAC_OVERRIDE | Override file permissions |
-
-**Syntax (memorize exactly):**
-
-"Note: capabilities is an array, even for one item!"
-
-### Common Volume Paths (12:00 - 13:00)
-
-"When adding readOnlyRootFilesystem, these paths commonly need volumes:"
-
-**nginx:**
-- /var/cache/nginx
-- /var/run
-
-**Most apps:**
-- /tmp
-- /var/tmp
-
-**Custom apps:**
-- Application-specific cache directory
-- Log directory if logging to filesystem
-
-**Quick addition:**
-
-### User and Group IDs (13:00 - 14:00)
-
-"Common user IDs in container images:"
-
-| Image | User ID | Notes |
-|-------|---------|-------|
-| nginx | 101 | nginx user |
-| redis | 999 | redis user |
-| postgres | 999 | postgres user |
-| node | 1000 | node user |
-
-**How to find the user in an image:**
-
-"In the exam, if the question doesn't specify a user ID, 1000 is safe for most cases."
-
----
-
-## Section 4: Speed Techniques (14:00 - 17:00)
-
-### Technique 1: YAML Templates (14:00 - 15:00)
-
-"Create reusable snippets before the exam."
-
-**Basic non-root template:**
-
-**Read-only template:**
-
-**Store these in a practice document. During the exam, you can reference your notes (if allowed) or have them memorized.**
-
-### Technique 2: kubectl explain (15:00 - 16:00)
-
-"kubectl explain is your friend in the exam:"
-
-"Don't waste time memorizing every field. Use explain to verify syntax during the exam."
-
-### Technique 3: Partial YAML Edits (16:00 - 17:00)
-
-"You don't always need complete YAML files."
-
-**kubectl patch for quick changes:**
-
-**Or use kubectl set (for supported fields):**
-
-"Patch is fast but error-prone. Edit is slower but more forgiving. Choose based on your comfort level."
-
----
-
-## Section 5: Practice Exercises (17:00 - 23:00)
-
-### Exercise 1: Quick Non-Root Conversion (17:00 - 18:00)
-
-"Timed exercise - 2 minutes:"
-
-**Task:** "A deployment named 'webapp' exists with nginx:alpine. Modify it to run as non-root user 1000 and prevent privilege escalation."
-
-**Timer starts...**
-
-<details>
-<summary>Solution</summary>
-
-</details>
-
-### Exercise 2: Read-Only Filesystem (18:00 - 19:30)
-
-"Timed exercise - 3 minutes:"
-
-**Task:** "Create a Pod named 'secure-app' with nginx:alpine that has:
-- Read-only root filesystem
-- Non-root user (nginx UID 101)
-- Writable /tmp and /var/cache/nginx"
-
-**Timer starts...**
-
-<details>
-<summary>Solution</summary>
-
-</details>
-
-### Exercise 3: Capabilities Management (19:30 - 21:00)
-
-"Timed exercise - 3 minutes:"
-
-**Task:** "Create a Pod 'web-server' with nginx that:
-- Runs as user 101
-- Drops all capabilities
-- Adds only NET_BIND_SERVICE
-- Has read-only root filesystem with /var/cache/nginx and /var/run writable"
-
-**Timer starts...**
-
-<details>
-<summary>Solution</summary>
-
-</details>
-
-### Exercise 4: Debug Security Failure (21:00 - 22:30)
-
-"Timed exercise - 3 minutes:"
-
-**Setup:**
-
-**Task:** "This Pod won't start. Debug and fix it."
-
-**Timer starts...**
-
-<details>
-<summary>Solution</summary>
-
-</details>
-
-### Exercise 5: Complete Secure Deployment (22:30 - 23:00)
-
-"Timed exercise - 4 minutes:"
-
-**Task:** "Create a Deployment 'secure-web' with 2 replicas of nginx that implements all security best practices:
-- Non-root (user 101)
-- Read-only filesystem
-- No privilege escalation
-- Drop all capabilities, add NET_BIND_SERVICE
-- RuntimeDefault seccomp
-- Necessary writable volumes"
-
-**I'll leave this as homework. Check the solution in the lab materials.**
-
----
-
-## Section 6: Exam Strategy (23:00 - 25:00)
-
-### Time Management (23:00 - 23:45)
-
-"Security questions typically take 4-6 minutes:"
-- Simple non-root: 2 minutes
-- Read-only filesystem: 3-4 minutes
-- Full security hardening: 5-6 minutes
-- Debug security failure: 3-5 minutes
-
-"Budget accordingly. Don't spend more than 8 minutes on any single question."
-
-### Verification Checklist (23:45 - 24:15)
-
-"After making security changes, always verify:"
-
-"These four checks take 30 seconds and prevent mistakes."
-
-### Common Exam Mistakes (24:15 - 25:00)
-
-"Avoid these pitfalls:"
-
-1. ✗ Forgetting runAsUser when runAsNonRoot is true
-2. ✗ Not adding volumes with readOnlyRootFilesystem
-3. ✗ Wrong YAML indentation for securityContext
-4. ✗ Adding securityContext at wrong level (Pod vs Container)
-5. ✗ Forgetting to verify Pod actually starts
-6. ✗ Not using allowPrivilegeEscalation: false
-7. ✗ Wrong capabilities syntax (it's an array!)
-8. ✗ Spending too long on one question
-
----
-
-## Final Review (25:00)
-
-### Security Context Checklist for CKAD
-
-"Before exam day, ensure you can:"
-
-- [ ] Write basic non-root security context from memory (1 minute)
-- [ ] Add read-only filesystem with /tmp volume (2 minutes)
-- [ ] Drop all capabilities and add specific ones (1 minute)
-- [ ] Debug common security-related Pod failures (3 minutes)
-- [ ] Edit existing Deployments to add security (2 minutes)
-- [ ] Combine multiple security features correctly (4 minutes)
-- [ ] Use kubectl explain to verify syntax (30 seconds)
-- [ ] Verify Pods actually work after changes (30 seconds)
-
-### Key Syntax to Memorize
-
-"Practice writing this until you can do it perfectly in 60 seconds."
-
----
-
-## Closing Advice
-
-"Security Contexts are one of the most testable topics in CKAD because:
-- They're universally applicable
-- They combine multiple concepts
-- They require both knowledge and hands-on skills
-- They're essential for production"
-
-"Three keys to success:
-
-1. **Memorize the patterns** - Don't waste time looking up basic syntax
-2. **Practice the workflow** - Get your muscle memory trained
-3. **Debug systematically** - Follow your checklist every time
-
-You're now prepared for SecurityContext questions on the CKAD exam. Keep practicing these exercises until they're second nature. Good luck!"
-
----
+Understanding time management for security questions is crucial. A typical security question should take between six and eight minutes total. Spend about one minute reading and understanding the requirements. Spend three to four minutes adding the securityContext YAML, either creating a new file or editing an existing resource. Spend two to three minutes applying and verifying that everything works. If you're stuck beyond eight minutes, flag the question and move on. You can return to it later if time permits, but don't let one question consume too much of your exam time.
 
 ## Additional Resources
 
-**Practice more:**
-- Secure 10 different applications with various requirements
-- Debug 5 broken security configurations in under 15 minutes
-- Write complete secure Pod specs from memory
-- Convert insecure Deployments to secure ones quickly
+During the exam, you have access to the official Kubernetes documentation. Make sure you know how to quickly navigate to the security context documentation at kubernetes.io/docs/tasks/configure-pod-container/security-context/ and the Pod Security Standards at kubernetes.io/docs/concepts/security/pod-security-standards/. Bookmark these pages before the exam so you can find them quickly if you need to verify syntax or field names. Additionally, kubectl explain is available during the exam and can be a lifesaver. Use kubectl explain pod.spec.securityContext or kubectl explain pod.spec.containers.securityContext to see field names and types without leaving your terminal.
 
-**Study references:**
-- Official docs: kubernetes.io/docs/tasks/configure-pod-container/security-context/
-- Pod Security Standards: kubernetes.io/docs/concepts/security/pod-security-standards/
-- Linux capabilities: man7.org/linux/man-pages/man7/capabilities.7.html
-- kubectl explain: Your best friend during the exam!
+## Summary
+
+To succeed with SecurityContext questions on the CKAD exam, you must master several key areas. Understand Pod-level versus container-level SecurityContext and know which fields exist at which level. Be comfortable with runAsUser, runAsGroup, and runAsNonRoot for controlling user identity. Know how to implement readOnlyRootFilesystem with volumes for writable paths. Master the capabilities pattern of dropping ALL and adding specific ones. Understand fsGroup for volume permissions. Remember that allowPrivilegeEscalation should be set to false for production workloads. Have a production security baseline template memorized that you can type quickly.
+
+SecurityContext carries significant weight on the exam because it's part of the Application Environment, Configuration and Security domain which represents 25 percent of your total score. This is the highest-weighted domain on the exam. Questions have medium difficulty because there are many fields to remember, but they're manageable with practice. Time yourself at six to eight minutes per question and practice until you can implement security contexts without referring to documentation. The key to success is making these patterns second nature through repeated practice.

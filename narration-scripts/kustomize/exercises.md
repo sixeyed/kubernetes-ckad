@@ -1,295 +1,79 @@
-# Kustomize Exercises - Practical Demo
-**Duration: 15-18 minutes**
+# Kustomize - Exercises Narration Script
 
----
+Welcome to the hands-on Kustomize exercises. In this session, we'll explore how to manage application configurations across multiple environments using Kustomize's base and overlay pattern. Kustomize is a template-free way to customize Kubernetes application configurations, and unlike Helm, it's built directly into kubectl, making it a native Kubernetes tool for managing configuration across multiple environments.
 
-## Setup and Introduction (0:30)
+## Kustomize vs Helm
 
-Welcome to the hands-on Kustomize exercises. In this session, we'll manage application configurations across multiple environments using Kustomize's base and overlay pattern.
+Before we dive into the exercises, let's quickly understand when to use Kustomize versus Helm. Kustomize works by applying overlays and patches to existing YAML files. There's no special template syntax to learn, just standard Kubernetes YAML. It's built into kubectl with the apply-k flag, so you don't need any separate tools installed. However, it doesn't have built-in package management or a registry system. Kustomize shines when you're deploying the same application across different environments like dev, staging, and production.
 
-We'll be working with:
-- Deploying base configurations
-- Creating environment-specific overlays
-- Using patches for complex customizations
-- Viewing generated YAML
-- Completing a lab challenge
+Helm takes a different approach with templates and variables. It has a steeper learning curve because you need to learn the Go template syntax, but it provides powerful package management through Helm repositories with chart versioning. Helm is better suited for creating distributable application packages that others can install. For the CKAD exam, you need to know both tools. Kustomize is perfect for environment-specific configs while Helm is better for packaging reusable applications.
 
-Let's begin by exploring the base configuration.
+## Create a Base Configuration
 
----
+Let's start with a simple application that needs different configurations for dev, staging, and production environments. We'll begin by examining the base resources. The base directory contains three files: deployment.yaml with basic Deployment settings, service.yaml to expose the app, and kustomization.yaml that lists the resources to include.
 
-## Exercise 1: Understanding the Base Configuration (2:00)
+Take a look at the base kustomization file. It's very simple, just listing YAML files to include. The deployment and service files are standard Kubernetes YAML with no special syntax or template variables. This is the power of Kustomize - the base configuration is pure, readable Kubernetes YAML that anyone can understand without learning a template language.
 
-**Timing: 0:30-2:30**
+Let's apply the base configuration using kubectl apply with the -k flag. The -k flag tells kubectl to look for a kustomization.yaml file and process it. When we check what was created, we'll see a deployment with 2 replicas and a service. Notice the objects don't have any environment-specific naming or configuration.
 
-First, let's examine the base configuration structure. We have a whoami application that we'll deploy to multiple environments.
+Now let's delete this base deployment to prepare for using overlays. The -k flag works with delete too, removing everything defined in the kustomization.
 
-Looking at the base directory structure:
+## Using Overlays for Different Environments
 
+Now we'll deploy environment-specific variants using overlays. Each overlay references the base and applies customizations for a particular environment.
 
-Let me examine the kustomization.yaml file:
+### Development Environment
 
-The kustomization file lists the resources to include - it's very simple. Just a list of YAML files.
+The development overlay is straightforward. Looking at the dev overlay kustomization, you'll see it references the base using a relative path to the parent directory, then applies simple customizations. It adds a dev- prefix to all resource names and sets the namespace to dev. This is a simple overlay that only changes names and namespace, so no patches are needed.
 
-Now looking at the deployment.yaml, this is standard Kubernetes YAML. No special syntax, no template variables. Just a regular Deployment with 2 replicas running the whoami image.
+Let's create the dev namespace and deploy the overlay. When we check what was created, notice all resources have the dev- prefix. The replica count and image tag come from the base configuration. The overlay only changed the name prefix and namespace. This is exactly what we want - reuse the base, customize only what's different.
 
-The service.yaml is also standard - a ClusterIP service exposing port 8080.
+### Staging Environment
 
-This is the power of Kustomize: the base configuration is pure, readable Kubernetes YAML. Anyone can understand it without learning a template language.
+The staging environment needs different configuration. It requires more replicas and a different image tag. Looking at the staging overlay kustomization, it still references the base and adds a staging- prefix, but it also overrides replicas to 3 and changes the image tag using the images field. The images field is a Kustomize built-in feature for updating container image tags without needing a patch.
 
-Let's deploy this base configuration directly:
+After deploying to staging, let's compare the two environments. Staging has 3 replicas compared to 2 in dev, and uses a different image tag. All of this came from a simple overlay that only specifies the differences. This demonstrates Kustomize's efficiency - the base contains common configuration, overlays contain only environment-specific changes. No duplication, easy to maintain.
 
+### Production Environment
 
-The `-k` flag tells kubectl to process the kustomization.yaml file in that directory.
+Production requires more substantial configuration changes including higher replica count, resource limits, and specific labels. This needs patches. Looking at the prod overlay structure, the kustomization references the base and two patch files, adds a prod- prefix, and sets the namespace to production.
 
-Let's see what was created:
+The patches use strategic merge syntax. The replica-patch increases replicas to 5 by just specifying the fields to change. The resources-patch adds resource limits and requests. Strategic merge patches are intuitive - you write YAML for only the fields you want to modify, and Kustomize merges it with the base.
 
+After deploying to production, we can inspect the deployment to see it has 5 replicas and resource limits applied through the patches. We can also view what Kustomize generated before it was applied, which is useful for debugging. This shows the complete YAML that was sent to kubectl with all the overlays and patches merged together with the base.
 
-We have a deployment with 2 replicas and a service. Let's check the image tag:
+## Common Kustomize Features
 
+Let's briefly explore some other Kustomize features that you might encounter. Kustomize can generate ConfigMaps from literals or files. This creates a ConfigMap with a hash suffix for versioning. When values change, a new ConfigMap is created, which triggers pod restarts automatically.
 
-This shows the base image tag. Notice the objects don't have any environment-specific naming or configuration.
+You can also add common labels that get applied to every resource in the kustomization, making filtering and management easier. We've already seen namePrefix in action. There's also nameSuffix that works the same way, allowing you to version your resources.
 
-Now let's delete this base deployment to prepare for using overlays:
+For complex modifications, you can use JSON patches for surgical precision, though they're more complex. Use strategic merge patches when possible. For CKAD, focus on strategic merge patches and built-in transformations since they cover most scenarios.
 
+## Viewing Generated YAML
 
-The `-k` flag works with delete too, removing everything defined in the kustomization.
+You can see what Kustomize will generate without actually applying it to your cluster. This is extremely useful for debugging and understanding what changes will be made. The kubectl kustomize command shows the final YAML after all transformations, letting you verify everything looks correct before applying.
 
----
+## Lab Exercise
 
-## Exercise 2: Development Environment Overlay (2:30)
+Now for the lab challenge. Create a new overlay for a QA environment with these requirements: namespace qa, name prefix qa-, replicas 4, custom label environment=qa, and image tag v1-alpine.
 
-**Timing: 2:30-5:00**
+Start by creating the overlay directory structure, then create the kustomization.yaml file with all the required settings. Preview what this will generate to verify everything looks correct. You should see resources with the qa- prefix, namespace set to qa, labels including environment=qa, replicas set to 4, and image tag v1-alpine. After verifying the preview, deploy it and check that all requirements are met. This demonstrates how quickly you can create new environments with Kustomize. The entire overlay is about 15 lines of YAML.
 
-Now let's deploy to a development environment using an overlay.
+## Common Kustomize Commands
 
-Looking at the dev overlay structure:
+Let's review the essential Kustomize commands you'll use regularly. Apply a kustomization with kubectl apply -k pointing to a directory. View generated YAML without applying using kubectl kustomize. Delete resources from a kustomization with kubectl delete -k. You can validate kustomization structure by piping the output to dev null and checking for errors. Compare differences between overlays using kubectl diff. The -k flag is the key to remember - it works with apply, delete, diff, and other kubectl commands.
 
+## Best Practices
 
-The dev overlay kustomization references the base and applies customizations:
-- References ../../base (relative path to base)
-- Adds "dev-" prefix to all resource names
-- Sets namespace to "dev"
+When working with Kustomize, keep your base generic and environment-agnostic so it can work for any environment. Make overlays small and focused on only the differences per environment. Use built-in features like replicas and images transformations before resorting to patches since they're simpler to maintain. Always preview with kubectl kustomize before applying to catch any errors early. Keep everything in version control, both base and overlays, for tracking changes over time. Use different namespaces for each environment to maintain isolation. Apply common labels consistently for easy filtering and management across your resources.
 
-This is a simple overlay - just name and namespace changes, no patches needed.
+## Cleanup
 
-Let's create the dev namespace and deploy:
+When you're finished, clean up all the environments by deleting each overlay and removing the namespaces. This removes all Deployments, Services, and other resources we created in this session.
 
+## Key Takeaways
 
-Check what was created:
+Kustomize works with template-free configuration using standard YAML with no special syntax. It's built into kubectl with the apply -k flag, so no additional tools are needed. The base plus overlays pattern lets you reuse common configs and customize per environment. Patches allow both strategic merge and JSON patches for specific changes. Generators create ConfigMaps and Secrets declaratively with automatic versioning. For the CKAD exam, you must know how to use Kustomize effectively.
 
-
-Perfect! Notice all resources have the "dev-" prefix. Let's verify the deployment details:
-
-
-The replica count and image tag come from the base configuration. The overlay only changed the name prefix and namespace. This is exactly what we want - reuse the base, customize only what's different.
-
----
-
-## Exercise 3: Staging Environment Overlay (2:30)
-
-**Timing: 5:00-7:30**
-
-The staging environment needs different configuration: more replicas and a different image tag.
-
-Looking at the staging overlay kustomization:
-- References the base
-- Adds "staging-" prefix
-- Sets namespace to "staging"
-- Overrides replicas to 3
-- Changes image tag using the images field
-
-The images field is a Kustomize built-in feature for updating container image tags. No patch needed.
-
-Let's deploy to staging:
-
-
-Now let's compare dev and staging:
-
-
-Excellent! Staging has 3 replicas (vs 2 in dev) and uses a different image tag. All from a simple overlay that only specifies the differences.
-
-This demonstrates Kustomize's efficiency: the base contains common configuration, overlays contain only environment-specific changes. No duplication, easy to maintain.
-
----
-
-## Exercise 4: Production Environment with Patches (3:00)
-
-**Timing: 7:30-10:30**
-
-Production requires more configuration: higher replica count, resource limits, and specific labels. This needs patches.
-
-Looking at the prod overlay structure:
-
-
-The kustomization references:
-- The base
-- Two patch files
-- Adds "prod-" prefix
-- Sets namespace to "production"
-
-Let's examine the patches:
-
-The replica-patch.yaml increases replicas to 5. This is a strategic merge patch - just specify the fields to change.
-
-The resources-patch.yaml adds resource limits and requests. Again, only specifying what needs to change.
-
-Strategic merge patches are intuitive: write YAML for the fields you want to modify, and Kustomize merges it with the base.
-
-Let's deploy to production:
-
-
-Inspect the production deployment:
-
-
-Perfect! Production has 5 replicas and resource limits applied through the patches.
-
-Let's also view what Kustomize generated before it was applied. This is useful for debugging:
-
-
-This shows the complete YAML that was sent to kubectl. You can see all the overlays and patches merged together with the base.
-
----
-
-## Exercise 5: Understanding Kustomize Features (2:00)
-
-**Timing: 10:30-12:30**
-
-Let's explore some other Kustomize features briefly.
-
-**ConfigMap Generation:**
-
-Kustomize can generate ConfigMaps from literals or files:
-
-
-This creates a ConfigMap with a hash suffix for versioning. When values change, a new ConfigMap is created, triggering pod restarts.
-
-**Common Labels:**
-
-Add labels to all resources:
-
-
-These labels are applied to every resource in the kustomization, making filtering and management easier.
-
-**Name Prefixes and Suffixes:**
-
-We've seen namePrefix in action. nameSuffix works the same way:
-
-
-This would create resources named "prod-whoami-v2".
-
-**JSON Patches:**
-
-For complex modifications, use JSON patches:
-
-
-JSON patches give surgical precision but are more complex. Use strategic merge patches when possible.
-
-For CKAD, focus on strategic merge patches and built-in transformations. They cover most scenarios.
-
----
-
-## Exercise 6: Lab Challenge - QA Environment (4:00)
-
-**Timing: 12:30-16:30**
-
-Now for the lab challenge. Create a new overlay for a QA environment with these requirements:
-- Namespace: qa
-- Name prefix: qa-
-- Replicas: 4
-- Custom label: environment=qa
-- Image tag: v1-alpine
-
-Let me work through this step by step:
-
-First, create the overlay directory structure:
-
-
-Now create the kustomization.yaml file:
-
-
-Let me preview what this will generate:
-
-
-Looking at the output:
-- Resources have "qa-" prefix
-- Namespace is set to "qa"
-- Labels include "environment: qa"
-- Replicas set to 4
-- Image tag is v1-alpine
-
-Perfect! Now let's deploy:
-
-
-Verify the deployment:
-
-
-Excellent! All requirements met:
-- QA namespace
-- qa- prefix on resources
-- 4 replicas
-- environment=qa label
-- v1-alpine image tag
-
-This demonstrates how quickly you can create new environments with Kustomize. The entire overlay is about 15 lines of YAML.
-
----
-
-## Common Kustomize Commands (1:00)
-
-**Timing: 16:30-17:30**
-
-Let's review the essential Kustomize commands:
-
-**Apply a kustomization:**
-
-
-**View generated YAML without applying:**
-
-
-**Delete resources from a kustomization:**
-
-
-**Validate kustomization structure:**
-
-
-**Compare differences between overlays:**
-
-
-The `-k` flag is the key to remember. It works with apply, delete, diff, and other kubectl commands.
-
----
-
-## Cleanup and Summary (1:00)
-
-**Timing: 17:30-18:30**
-
-Let's clean up all our environments:
-
-
-Let's review what we've covered:
-
-**Key Concepts:**
-- Base configuration with common settings
-- Overlays for environment-specific customization
-- Built-in transformations: namePrefix, namespace, replicas, images
-- Strategic merge patches for complex changes
-- ConfigMap and Secret generators
-
-**Best Practices:**
-- Keep base generic and environment-agnostic
-- Make overlays small and focused on differences
-- Use built-in features before resorting to patches
-- Preview with kubectl kustomize before applying
-- Version control everything - base and overlays
-
-**CKAD Relevance:**
-- Required exam topic
-- Must know kustomization.yaml structure
-- Practice creating overlays quickly
-- Understand error messages
-- Know how to troubleshoot kustomization issues
-
-You now have hands-on experience with Kustomize across multiple environments. In the next session, we'll focus on CKAD exam-specific scenarios and time-saving techniques.
-
-Thank you for following along with these exercises.
+You now have hands-on experience with Kustomize across multiple environments. We've seen how to create base configurations, build overlays for different environments, use both simple transformations and complex patches, generate ConfigMaps with version hashing, and manage complete application configurations declaratively. In the next session, we'll focus on CKAD exam-specific scenarios and time-saving techniques to help you work efficiently under exam time pressure.

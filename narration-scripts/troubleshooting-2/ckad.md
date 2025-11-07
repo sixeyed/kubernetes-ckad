@@ -1,320 +1,155 @@
-# Troubleshooting Application Modeling - CKAD Exam Preparation
+# Troubleshooting Application Modeling for CKAD - Narration Script
 
-**Duration:** 25-30 minutes
-**Format:** CKAD exam-focused scenarios for multi-resource applications
-**Target:** CKAD certification candidates
-
----
-
-## Introduction (1 minute)
-
-Welcome to CKAD preparation for application modeling troubleshooting. This combines configuration management (ConfigMaps, Secrets), storage (PersistentVolumes), and namespaces—all critical CKAD topics.
-
-**CKAD Domains Covered:**
-- **Application Design and Build** (20%) - ConfigMaps, Secrets, multi-container pods
-- **Application Deployment** (20%) - Deployments with configuration
-- **Services & Networking** (20%) - Service connectivity
-- **Application Observability & Maintenance** (15%) - Troubleshooting
-- **Application Environment, Configuration & Security** (25%) - ConfigMaps, Secrets, SecurityContexts
-
-**Why This Matters:**
-- Almost every CKAD question involves configuration
-- Multi-resource troubleshooting combines multiple domains
-- Namespace management is fundamental
-- Fast diagnosis is essential for time management
-
-**Today's Comprehensive Coverage:**
-1. ConfigMap and Secret troubleshooting patterns
-2. PersistentVolume issues and fixes
-3. Namespace-related problems
-4. Multi-resource dependency debugging
-5. Rapid-fire practice scenarios
-6. Time-saving techniques
-
-Let's master multi-resource troubleshooting!
+**Duration:** 35-40 minutes
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Completed basic troubleshooting and troubleshooting-2 exercises
 
 ---
 
-## Section 1: ConfigMap Troubleshooting (6 minutes)
+Welcome to the CKAD exam preparation for application modeling troubleshooting. This session focuses on the scenarios that combine multiple CKAD domains - configuration management with ConfigMaps and Secrets, storage with PersistentVolumes, and namespace management. These topics appear across several exam domains, accounting for a significant portion of your score.
 
-### Common ConfigMap Failure Patterns (1.5 minutes)
+Application modeling troubleshooting is critical for CKAD because it's not just about creating resources - it's about making sure they work together correctly. The exam will give you scenarios where ConfigMaps have wrong keys, Secrets are missing, volumes won't mount, or resources are in the wrong namespaces. You need to diagnose and fix these issues quickly and systematically.
 
-**Pattern 1: ConfigMap Not Found**
+## CKAD Exam Context
 
-**Symptom:**
+Let's understand what the exam expects. Application modeling troubleshooting spans multiple domains. In Application Design and Build, you're tested on ConfigMaps, Secrets, and multi-container pods. In Application Deployment, you deploy applications with proper configuration. In Application Environment, Configuration and Security, you manage the configuration resources themselves. All of these come together in troubleshooting scenarios.
 
-**Causes:**
-1. ConfigMap doesn't exist
-2. ConfigMap in wrong namespace
-3. Typo in ConfigMap name
+The exam loves these questions because they test real understanding. Anyone can memorize how to create a ConfigMap, but can you diagnose why a pod can't find a ConfigMap key? Can you figure out why a PVC won't bind? Can you spot when resources are in different namespaces? This is where practical experience separates those who pass from those who don't.
 
-**Quick Diagnosis:**
+Time management is essential. Simple ConfigMap or Secret issues should take one to two minutes. PVC problems might take two to three minutes. Full multi-resource scenarios can take five to seven minutes. Never spend more than ten minutes on a single question. The exam is about completing enough questions correctly, not perfecting every answer.
 
-**Pattern 2: Key Not Found**
+## Common Application Modeling Issues
 
-**Symptom:**
+Let's work through the most common failure patterns you'll encounter.
 
-**Diagnosis:**
+### ConfigMap Key Mismatch
 
-### Scenario 1: Missing ConfigMap (2 minutes)
+This is perhaps the most common application modeling issue on the exam. Your pod goes into CreateContainerConfigError state. When you describe it, the events tell you that a specific key wasn't found in the ConfigMap. But the ConfigMap exists, so what's wrong? The key names don't match exactly.
 
-**CKAD Question:** "The webapp deployment in namespace  has pods in CreateContainerConfigError. The application expects configuration from a ConfigMap named . Fix the issue."
+Let me demonstrate. I'll create a ConfigMap with a key called database_url. Now I'll create a pod that references database-url with a hyphen instead of an underscore. The pod immediately goes into CreateContainerConfigError. When I describe the pod, the events clearly state which key it's looking for and which ConfigMap it checked.
 
-**Solution Process:**
+The diagnostic process is straightforward. First, verify the ConfigMap exists in the pod's namespace. Second, check what keys actually exist in the ConfigMap. Third, compare those keys to what the pod is requesting. The mismatch will be obvious once you look.
 
-**Time Target:** 2 minutes
+The fix is either updating the ConfigMap to add the key the pod expects, or updating the pod to reference the key that actually exists. Either approach works, depending on whether the ConfigMap or the pod has the correct name. For the exam, choose whichever is faster to change.
 
-### Scenario 2: Key Name Mismatch (2 minutes)
+### ConfigMap or Secret in Wrong Namespace
 
-**CKAD Question:** "The api-server deployment is running but the application logs show 'DATABASE_URL not set'. The ConfigMap  exists with the database connection. Fix the configuration."
+Namespace issues are incredibly common because ConfigMaps and Secrets are namespace-scoped. A pod can only reference ConfigMaps and Secrets in its own namespace. If your pod is in the production namespace but the ConfigMap is in default, the pod can't access it.
 
-**Solution Process:**
+The symptoms are the same as a missing ConfigMap - CreateContainerConfigError. The difference is when you list ConfigMaps, you do see one with the right name, but it's in a different namespace than the pod. This is easy to miss if you don't check namespaces carefully.
 
-**Time Target:** 2 minutes
+Let me show you by creating a ConfigMap in the default namespace and a pod in a custom namespace that tries to use it. The pod fails to start. When I list ConfigMaps without specifying a namespace, I might not even see the problem. But when I list them with the all-namespaces flag, I can see the ConfigMap exists but in the wrong namespace.
 
-### Scenario 3: ConfigMap in Wrong Namespace (1.5 minutes)
+The fix is moving the ConfigMap to the correct namespace. You can do this by getting the ConfigMap YAML, deleting it from the old namespace, and creating it in the new namespace. Or for simple ConfigMaps, just recreate it directly in the correct namespace with kubectl create configmap.
 
-**CKAD Question:** "Create a ConfigMap in namespace  with key  and value , then update the  deployment to use it."
+### Secret Not Found
 
-**Solution:**
+Secrets work exactly like ConfigMaps from a troubleshooting perspective. Missing Secrets cause CreateContainerConfigError. Wrong key names cause CreateContainerConfigError. Wrong namespace causes CreateContainerConfigError. The diagnostic process is identical - verify the Secret exists, check the keys, confirm the namespace matches.
 
-Add to container spec:
+The difference with Secrets is creation. When you create a Secret, remember that values must be base64 encoded if you're writing the YAML directly. But kubectl create secret handles the encoding automatically, so it's usually easier and faster to use the imperative command.
 
-**Time Target:** 1-2 minutes
+For docker registry Secrets specifically, you need the docker-server, docker-username, docker-password, and docker-email fields. Then the pod references this Secret in its imagePullSecrets field. This is common on the exam for pulling images from private registries.
 
----
+TLS Secrets are another special type, used with Ingress resources. They need a tls.crt and tls.key. The kubectl create secret tls command handles creating these from certificate and key files.
 
-## Section 2: Secret Troubleshooting (5 minutes)
+### Volume Mount Path Mismatch
 
-### Common Secret Failure Patterns (1 minute)
+Volume mount issues are more subtle. The pod might start successfully, but the application doesn't work because it can't find its configuration files. The volume is mounted, just not where the application expects.
 
-**Similar to ConfigMaps, plus:**
+Let me demonstrate by mounting a ConfigMap as a volume at /config, but the application looks for configuration at /app/config. The pod shows Running status, but when I check the application logs, it complains about missing configuration files. The fix is updating the volume mount path to match where the application actually looks.
 
-1. **Encoding issues** - Must be base64 encoded in YAML
-2. **Type mismatches** - docker-registry, tls, basic-auth, opaque
-3. **Permission issues** - RBAC preventing access
+You can verify mount paths by using kubectl exec to get a shell in the container and checking where files actually are. List the directories to see what's mounted where, then compare that to what the application expects.
 
-### Scenario 4: Missing Secret (2 minutes)
+## PersistentVolume Troubleshooting
 
-**CKAD Question:** "The database pod is in CreateContainerConfigError. It expects a Secret named  with keys  and . Create the Secret and fix the pod."
+PersistentVolumes add complexity because they involve two resources - the PVC that the pod requests and the PV that provides the storage. Both need to be configured correctly for binding to work.
 
-**Solution:**
+### PVC Stuck in Pending
 
-**Time Target:** 2 minutes
+When a PVC stays in Pending state, it means no PersistentVolume matches its requirements. The PVC specifies how much storage it needs, what access mode it requires, and optionally which storage class to use. A PV must match or exceed all these requirements for binding to occur.
 
-### Scenario 5: Docker Registry Secret (2 minutes)
+Let me create a PVC requesting 10 gigabytes with ReadWriteOnce access mode. If no PV has at least 10 gigabytes and supports ReadWriteOnce, the PVC stays pending. When I describe the PVC, it might show events about no volumes available or no volumes matching the requirements.
 
-**CKAD Question:** "The app deployment can't pull images from private registry . Create an image pull secret and configure the deployment to use it."
+The fix is creating a PV that satisfies the PVC's requirements. The PV capacity must be at least what the PVC requests. The access modes must be compatible - if the PVC wants ReadWriteOnce, the PV must offer ReadWriteOnce. If a storage class is specified, they must match.
 
-**Solution:**
+Storage classes matter on the exam. Many Kubernetes distributions have a default storage class that automatically provisions PVs. But in exam scenarios, you might need to create PVs manually. Check what storage classes are available, and if the PVC specifies one, make sure your PV matches.
 
-Add to pod spec:
+Access modes are important to understand. ReadWriteOnce means one node can mount the volume for reading and writing. ReadOnlyMany means multiple nodes can mount it read-only. ReadWriteMany means multiple nodes can mount it for reading and writing. Not all storage types support all access modes.
 
-**Time Target:** 2 minutes
+### PVC Bound to Wrong PV
 
-### Scenario 6: TLS Secret for Ingress (1 minute)
+Sometimes a PVC binds but to the wrong PV. Maybe it requested 10 gigabytes but bound to a 1 gigabyte PV. This happens when the PV technically matches the requirements but isn't ideal. Once a PVC binds, it stays bound until you delete and recreate it.
 
-**CKAD Question:** "Create a TLS secret named  from certificate file  and key file ."
+To fix this, delete the PVC, which releases the PV, then recreate the PVC. Make sure the correct PV is available and configured to be the best match. You might need to adjust the PV's capacity, access modes, or storage class to ensure the PVC binds to it.
 
-**Solution:**
+## Namespace Troubleshooting
 
-Add:
+Understanding namespace scope is critical for the exam. Resources fall into two categories - namespace-scoped and cluster-scoped.
 
-**Time Target:** 1 minute
+Namespace-scoped resources include Pods, Deployments, Services, ConfigMaps, Secrets, PersistentVolumeClaims, ServiceAccounts, Roles, and RoleBindings. These exist within a namespace, and references between them must be within the same namespace.
 
----
+Cluster-scoped resources include PersistentVolumes, Nodes, StorageClasses, ClusterRoles, ClusterRoleBindings, and Namespaces themselves. These aren't in any namespace and are visible cluster-wide.
 
-## Section 3: PersistentVolume Troubleshooting (6 minutes)
+The key rule is that namespace-scoped resources can only reference other resources in the same namespace, with rare exceptions. A pod in namespace-a cannot reference a ConfigMap in namespace-b. You must move one or the other to make them match.
 
-### PVC Lifecycle and States (1 minute)
+Services have an interesting exception. You can access a service in another namespace by using its fully qualified domain name - servicename.namespace.svc.cluster.local. This is useful for cross-namespace communication but doesn't work for ConfigMaps or Secrets.
 
-**States:**
-- **Pending** - Waiting for binding
-- **Bound** - Successfully bound to PV
-- **Released** - PVC deleted, PV not yet reclaimed
-- **Failed** - Reclamation failed
+When troubleshooting namespace issues, always check which namespace each resource is in. Use the namespace flag explicitly when creating resources. Use the all-namespaces flag when listing resources to see everything. The default namespace is default, but exam questions often use custom namespaces to test whether you're paying attention.
 
-**Binding Requirements:**
-- Storage size (PV >= PVC)
-- Access modes compatible
-- Storage class matches (if specified)
-- Volume mode matches
+## Multi-Resource Debugging
 
-### Scenario 7: PVC Stuck in Pending (3 minutes)
+Complex applications involve many resources working together. Systematic debugging is essential.
 
-**CKAD Question:** "The data-storage PVC in namespace  is stuck in Pending state. The pod using it can't start. Fix the issue."
+Start by mapping the dependencies. What does the pod need? ConfigMaps for configuration, Secrets for credentials, PVCs for storage, Services for networking. List all these resources and verify each exists in the correct namespace.
 
-**Solution Process:**
+Check each layer systematically. First, do the resources exist? Second, are they in the right namespace? Third, do the names match what's referenced? Fourth, do the keys or fields match? Fifth, do ports align? Each check narrows down the problem.
 
-**Common Mismatches:**
+Follow the error trail. When a pod fails, the events tell you the immediate problem - maybe a missing ConfigMap. Fix that, and a new error might appear - maybe a missing Secret. Fix that, and another issue surfaces - maybe the PVC won't bind. Work through them one by one.
 
-**Size Mismatch:**
+Let me walk through a complete scenario. I'm deploying an application with a Deployment, ConfigMap, Secret, PVC, and Service. The application won't start. First, I check if all resources exist. The ConfigMap is missing - I create it. Now the pod complains about a Secret - I create that. Now it complains about a PVC - that exists but is pending. I check for PVs and find none match. I create a PV. The PVC binds. The pod starts. But I still can't access it. I check the service endpoints - none. The service selector doesn't match the pod labels. I fix the selector. Now endpoints appear. I can access the application.
 
-**Access Mode Mismatch:**
+This systematic approach works for any complexity level. Don't try to see everything at once. Work layer by layer, verifying each fix before moving to the next issue.
 
-**Time Target:** 3 minutes
+## Quick Troubleshooting Commands
 
-### Scenario 8: Multiple Pods and RWO Volume (2 minutes)
+For the exam, speed matters. Use efficient commands to diagnose quickly.
 
-**CKAD Question:** "A deployment with 3 replicas is trying to use a ReadWriteOnce PVC. Only one pod is Running, the others are stuck in ContainerCreating. Fix the issue."
+To check all resources in a namespace at once, use kubectl get all, configmap, secret, pvc with the namespace flag. This shows you in one command what exists.
 
-**Problem:** ReadWriteOnce volumes can only be mounted by pods on the same node.
+To find resources in wrong namespaces, use the all-namespaces flag with grep or just scan the output for the names you're looking for.
 
-**Solution A: Change to RWX (if supported)**
+To quickly create ConfigMaps and Secrets, use the imperative commands. Creating from literals is faster than writing YAML, especially for simple configurations.
 
-**Solution B: Use StatefulSet with per-pod volumes**
+To copy resources between namespaces, get the YAML of the resource, change the namespace field, and apply it. Or for simple resources, just recreate them in the target namespace.
 
-**Solution C: Use hostPath with node affinity (development only)**
+For verification, check pods are running and ready, check PVCs are bound, check services have endpoints, and test that applications actually respond. Don't assume fixes worked - always verify.
 
-For development/testing only - not production suitable.
+## CKAD Exam Checklist
 
-**Time Target:** 2 minutes
+Before leaving any troubleshooting question, verify everything works.
 
----
+All resources must exist in the correct namespace. Use kubectl get to confirm each resource is where it should be.
 
-## Section 4: Namespace Troubleshooting (4 minutes)
+ConfigMaps and Secrets must have the correct keys. Get the YAML to verify the keys match what pods reference.
 
-### Namespace Scope Rules (1 minute)
+Key names must match exactly. Kubernetes is case-sensitive and exact about underscores versus hyphens.
 
-**Namespace-Scoped Resources:**
-- Pods, Deployments, Services
-- ConfigMaps, Secrets
-- PersistentVolumeClaims
-- ServiceAccounts
-- Roles, RoleBindings
+PVCs must be bound, not pending. Check PVC status explicitly.
 
-**Cluster-Scoped Resources:**
-- PersistentVolumes
-- Nodes
-- StorageClasses
-- ClusterRoles, ClusterRoleBindings
-- Namespaces themselves
+Pods must be running and ready, showing one out of one in the ready column.
 
-**Key Rule:** Namespace-scoped resources can only reference other resources in the same namespace (with few exceptions).
+Services must have endpoints. No endpoints means selector problems.
 
-### Scenario 9: Cross-Namespace Configuration (2 minutes)
+Applications must actually respond. Test with curl or port-forward to verify functionality.
 
-**CKAD Question:** "The webapp deployment in namespace  needs to access the API service in namespace . Update the configuration."
+This checklist prevents the common mistake of thinking you fixed something when you only partially fixed it. The exam doesn't give partial credit - the solution must completely work.
 
-**Solution:**
+## Summary
 
-Add:
+Application modeling troubleshooting combines multiple CKAD domains and is critical for exam success. Master the essential commands for working with ConfigMaps, Secrets, PVCs, and namespaces. Understand the common failure patterns - CreateContainerConfigError usually means ConfigMap or Secret issues, Pending PVCs mean no matching PV, no service endpoints means selector problems.
 
-**Time Target:** 2 minutes
+Time management is crucial. Simple ConfigMap or Secret fixes should take one to two minutes. PVC issues might take two to three minutes. Full multi-resource scenarios should take five to seven minutes maximum.
 
-### Scenario 10: Moving Resources Between Namespaces (1 minute)
+Always work systematically. Check if resources exist, verify they're in the correct namespace, confirm names and keys match exactly, and test that fixes actually work. Don't skip steps or make assumptions.
 
-**CKAD Question:** "A ConfigMap  in namespace  needs to be available in namespace ."
-
-**Solution:**
-
-**Time Target:** 1 minute
-
----
-
-## Section 5: Multi-Resource Debugging (5 minutes)
-
-### Debugging Workflow for Complex Applications (1.5 minutes)
-
-**Step 1: Map Dependencies**
-
-**Step 2: Check Each Layer**
-
-**Step 3: Follow Error Trail**
-
-### Scenario 11: Full Stack Troubleshooting (3.5 minutes)
-
-**CKAD Question:** "Deploy a complete application stack in namespace  with:
-- Deployment  using image 
-- ConfigMap  with 
-- Secret  with 
-- PVC  requesting 1Gi
-- Service  exposing port 80
-
-The deployment should mount the PVC at , load config from ConfigMap, and secret from Secret."
-
-**Solution:**
-
-**Time Target:** 5 minutes (full deployment from scratch)
-
----
-
-## Section 6: Rapid-Fire Practice (3 minutes)
-
-### Quick Drill 1 (45 seconds)
-
-**Task:** "ConfigMap  in namespace  is missing. Create it with ."
-
-### Quick Drill 2 (45 seconds)
-
-**Task:** "Secret  needs key  with value  in namespace ."
-
-### Quick Drill 3 (45 seconds)
-
-**Task:** "PVC  in namespace  is Pending. Create a matching 2Gi PV."
-
-### Quick Drill 4 (45 seconds)
-
-**Task:** "Move ConfigMap  from  to  namespace."
-
----
-
-## Section 7: Time-Saving Techniques (2 minutes)
-
-### Quick Resource Creation (1 minute)
-
-### Quick Verification (1 minute)
-
----
-
-## Section 8: CKAD Exam Checklist (1 minute)
-
-**Before leaving a question:**
-
-✅ **All resources in correct namespace**
-
-✅ **ConfigMaps and Secrets exist**
-
-✅ **Key names match references**
-
-✅ **PVCs are Bound**
-
-✅ **Pods are Running and Ready**
-
-✅ **Services have endpoints**
-
-✅ **Application responds**
-
----
-
-## Summary: CKAD Mastery (1 minute)
-
-**Must-Know Commands:**
-
-**Common Patterns:**
-- CreateContainerConfigError → Missing ConfigMap/Secret
-- Pending PVC → No matching PV available
-- No endpoints → Selector/label mismatch
-- Cross-namespace → Use FQDN for services
-
-**Time Management:**
-- Simple ConfigMap/Secret: 1-2 minutes
-- PVC issue: 2-3 minutes
-- Full stack deployment: 5-7 minutes
-- Always verify before moving on!
-
-**Final Tips:**
-1. Check namespace first - most common mistake
-2. Use  for speed
-3. Verify key names match exactly
-4. Test connectivity after configuration
-5. Don't forget to verify fixes work!
-
-**Remember:** Application modeling questions combine multiple CKAD domains. Master these patterns and you'll excel!
-
----
-
-**Total Duration:** 25-30 minutes
-**Practice Goal:** Complete any multi-resource scenario in under 5 minutes!
-
-Good luck on your CKAD exam!
+Practice these scenarios repeatedly until the diagnostic process is automatic. Set yourself time limits and try to beat them. The more you practice, the faster you'll spot common patterns. Master application modeling troubleshooting and you'll handle a significant portion of the CKAD exam confidently and efficiently.

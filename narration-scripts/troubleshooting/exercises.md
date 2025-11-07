@@ -1,404 +1,43 @@
-# Troubleshooting Apps in Kubernetes - Practical Exercises
+# Troubleshooting Apps in Kubernetes - Exercises Narration Script
 
-**Duration:** 20-25 minutes
-**Format:** Live demonstration and guided troubleshooting
-**Prerequisites:** Kubernetes cluster running, kubectl configured
-
----
-
-## Introduction (1 minute)
-
-Welcome to hands-on Kubernetes troubleshooting. Today, you'll diagnose and fix real broken applications—exactly what you'll face in the CKAD exam.
-
-**The Challenge:** We'll deploy deliberately broken configurations and work through systematic diagnosis and fixes. No solutions until you've tried!
-
-**What You'll Learn:**
-1. Systematic troubleshooting methodology
-2. Using kubectl describe and logs effectively
-3. Identifying common misconfigurations
-4. Fixing issues under time pressure
-5. Verifying your fixes work
-
-**CKAD Mindset:** These are realistic exam scenarios. Practice your diagnosis speed!
-
-Let's dive in!
+**Duration:** 15-20 minutes
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running (Docker Desktop, k3d, or similar)
 
 ---
 
-## Exercise 1: The Broken Pi Application (18-20 minutes)
+Welcome to hands-on Kubernetes troubleshooting. This is where theory meets reality, and you'll learn to diagnose and fix real problems in Kubernetes applications. Troubleshooting is a critical skill for the CKAD exam and for working with Kubernetes in general, because things will go wrong, and you need to know how to find and fix the issues quickly.
 
-### Scenario Introduction (1 minute)
+Make sure you have a Kubernetes cluster running and kubectl configured. I'm using Docker Desktop, but any Kubernetes distribution will work fine. Unlike our previous labs where we built things step by step, today we're jumping straight into a broken application. This is the reality of troubleshooting - you don't know what's wrong until you investigate.
 
-**Your Task:** A colleague deployed the Pi calculation application but it's not working. Users should be able to access it at http://localhost:8020 or http://localhost:30020, but they can't reach it.
+## Lab
 
-**Success Criteria:**
-- Access the Pi app via browser or curl
-- Pod is healthy with no restarts
-- Application responds successfully
+This lab is all about hands-on problem-solving. We have a deliberately broken Pi calculation application that should be accessible at localhost:8020 or localhost:30020, but it isn't working. Your job is to figure out what's wrong and fix it. Let me deploy the broken application from the troubleshooting specs directory.
 
-**Deploy the broken app:**
+When I run kubectl apply on the pi-failing directory, Kubernetes accepts the deployment. That's important to understand - Kubernetes validates the YAML syntax and structure, but it doesn't check whether your application will actually work. The specs could be perfectly valid Kubernetes YAML but completely broken from an application perspective.
 
+Let's see what we have. When I check the resources, I can see we have some deployments, pods, and services created. But are they working? That's what we need to investigate. The pod status is our first clue. Is it Running? Is it Ready? Check the Ready column - it should show one out of one if everything is healthy. Look at the Restarts column too - a high number there means the container keeps crashing.
 
-**Initial Check:**
+Now comes the systematic investigation. The describe command is your best friend in troubleshooting. When I describe the pod, look at all this information. The Events section at the bottom is gold - it shows you exactly what Kubernetes tried to do and where things went wrong. You might see image pull errors, probe failures, or container crashes. Each event has a timestamp and a message, so you can follow the story of what happened.
 
+The pod logs are equally important. When I check the logs, I can see what the application itself is saying. Sometimes the application starts but has configuration problems. Sometimes it crashes immediately with an error message. If a container is crash-looping, you'll want to use the previous flag to see the logs from before it crashed.
 
-**The Problem:** Something is wrong! Let's troubleshoot systematically.
+Let's look at the service configuration next. Services need three things to work correctly - the right type, the right port configuration, and the right selector. The selector is crucial - it tells the service which pods to route traffic to. When I check the service endpoints, if I see none listed, that means the service selector doesn't match any pod labels. That's a common mistake and easy to fix once you spot it.
 
----
+Here's where it gets interesting. You might find multiple problems. Maybe the image name is wrong, causing an ImagePullBackOff. Maybe the service selector doesn't match the pod labels, so there are no endpoints. Maybe the container port doesn't match the target port in the service. Real-world troubleshooting often involves fixing several issues in sequence.
 
-### Step 1: High-Level Assessment (2 minutes)
+Let me work through the systematic diagnostic process. First, I check the high-level status with get all. Then I describe the pods to see the events. I check the logs to see application output. I verify the service has endpoints. I check that port numbers match up between the container, the pod spec, and the service. Each step narrows down the possibilities.
 
-**Narration:** Always start with a broad view before diving deep.
+When I find an issue, I can fix it in different ways. If it's in the YAML file, I can edit the file and reapply it. If it's a quick fix like changing an image or scaling replicas, I can use imperative commands. Kubernetes will detect the change and reconcile the actual state to match the desired state. That might mean creating new pods, terminating old ones, or updating configurations.
 
+After each fix, watch what Kubernetes does. Pods might take a moment to start. Images need to be pulled. Readiness probes need to pass. Don't assume your fix worked - verify it. Check the pod status again. Look at the events to see if new errors appeared. Test the service endpoint. Try accessing the application.
 
-**What to look for:**
-- **Deployments:** Are they showing READY replicas?
-- **Pods:** What's their STATUS? Any restarts?
-- **Services:** Do they exist? What type?
-- **ReplicaSets:** Are they creating pods?
+When everything is working, you should be able to curl or browse to the Pi application and see it respond. The pod should be Running with a Ready status of one out of one. The service should have endpoints listed. There should be no recent restarts, and the events should show normal operations like image pulled successfully and container started.
 
-**Observe:**
+This systematic approach is essential for the CKAD exam. You'll face similar scenarios where something is broken and you need to fix it. The exam doesn't tell you what's wrong - you have to investigate. Practice this diagnostic workflow until it becomes second nature. Start broad with get commands, narrow down with describe, dive deep with logs, and verify everything after making changes.
 
+## Cleanup
 
-**Expected Findings:**
-- You should see a deployment, pods, and services
-- Note any pods that aren't READY or have errors
-- Note any deployments that don't have desired replicas
+When you're done investigating and fixing the application, let's clean up the resources. We can delete everything with the troubleshooting label, which removes all the pods, services, and deployments we created. This keeps your cluster clean for the next lab.
 
-**Narration Point:** "What's the pod status? Is it Running? Is it Ready? These are our first clues."
-
----
-
-### Step 2: Pod-Level Diagnosis (3 minutes)
-
-**Narration:** Let's examine the pods in detail.
-
-
-**Check for common issues:**
-- STATUS: ImagePullBackOff, CrashLoopBackOff, Pending, Error?
-- READY: Is it 0/1 or 1/1?
-- RESTARTS: High restart count?
-
-**Describe the pod:**
-
-
-**What to examine in describe output:**
-
-1. **Pod Status and Conditions:**
-   - Is PodScheduled?
-   - Is Initialized?
-   - Is Ready?
-   - Are Containers Ready?
-
-2. **Events Section (critical!):**
-   - Look for errors in chronological order
-   - Common patterns:
-     - "Failed to pull image"
-     - "Back-off restarting failed container"
-     - "Readiness probe failed"
-     - "Liveness probe failed"
-
-3. **Container Status:**
-   - Current State: Running, Waiting, Terminated?
-   - Last State: Was it terminated? Exit code?
-   - Ready: true or false?
-
-**Pause for discovery:** "What do the events tell us? Take 30 seconds to read them carefully."
-
-**Potential Issue #1: Image Problem**
-
-If you see image pull errors:
-
-
-**Potential Issue #2: Container Crash**
-
-If pods are crashing:
-
-
-**Potential Issue #3: Readiness/Liveness Probe Failures**
-
-If probe failures:
-
-
-**Guided Discovery (2 minutes):**
-
-**Narration:** "Let's identify what's wrong with this pod. I'll give you 2 minutes to investigate using describe and logs."
-
-**Common findings in this lab:**
-1. Check if the image name is correct
-2. Check if there are any port mismatches
-3. Look at environment variables
-4. Check resource requests/limits
-
----
-
-### Step 3: Service-Level Diagnosis (3 minutes)
-
-**Narration:** Even if pods are running, service configuration can prevent access.
-
-
-**Check these critical aspects:**
-
-1. **Service Type:**
-   - Is it NodePort (for localhost:30020)?
-   - Is it LoadBalancer or ClusterIP?
-
-2. **Port Configuration:**
-
-   - **port:** External port (e.g., 8020)
-   - **targetPort:** Container port it forwards to
-   - **nodePort:** Port on node (e.g., 30020)
-
-3. **Selector:**
-
-   - Do these labels exist on pods?
-
-4. **Endpoints:**
-
-   - If ENDPOINTS is `<none>`, service can't find pods!
-   - This usually means selector mismatch
-
-**Diagnosis Process:**
-
-
-**Common Issues:**
-
-**Issue A: Selector Mismatch**
-
-
-**Issue B: TargetPort Mismatch**
-
-
-**Issue C: Named Port Mismatch**
-
-
-**Guided Discovery:**
-
-"Check the service endpoints. Are there any? If not, what could cause that?"
-
----
-
-### Step 4: Fix the Issues (5 minutes)
-
-**Narration:** "Now that we've identified the problems, let's fix them one by one."
-
-**Common fixes you might need:**
-
-**Fix 1: Correct Image Name**
-
-If image is wrong:
-
-
-**Fix 2: Fix Service Selector**
-
-If selector doesn't match:
-
-
-**Fix 3: Fix Port Configuration**
-
-If ports don't match:
-
-
-**Fix 4: Fix Environment Variables**
-
-If app needs env vars:
-
-
-**Fix 5: Fix Resource Limits**
-
-If OOMKilled or resource issues:
-
-
-**Applying Fixes:**
-
-**Narration:** "After each fix, give Kubernetes time to reconcile and watch for changes."
-
-
----
-
-### Step 5: Verification (3 minutes)
-
-**Narration:** "Always verify your fixes worked. Don't assume!"
-
-**Verification Checklist:**
-
-1. **Pods are healthy:**
-
-
-2. **Deployment is healthy:**
-
-
-3. **Service has endpoints:**
-
-
-4. **Application responds:**
-
-
-5. **Access via browser:**
-
-
-6. **No restarts:**
-
-
-**Success Criteria Met?**
-
-✅ Pod is Running and Ready (1/1)
-✅ No pod restarts
-✅ Service has endpoints
-✅ Application responds to curl/browser
-✅ Can calculate Pi values
-
-**Narration:** "If all checks pass, congratulations! You've successfully diagnosed and fixed the application!"
-
----
-
-### Step 6: Common Solutions Revealed (2 minutes)
-
-**Narration:** "Let's review the typical issues in this lab and their solutions."
-
-**Typical Issue #1: Service Selector Mismatch**
-
-
-**Typical Issue #2: Wrong Port Numbers**
-
-
-**Typical Issue #3: Wrong Service Type**
-
-
-**Typical Issue #4: Image Name Error**
-
-
-**Review Your Approach:**
-
-"How did you diagnose the issue? Did you follow the systematic approach?"
-
-1. ✅ Started with high-level view (get all)
-2. ✅ Checked pod status
-3. ✅ Used describe for events
-4. ✅ Checked logs (if crashing)
-5. ✅ Verified service configuration
-6. ✅ Checked endpoints
-7. ✅ Fixed issues systematically
-8. ✅ Verified fixes worked
-
----
-
-## Exercise 2: Quick Diagnosis Drills (3 minutes)
-
-**Narration:** "Let's practice rapid diagnosis with theoretical scenarios."
-
-### Drill 1: Quick Assessment (30 seconds each)
-
-**Scenario A:**
-
-
-**Question:** What's wrong and how do you diagnose?
-
-**Answer:**
-
-
----
-
-**Scenario B:**
-
-
-**Question:** Why can't users access the API?
-
-**Answer:**
-
-
----
-
-**Scenario C:**
-
-
-**Question:** How do you find out why it's crashing?
-
-**Answer:**
-
-
----
-
-## CKAD Exam Tips (2 minutes)
-
-### Time Management
-
-**For troubleshooting questions:**
-- Budget 5-7 minutes total
-- 2 minutes diagnosis
-- 2 minutes fixing
-- 1 minute verification
-
-### Common CKAD Troubleshooting Patterns
-
-**Pattern 1: "Fix the broken deployment"**
-- Always check: labels, selectors, ports, image
-- Use describe and logs
-- Verify endpoints
-
-**Pattern 2: "Why can't I access the service?"**
-- Check service has endpoints
-- Check service type (NodePort vs ClusterIP)
-- Check port numbers match
-- Test with port-forward
-
-**Pattern 3: "Pod won't start"**
-- ImagePullBackOff → Check image name
-- CrashLoopBackOff → Check logs --previous
-- Pending → Check resources and scheduling
-- CreateContainerConfigError → Check ConfigMap/Secret
-
-### Essential Commands to Memorize
-
-
-### Verification Checklist
-
-Before moving to next question:
-1. ✅ Pod shows READY 1/1
-2. ✅ Pod status is Running
-3. ✅ RESTARTS is 0 (or hasn't increased)
-4. ✅ Service has endpoints
-5. ✅ Application actually responds (test it!)
-
----
-
-## Cleanup (1 minute)
-
-
----
-
-## Summary and Key Takeaways (1 minute)
-
-**What We Practiced:**
-
-1. **Systematic diagnosis** - Not guessing, but following a process
-2. **Using describe effectively** - Events section is gold
-3. **Checking endpoints** - First thing for service issues
-4. **Using logs correctly** - Including --previous flag
-5. **Verifying fixes** - Never assume, always test
-
-**CKAD Skills Reinforced:**
-- ✅ Rapid problem identification
-- ✅ Using kubectl describe and logs
-- ✅ Understanding pod lifecycle
-- ✅ Debugging service connectivity
-- ✅ Fixing common misconfigurations
-
-**Real-World Application:**
-- This is your daily reality with Kubernetes
-- Speed comes from practice and pattern recognition
-- Always follow a systematic approach
-- Document your troubleshooting steps
-
-**Practice Makes Perfect:**
-- Run through this lab multiple times
-- Try to reduce your diagnosis time each iteration
-- Create your own broken configs to practice
-- Time yourself against CKAD exam pace
-
----
-
-**Total Duration:** 20-25 minutes
-**Next Session:** Advanced troubleshooting scenarios and CKAD exam preparation
-
-**Remember:** In the exam, troubleshooting is not a separate domain—it's a skill you'll use in EVERY domain. Master it!
+That completes our troubleshooting exercise. You've practiced the essential skills of investigating failed deployments, reading pod events, checking service configurations, and systematically fixing issues. These skills are fundamental for both the CKAD exam and real-world Kubernetes work. In the next video, we'll cover CKAD-specific troubleshooting scenarios with more complex failures and time-saving techniques for the exam.

@@ -1,303 +1,69 @@
-# Operators Exercises - Practical Demo
-**Duration: 20-25 minutes**
+# Operators - Exercises Narration Script
+
+**Duration:** 20-25 minutes
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running, completed Deployments and StatefulSets labs
 
 ---
 
-## Setup and Introduction (1:00)
+Welcome back! In the previous video, we covered the concepts behind Kubernetes Operators and how they extend Kubernetes capabilities. Now it's time to get hands-on and explore how Operators use Custom Resource Definitions to manage complex applications with operational knowledge built right in.
 
-Welcome to the hands-on Operators exercises. In this session, we'll work with real operators, experiencing how they simplify complex application deployment and management.
+Before we dive in, I should mention that some operators don't support ARM64 processors, so if you're using Apple Silicon you may encounter issues with certain exercises. Don't worry though, the concepts remain the same regardless of your hardware.
 
-Important note: Some operators don't support ARM64 processors. If you're using Apple Silicon, you may encounter issues with certain exercises.
+Some applications need a lot of operational knowledge beyond just the complexity of modelling the app in Kubernetes. Think of a stateful application where you want to create backups of data. The application deployment is modelled in Kubernetes resources, and it would be great to model the operations in Kubernetes too. That's exactly what the operator pattern does. It's a loose definition for an approach where you install an application which extends Kubernetes. So in that stateful application, your operator would deploy the app, and it would also create a custom DataBackup resource in the cluster. Any time you want to take a backup, you deploy a backup object, the operator sees the object and performs all the backup tasks. This is automation that lives in the cluster itself.
 
-We'll be working with:
-- Creating and managing Custom Resource Definitions (CRDs)
-- Deploying the NATS operator for message queues
-- Deploying the MySQL operator for databases
-- Understanding operator-managed resources
-- Completing a lab challenge with a full application stack
+## Reference
 
-Let's begin by exploring Custom Resource Definitions.
+Let's start by understanding what we're working with. Operators typically work by adding Custom Resource Definitions to the cluster, which extend the Kubernetes API with your own object types. We'll be looking at a couple of real-world operators in this session. The NATS Operator helps deploy high-performance message queues, and the Bitpoke MySql Operator manages MySql databases with all the complexity of replication and backup built in. These are production-grade tools that demonstrate the power of the operator pattern.
 
----
+## Custom Resources
 
-## Exercise 1: Understanding Custom Resource Definitions (3:00)
+Custom Resource Definitions are actually pretty simple in themselves. You deploy an object which describes the schema of your new resource type. Let me show you a straightforward example. I'll open the student-crd.yaml file. This defines a version one Student resource with email and company fields. The rest of the spec tells Kubernetes to store objects in its database and print out specific fields when objects are shown in kubectl.
 
-**Timing: 0:00-4:00**
+You deploy CRDs in the usual way. When I apply this, Kubernetes now understands what a Student is. Let me list all the custom resources in the cluster and print the details of the new Student CRD. The CRD is just the object schema. Kubernetes only stores objects if it understands the type, which is what the CRD describes.
 
-Before working with full operators, let's understand CRDs at a fundamental level.
+Now your Kubernetes cluster understands Student resources, you can define them with YAML. I have two student files here. One describes a student named Edwin who works at Microsoft, and another describes Priti who works at Google. Let me create all the Students by applying the students folder, then list them and print the details for Priti.
 
-We have a simple CRD that defines a "Student" resource. Let's look at it:
+You'll see standard kubectl verbs like get, delete, and describe work for all objects including custom resources. The Student CRD specified additional printer columns, so when we list students we see the company field displayed right there. This is really convenient. If you try to apply this YAML in a cluster which doesn't have the Student CRD installed, you'll get an error because Kubernetes won't understand what a Student is.
 
-The student-crd.yaml defines:
-- API group and version
-- Resource names (plural, singular, kind)
-- Schema with fields: email and company
-- Additional printer columns for kubectl output
+## NATS Operator
 
-This CRD is just a schema definition. It tells Kubernetes how to store and display Student resources, but it doesn't include any logic or automation.
+A CRD itself doesn't do anything beyond letting you store resources in the cluster. Operators typically install CRDs and also run controllers in the cluster. A controller is just an app running in a Pod which connects to the Kubernetes API and watches for CRDs being created or updated. When you create a new custom resource, the controller sees that and takes action, which could mean creating Deployments, Services and ConfigMaps, or running any custom code you need.
 
-Let's install it:
+NATS is a high-performance message queue which is very popular for asynchronous messaging in distributed apps. The NATS operator runs as a Deployment. Let me install the operator and look carefully at the output. You'll see the operator installs some RBAC objects and the Deployment.
 
+Let me list the custom resource types in the cluster now. We see some NATS types in addition to our Student resource. How did these get created? There's no YAML for these CRDs, so the NATS controller running in the Pod must have created them by using the Kubernetes API in code. I can confirm the RBAC setup gives the controller ServiceAccount permission to do that by checking what the operator's service account can do.
 
-Now let's verify the CRD was created:
+We can use a NatsCluster object to create a clustered, highly-available message queue for applications to use. Let me look at the msgq.yaml file. This defines a cluster with three NATS servers running version two point five. When I create the cluster resource, a single object gets created.
 
+Let me print the details of the new message queue and look at the other objects running in the default namespace. You'll see the operator has created Pods and Services. The operator logs will show how the Pods were created. The output from the CRD doesn't show much detail, but the operator has created Pods and Services. There's no Deployment or ReplicaSet for the message queue Pods though. Let me check the logs and you'll see the operator is managing the Pods directly.
 
-We see our new "students" CRD. Let's get more details:
+The NATS operator is unusual because it acts as a Pod controller. Typically operators build on top of Kubernetes resources, so they would use Deployments to manage Pods. When I print the details of one of the NATS Pods, you'll see it's controlled by the NatsCluster object, not by a ReplicaSet or StatefulSet.
 
+The NATS operator still provides high availability even though it's managing Pods directly. Let me delete one of the message queue Pods and watch what happens. The operator detects the deletion and creates a new Pod to replace it, maintaining the desired state of three servers. The operator logs show it coming online, demonstrating continuous reconciliation in action.
 
-The description shows the schema, validation rules, and how resources will be displayed.
+## MySql Operator
 
-Now Kubernetes understands the Student resource type. Let's create some students.
+There's not much more we can do with the NATS operator, so let's try one which has some more features. There's a Helm chart for the Presslabs MySql operator in this repository. The values.yaml file defines the default values for the operator, and there is a lot you can tweak here for production deployments.
 
-We have YAML files for two students - Edwin who works at Microsoft, and Priti who works at Google.
+Let me install the operator using Helm. You'll need the Helm CLI installed for this. The operator pod might restart and take a few minutes to be ready, so I'll watch the status until it's running. What resources do we need to create to deploy a MySql database cluster using the operator? The Helm output gives us an example of what we need. We need a MysqlCluster object, which is a CRD installed by the operator, and we need a Secret containing the admin user password for the database.
 
+You can create a replicated database cluster using the specs I have here. There's a secret with the database password and a cluster definition set to use two MySql servers. Let me create the database and watch what happens. The database Pods take a while to start up. What controller does the operator use, and what's the container configuration in the Pods?
 
-Let's list our students:
+Let me list the Pods and you'll see one called db-mysql-0. That name should suggest that it's managed by a StatefulSet. When I print the Pod details, you'll see multiple containers. The container setup is pretty complex. There are two init containers which look like they set up the database environment and the MySql configuration, the main database container which runs MySql, and three sidecar containers which export database metrics and perform a heartbeat check between the database servers. This is all managed by the operator.
 
+Let me check the logs of the primary database server in Pod zero. You'll see mysqld ready for connections showing the database server is running successfully. And the logs of the secondary database server in Pod one show replication started, indicating the secondary is replicating data from the primary. The operator provides a production-grade deployment of MySql, and it also sets up a CRD for creating database backups and sending them to cloud storage. All of this operational complexity is encoded in the operator.
 
-Perfect! We see both students with their companies displayed. This works because the CRD specified additional printer columns.
+## Lab
 
-Let's get details for Priti:
+Now it's your turn to experiment with the operators. We'll make use of them to install infrastructure components for a demo app. Start by deleting the existing message queue and database clusters. The operators are watching for resources to be deleted, and will remove all the objects they created. This is proper cleanup through the operator pattern.
 
+Now deploy a simple to-do list application using the specs in the todo-list folder. The app has a website listening on port 30028 which posts messages to a queue when you create a new to-do item. A message handler listens on the same queue and creates items in the database. Browse to the app now and you'll see an error because the components it needs don't exist yet.
 
-We see all the student information. This demonstrates that CRDs allow you to extend Kubernetes with your own resource types.
+The challenge is to create NatsCluster and MysqlCluster objects matching the config in the app to make everything work correctly. Look at the application configuration to understand what service names and settings it expects. You'll need to create a NATS cluster with the right name so the service gets created with the name the app expects, and similarly for the MySql cluster. Think about how the operators create Services based on the custom resource names, and how those Services need to match what the application is looking for.
 
-Important point: This is just storage. The CRD doesn't do anything beyond letting us create and store these resources. For automation and logic, we need an operator with a controller.
+## Cleanup
 
----
+When you're finished with the lab, cleanup is important and the order matters. Delete the basic objects and CRDs first. Deleting CRDs deletes custom resources, so make sure the controller still exists to tidy up. Then delete the NATS operator. Finally delete the MySql CRD and operator using kubectl and Helm.
 
-## Exercise 2: Installing the NATS Operator (4:00)
-
-**Timing: 4:00-8:00**
-
-Now let's work with a real operator. NATS is a high-performance message queue, and it has an operator that simplifies deployment and management.
-
-The NATS operator deployment includes:
-- RBAC resources (ServiceAccount, ClusterRole, ClusterRoleBinding)
-- A Deployment running the operator Pod
-
-Let's install it:
-
-
-Notice the output shows multiple resources being created. Let's check what CRDs the operator installed:
-
-
-Interesting! We now see NatsCluster and NatsServiceRole CRDs in addition to our Student CRD. But we didn't apply these CRDs - how did they get created?
-
-The NATS operator Pod installed them programmatically using the Kubernetes API. Let's verify the operator has permission to do this:
-
-
-Yes, the operator's ServiceAccount has permission to create CRDs. This is common for operators - they often install their own CRDs as part of their initialization.
-
-Let's check the operator Pod:
-
-
-The operator is running and watching for NatsCluster resources.
-
----
-
-## Exercise 3: Creating a NATS Cluster with the Operator (5:00)
-
-**Timing: 8:00-13:00**
-
-Now let's use the operator to deploy a message queue cluster.
-
-We have a NatsCluster custom resource that defines a 3-server NATS cluster running version 2.5:
-
-
-A single resource was created. But let's see what the operator did:
-
-
-The operator created multiple Pods and Services! There's no Deployment or ReplicaSet - the operator is directly managing these Pods.
-
-Let's check the operator logs to see what happened:
-
-
-The logs show the operator detecting the NatsCluster resource and creating the infrastructure. This is the controller loop in action.
-
-Let's look at one of the NATS Pods:
-
-
-In the "Controlled By" section, we see "NatsCluster/msgq". The operator is the controller for these Pods.
-
-This is unusual - most operators use Deployments or StatefulSets to manage Pods. NATS operator directly manages Pods to have fine-grained control over the cluster formation.
-
-Let's test the operator's high-availability capabilities. Delete one of the Pods:
-
-
-Watch what happens:
-
-
-A new Pod named msgq-2 appears! The operator detected the Pod deletion and recreated it to maintain the desired state of 3 servers.
-
-Check the operator logs:
-
-
-The logs show the operator detecting the deletion and creating a replacement. This is continuous reconciliation in action.
-
----
-
-## Exercise 4: Installing the MySQL Operator (4:00)
-
-**Timing: 13:00-17:00**
-
-Let's work with a more sophisticated operator. The Presslabs MySQL operator provides production-grade database clusters.
-
-This operator is distributed as a Helm chart. Let's install it:
-
-
-The operator installation includes many resources. Let's wait for it to be ready:
-
-
-The operator Pod might restart once during initialization - this is normal. Once it's running and ready, let's explore what resources we need to create a database cluster.
-
-The Helm output gives us hints:
-- We need a MysqlCluster custom resource
-- We need a Secret containing the admin password
-
-Let's check the CRDs that were installed:
-
-
-We see several MySQL-related CRDs. The main one is mysqlclusters.
-
-Now let's create a database cluster. We have two files:
-- A Secret with the database password
-- A MysqlCluster resource defining a 2-server replicated cluster
-
-
-This creates our custom resource. Now let's watch what the operator does:
-
-
-We'll see Pods starting: db-mysql-0, then db-mysql-1. These take a few minutes to fully initialize.
-
----
-
-## Exercise 5: Understanding Operator-Managed Resources (3:00)
-
-**Timing: 17:00-20:00**
-
-While the database Pods are starting, let's understand what the MySQL operator created.
-
-First, what controller is being used?
-
-
-The operator created a StatefulSet! This is more typical than NATS's approach. StatefulSets provide stable pod identity, which is perfect for databases.
-
-Let's look at one of the database Pods once it's running:
-
-
-Look at the containers section. The operator configured:
-- Two init containers for setup and configuration
-- The main MySQL container
-- Three sidecar containers for metrics export and health checking
-
-This is complex! The operator encoded all this operational knowledge so we don't have to.
-
-Let's check the primary database server logs:
-
-
-We see MySQL starting up and becoming ready for connections.
-
-Now check the secondary database server:
-
-
-We see replication starting from the primary. The operator configured replication automatically!
-
-This demonstrates the power of operators: we declared "I want a 2-server MySQL cluster" and the operator handled all the complexity:
-- StatefulSet configuration
-- Persistent volume claims
-- Init containers for setup
-- Sidecar containers for monitoring
-- Replication configuration
-- Service creation
-
-All from a simple custom resource declaration.
-
----
-
-## Exercise 6: Lab Challenge - Complete Application Stack (5:00)
-
-**Timing: 20:00-25:00**
-
-Now for the lab challenge. We need to deploy a complete application stack using both operators.
-
-First, let's clean up the existing operator-managed resources:
-
-
-Watch what happens - the operators detect the deletions and clean up all the resources they created. This is proper cleanup through the operator pattern.
-
-Now let's deploy our application:
-
-
-This deploys:
-- A web frontend
-- A message handler
-- Services for both components
-
-Try accessing the application:
-
-
-We get an error! The application needs infrastructure that doesn't exist yet.
-
-Looking at the application code, we can see it needs:
-- A NATS message queue at "msgq" service
-- A MySQL database at "db-mysql" service
-
-Our challenge: create NatsCluster and MysqlCluster resources that match these requirements.
-
-For NATS, we need:
-- Name: msgq (this creates a service named "msgq")
-- 3 servers for high availability
-
-For MySQL, we need:
-- Name: db-mysql (this creates the right service name)
-- The database must contain the schema for the todo app
-
-Let me create the NATS cluster:
-
-
-And the MySQL cluster:
-
-
-Wait for the infrastructure to be ready:
-
-
-Once everything is running, test the application:
-
-
-Success! The application is working. We can create todo items through the web interface, they're posted to the NATS queue, the message handler processes them and stores them in MySQL.
-
-We deployed complex infrastructure (message queue cluster and database cluster) using simple custom resource definitions. The operators handled all the complexity.
-
----
-
-## Cleanup and Summary (1:00)
-
-Let's clean up our work:
-
-
-Let's review what we learned:
-
-**Key Concepts:**
-- CRDs extend Kubernetes with custom resource types
-- Operators combine CRDs with controllers for automation
-- Controllers watch resources and reconcile state continuously
-- Operators encode operational knowledge and best practices
-- Custom resources are managed like standard Kubernetes resources
-
-**Operator Benefits:**
-- Simplified management of complex applications
-- Automatic handling of operational tasks
-- Consistent interface using kubectl
-- Self-healing and continuous reconciliation
-- Declarative operations
-
-**CKAD Relevance:**
-- Understanding CRDs (required)
-- Creating and managing custom resources (required)
-- Working with operator-managed applications
-- Basic troubleshooting
-
-In the next session, we'll focus on CKAD exam-specific scenarios for working with Custom Resource Definitions and operator-managed applications.
-
-Thank you for following along with these exercises.
+That wraps up our hands-on exploration of Operators. We've seen how Custom Resource Definitions extend Kubernetes with new resource types, how Operators combine CRDs with controllers to provide automation, how operators can manage complex applications like message queues and databases with all the operational knowledge built in, and how custom resources are managed just like standard Kubernetes resources. The operator pattern is powerful for encoding operational expertise into Kubernetes itself. In the next video, we'll focus on CKAD-specific requirements for working with Custom Resource Definitions and operator-managed applications, since understanding CRDs is part of the exam scope.
