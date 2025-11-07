@@ -1,383 +1,61 @@
 # Secrets - Exercises Narration Script
 
 **Duration:** 15-18 minutes
-**Format:** Hands-on demonstration following README.md exercises
-**Audience:** Developers practicing Kubernetes Secret operations
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running, completed ConfigMaps lab
 
 ---
 
-## Introduction (0:00 - 0:30)
+Welcome back! In the previous ConfigMaps lab, we saw how to externalize configuration from container images. Now we'll explore Secrets, which are designed specifically for sensitive data like passwords, API keys, and certificates.
 
-Welcome to the hands-on Secrets lab. In this session, we'll work through practical exercises demonstrating how to create and use Secrets in real applications.
+Secrets work very similarly to ConfigMaps, but with important differences around how the data is stored and accessed. We'll use the same configurable demo application from the ConfigMaps lab, which makes it easy to compare the two approaches and see how they work together.
 
-We'll use the same "configurable" demo application from the ConfigMaps lab. This makes it easy to compare how Secrets and ConfigMaps work, and see how they can be used together in the same application.
+## API specs
 
-Make sure you have a Kubernetes cluster running and kubectl configured. Let's get started.
+Let's start by understanding how Secrets differ from ConfigMaps in their YAML structure. Secrets have a data section just like ConfigMaps, but the values must be base64-encoded. There's also a stringData field that accepts plain text values and automatically converts them to base64 when applied. This makes Secrets much easier to work with.
 
+The Pod spec for consuming Secrets looks almost identical to ConfigMaps. Instead of configMapRef, you use secretRef. Instead of configMapKeyRef, you use secretKeyRef. The pattern is the same, just swapping the resource type. This consistency makes it easy to switch between ConfigMaps and Secrets when you realize certain configuration should be protected.
 
----
+For volume mounts, Secrets use the same pattern as ConfigMaps. You define a volume with a secret source instead of a configMap source, then mount it in the container. The Secret values appear as files in the container filesystem, decoded from base64 automatically.
 
-## Exercise 1: Understanding the Security Risk with ConfigMaps (0:30 - 2:30)
+## Creating Secrets from encoded YAML
 
+Let's create our first Secret using base64-encoded values in YAML. The Secret definition has a data field containing keys with base64-encoded values. This encoding is reversible, so anyone can decode it. It's important to understand that encoding is not encryption. The encoding simply prevents values from being visible at a glance.
 
-First, let's deploy the configurable app using ConfigMaps to see why we need Secrets for sensitive data.
+Looking at the Deployment that uses this Secret, the syntax is almost identical to ConfigMaps. The envFrom section uses secretRef instead of configMapRef. That's the only difference in the Pod spec.
 
+When I apply the Secret and Deployment, then check how the Secret appears in the cluster, the value is base64-encoded in storage and when you retrieve it with kubectl. This provides minimal protection. It's not visible at a glance, but anyone with kubectl access can decode it. Inside the running container, the Secret value is surfaced as a plain text environment variable. The application doesn't need to know anything about base64 encoding.
 
-This creates both ConfigMaps and the application. Let's examine what ConfigMaps expose:
+## Creating Secrets from plaintext YAML
 
+Base64 encoding is awkward when writing YAML by hand. You need to encode values before putting them in your files, and it gives a false sense of security. Kubernetes provides a better option called stringData.
 
-You can see several ConfigMaps. Now let's look at one in detail:
+With stringData instead of data, the values are in plain text in your YAML file. When you apply this YAML, Kubernetes automatically converts the values to base64 for storage. This is much more convenient for manual YAML authoring. The security is identical because both approaches result in base64-encoded values in etcd.
 
+When I deploy a Secret using stringData and check it with kubectl get, the output shows the data field with base64-encoded values, not stringData. Kubernetes converted it during creation. This makes Secret files more readable while maintaining the same storage format.
 
-Notice how the data is completely visible in plain text. Anyone with kubectl access can see all these values. You can also get the full YAML:
+## Working with base-64 Secret values
 
+Sometimes you need to work directly with the base64 values. Let me demonstrate the encoding and decoding process. To encode a value for a Secret data field, you use the base64 command with the string piped to it. To decode a value retrieved from kubectl, you pipe it through base64 with the decode flag.
 
-Everything is right there in plain text. This is fine for hostnames, ports, and feature flags, but imagine if this contained database passwords, API keys, or OAuth tokens. That would be a serious security problem.
+This is useful when you need to quickly create Secret YAML from existing values or when troubleshooting to see what values are actually stored in a Secret. For the CKAD exam, being comfortable with base64 encoding and decoding saves time when working with Secrets imperatively.
 
+## Creating Secrets from files
 
-This is exactly why Kubernetes provides Secrets. Let's see how they're different.
+For file-based secrets like TLS certificates or SSH keys, creating Secrets from files is the most practical approach. The kubectl create secret command with the from-file flag reads the file contents and base64-encodes them automatically.
 
----
+When you use from-file, the filename becomes the key name in the Secret by default. You can specify a custom key name using equals syntax. This is the same pattern as ConfigMaps from files.
 
-## Exercise 2: Creating Secrets from Encoded YAML (2:30 - 5:00)
+When you mount a file-based Secret as a volume, each key becomes a file in the mount path, with the decoded contents as the file data. The application reads these files just like any other files in the filesystem. This is perfect for certificates, SSH keys, and other credential files that applications expect to read from disk.
 
+## Lab
 
-Let's create our first Secret using base64-encoded values in YAML. First, let me show you the Secret definition:
+Now it's your turn to experiment. The lab challenge involves working with Secret data to configure an application. You'll need to create Secrets from different sources, use them in Pods through both environment variables and volume mounts, and understand how Secret updates affect running Pods.
 
+This lab helps solidify the patterns you'll use in real applications. Secrets for database credentials, Secrets for API tokens, Secrets for TLS certificates. These are all common scenarios you'll encounter in production Kubernetes deployments and on the CKAD exam.
 
-Notice the data field contains a key called Configurable__Environment with a base64-encoded value. This is different from ConfigMaps where values are plain text.
+## Cleanup
 
-Let me show you what that encoded value contains. On Linux and Mac, we can decode it:
+When you're finished with the lab, cleanup by removing all resources with the kubernetes.courselabs.co equals secrets label. This removes the Deployments, Services, ConfigMaps, and Secrets we created.
 
-
-It says "pre-prod". So the encoding is reversible - anyone can decode it. This is important to understand: encoding is not encryption.
-
-
-Now let's look at the Deployment that uses this Secret:
-
-
-The syntax is almost identical to ConfigMaps. Instead of configMapRef, we use secretRef. That's the only difference in the Pod spec.
-
-Let's deploy both:
-
-
-Wait for the rollout to complete:
-
-
-Now let's access the application. First, get the Service:
-
-
-Look at the application UI. You can see the Configurable:Environment value is now "pre-prod", which came from our Secret. Inside the container, the Secret value is surfaced as plain text - the application doesn't need to decode anything.
-
-
-Now let's verify what the Secret looks like in the cluster:
-
-
-The value is base64-encoded in storage and when you retrieve it with kubectl. This provides minimal protection - it's not visible at a glance, but anyone can decode it.
-
----
-
-## Exercise 3: Creating Secrets from Plaintext YAML (5:00 - 7:00)
-
-
-Base64 encoding is awkward. You need to encode values before putting them in YAML, and it gives a false sense of security. Kubernetes provides a better option: stringData.
-
-Let's look at this Secret definition:
-
-
-Notice we're using stringData instead of data, and the value is in plain text: "uat". When you apply this YAML, Kubernetes automatically converts it to base64 for storage.
-
-This is much more convenient when writing YAML by hand. The security is identical - both are base64-encoded in etcd.
-
-Now let's look at the Deployment:
-
-
-The Deployment references this new Secret name. Let's apply the changes:
-
-
-This updates the Secret and triggers a Deployment rollout. Let's verify:
-
-
-The application now shows the environment as "uat". The update worked seamlessly.
-
-
-Let's verify that even though we used stringData in our YAML, Kubernetes stores it encoded:
-
-
-Notice it's now under data, not stringData, and it's base64-encoded. Kubernetes handled the encoding for us.
-
----
-
-## Exercise 4: Decoding Secret Values (7:00 - 9:00)
-
-
-Let's explore how to work with base64-encoded Secret values. If you're on Windows, you first need to run this PowerShell script to enable the base64 command:
-
-
-This only affects your current PowerShell session and doesn't make permanent system changes.
-
-
-Now let's examine our Secret. First, describe it:
-
-
-The describe command shows the keys but not the values. It displays the byte size instead - a small security measure. To see the actual values, you need to get the raw data:
-
-
-That's the base64-encoded value. Now let's decode it:
-
-
-There it is: "uat" in plain text. This demonstrates why base64 is not security. Anyone with kubectl access can decode Secrets this easily.
-
-
-In production, you need additional safeguards:
-- Enable encryption at rest so Secrets are encrypted in etcd
-- Use RBAC to control who can read Secrets
-- Consider integrating with external secret stores like HashiCorp Vault
-
-We cover RBAC in detail in the dedicated RBAC lab.
-
----
-
-## Exercise 5: Creating Secrets from Files (9:00 - 12:00)
-
-
-In many organizations, there's separation of concerns. A security team manages sensitive data and creates Secrets, while the DevOps team deploys applications that reference those Secrets. Neither team needs access to what the other manages.
-
-Let's simulate this workflow. First, play the security team with access to sensitive files on disk:
-
-
-This is a .env file with key-value pairs. Now look at another file:
-
-
-This is a JSON file with structured configuration. Both contain sensitive data that the security team manages.
-
-
-Now let's create Secrets from these files. For the .env file, use from-env-file:
-
-
-This parses the .env file and creates one key-value pair per line. Let's verify:
-
-
-Perfect! The key Configurable__Release is there. Now for the JSON file, use from-file:
-
-
-With from-file, the filename becomes the key, and the entire file contents become the value. Verify:
-
-
-Good! The key is named secret.json and contains the file contents.
-
-
-Now switch roles to the DevOps team. They don't have access to the sensitive files, but they can reference the Secrets that already exist. Let's look at the Deployment:
-
-
-This Deployment references both Secrets:
-- configurable-env-file for environment variables
-- configurable-secret-file mounted as a volume at /app/secrets
-
-The DevOps team can deploy the application without ever seeing the sensitive values:
-
-
-Wait for the rollout:
-
-
-Look at the application UI. There's a new section showing secrets.json configuration. The JSON file was mounted into the container and the application loaded it.
-
-
-This workflow enables secure separation of responsibilities. The security team manages actual secret values, and the DevOps team manages application deployments, with neither needing full access to what the other manages.
-
----
-
-## Exercise 6: Lab Challenge - Configuration Update Strategy (12:00 - 15:00)
-
-
-Now here's a challenge that reflects a real production problem. Configuration loaded as volume mounts can be updated by Kubernetes automatically. When you change a ConfigMap or Secret, Kubernetes pushes the update into the container filesystem within about 60 seconds.
-
-But there's a catch: the application might not reload the configuration automatically. Most apps only read config at startup.
-
-
-So you have two options:
-1. Wait for the file to update, then manually restart the Deployment
-2. Find a way to automate the restart as part of the configuration update
-
-The first option is error-prone. You update the Secret, then separately run kubectl rollout restart. If you forget the second step, the old config stays active. Not ideal for production.
-
-The challenge is: come up with a better approach so that when you update a Secret in YAML, the Deployment automatically rolls out new Pods.
-
-
-Let me show you one solution. The key insight is that Kubernetes triggers a Deployment rollout whenever the Pod template changes. So if we can make the Secret change affect the Pod template, we get automatic rollouts.
-
-One approach is to add an annotation or label to the Pod template that references the configuration version:
-
-
-When you update the Secret, you also increment this annotation to "v2". The changed Pod template triggers a rolling update automatically.
-
-
-Another approach is more sophisticated: use a hash of the Secret contents as an annotation. When the Secret changes, the hash changes, triggering a rollout. Some tools like Helm do this automatically.
-
-Let's look at the solution provided:
-
-
-The solution shows using a config version annotation. This ensures configuration updates and Pod updates happen atomically in a single kubectl apply.
-
-
-This pattern is important for production systems where configuration consistency is critical.
-
----
-
-## Exercise 7: Environment Variable Precedence (EXTRA) (15:00 - 16:30)
-
-
-If we have time, let's explore something important: what happens when the same configuration key appears in multiple places?
-
-In a Pod spec, you can load configuration from:
-- ConfigMaps via envFrom
-- Secrets via envFrom
-- Direct environment variables via env
-
-What's the precedence order?
-
-Let's test it:
-
-
-This applies ConfigMaps, Secrets, and a Deployment that loads from all sources. Let's look at the Deployment:
-
-
-Notice:
-- envFrom loads from a ConfigMap
-- envFrom loads from a Secret
-- env defines explicit environment variables
-
-Some keys overlap across these sources. Let's see what wins:
-
-
-Look at the configuration display. The precedence order is:
-1. env (explicit Pod spec) - highest priority
-2. envFrom Secret
-3. envFrom ConfigMap - lowest priority
-
-
-This is important when you need to override configuration for specific Pods while keeping most values in shared ConfigMaps and Secrets.
-
----
-
-## Exercise 8: Configuration Updates with Volume Mounts (EXTRA) (16:30 - 17:30)
-
-
-Let's see configuration updates in action. Deploy a new version:
-
-
-Wait for rollout:
-
-
-Look for Configurable__ConfigVersion in the secrets.json section. It should show v1.
-
-Now we'll update the Secret:
-
-
-This updates the Secret to version v2. Let's check if the file updated inside the Pod:
-
-
-It might take 30-60 seconds due to Kubernetes' caching. Once the file updates, check the browser:
-
-
-If the application doesn't show the new value, it means the app isn't watching for file changes. You need to force a Pod restart:
-
-
-Wait for new Pods:
-
-
-Now you see v2. This demonstrates the two-phase update: first the file updates, then you restart the app if it doesn't hot-reload.
-
----
-
-## Cleanup and Summary (17:30 - 18:00)
-
-
-Let's clean up everything we created:
-
-
-This removes all Pods, Deployments, Services, ConfigMaps, and Secrets with our lab label.
-
-
-Let's recap what we learned:
-
-**First**, we saw why ConfigMaps aren't suitable for sensitive data - everything is visible in plain text.
-
-**Second**, we created Secrets with base64-encoded values in YAML, understanding that encoding is not encryption.
-
-**Third**, we used stringData for convenience when writing Secrets in YAML, letting Kubernetes handle encoding.
-
-**Fourth**, we practiced decoding Secret values, demonstrating how easy it is for anyone with kubectl access.
-
-**Fifth**, we created Secrets from files using imperative commands, supporting workflow separation between security and DevOps teams.
-
-**Sixth**, we explored the challenge of coordinating Secret updates with Deployment rollouts, and saw solution patterns.
-
-**Finally**, we examined environment variable precedence and automatic configuration updates with volume mounts.
-
-
-Key takeaways:
-- Secrets are for sensitive data, ConfigMaps for everything else
-- Base64 encoding provides format compatibility, not security
-- Use RBAC and encryption at rest for real protection
-- Volume mounts support automatic updates, environment variables don't
-- Imperative commands are fast for creating Secrets from existing files
-- Production updates require coordination between Secret changes and Pod rollouts
-
-In the CKAD exam preparation session, we'll dive deeper into all Secret types, advanced troubleshooting, and speed techniques for passing the certification.
-
-Thanks for following along. Practice these exercises on your own cluster before moving to the exam preparation session.
-
----
-
-## Presenter Notes
-
-**Timing Checkpoints:**
-- Exercise 2 complete by 5:00
-- Exercise 5 complete by 12:00
-- Exercise 6 complete by 15:00
-
-**Command Preparation:**
-- Have all commands ready to paste
-- Prepare browser windows in advance
-- Test Secret creation before recording
-- Have base64 decode tested for your platform
-
-**Key Demonstration Points:**
-- Always contrast ConfigMaps (visible) vs Secrets (encoded)
-- Show the decoded value to emphasize encoding != encryption
-- Demonstrate the workflow separation with from-file
-- Highlight the automatic encoding of stringData
-- Show both describe (hides values) and get -o yaml (shows encoded values)
-
-**Common Issues to Address:**
-- If base64 command doesn't work on Windows, show PowerShell script
-- If Secret doesn't mount, check Secret name spelling
-- If updates don't appear, explain Kubernetes caching delay
-- Emphasize when you need rollout restart vs automatic updates
-
-**Pacing:**
-- Speak clearly when executing commands
-- Pause after kubectl apply to let changes propagate
-- Allow time for browser refreshes
-- Don't rush through the lab challenge explanation
-- Show patience with configuration update delays (this is realistic)
-
-**Visual Elements:**
-- Keep browser and terminal side-by-side when possible
-- Zoom in on YAML sections being discussed
-- Highlight encoded vs decoded values
-- Use terminal colors to distinguish commands from output
-- Show the describe output hiding values vs get -o yaml showing them
-
-**Error Handling:**
-- If Secret creation fails, verify the path to files
-- If Pod doesn't start, use describe pod to show error
-- If decode fails, double-check the Secret key name
-- Demonstrate troubleshooting as a learning opportunity
-
-**Security Emphasis:**
-- Repeatedly mention that base64 is not encryption
-- Show how easy it is to decode
-- Reference RBAC and encryption at rest as real solutions
-- Mention this is why external secret stores exist
+That wraps up our hands-on exploration of Secrets. We've seen how Secrets provide base64 encoding for sensitive data, how they integrate seamlessly with Pods using the same patterns as ConfigMaps, how to create Secrets from encoded YAML, plaintext YAML, and files, and how Secret values are decoded automatically when consumed by applications. These skills are essential for securing applications in Kubernetes. In the next video, we'll explore CKAD-specific scenarios including different Secret types, imperative creation methods, update strategies, and security best practices.

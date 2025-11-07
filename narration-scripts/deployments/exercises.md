@@ -2,429 +2,84 @@
 
 **Duration:** 15-20 minutes
 **Format:** Screen recording with live demonstration
-**Prerequisite:** Kubernetes cluster running, completed Pods lab
+**Prerequisite:** Kubernetes cluster running, completed Pods and Services labs
 
 ---
 
-## Opening
+Welcome back! In the previous video, we covered the concepts behind Kubernetes Deployments. Now it's time to get hands-on and explore how Deployments manage Pods at scale with updates and rollbacks.
 
-Welcome back! In the previous video, we covered Deployment concepts. Now it's time to get hands-on. In this demo, we'll create Deployments, scale applications, perform rolling updates, and practice rollbacks - all essential skills for working with Kubernetes and for the CKAD exam.
+You don't usually create Pods directly because that isn't flexible. You can't change a Pod to release application updates, and you can only scale them by manually deploying new Pods. Instead you'll use a controller, which is a Kubernetes object that manages other objects. The controller you'll use most for Pods is the Deployment, which has features to support upgrades and scale.
 
-Make sure you have a Kubernetes cluster running. I'm using Docker Desktop, but any distribution works fine.
+Deployments use a template to create Pods, and a label selector to identify the Pods they own. Let's see how this works in practice.
 
-Let's get started!
+## API specs
 
-## Verify Clean Environment
+Let's start by looking at a Deployment YAML file. I'll open the whoami-v1.yaml file from the labs/deployments/specs directory. Deployment definitions have the usual metadata with a name, but the spec is more interesting. It includes a label selector and also a Pod spec.
 
-First, let's make sure we have a clean workspace.
+The selector uses matchLabels with app equals whoami to find Pods. The template section is the template to use to create Pods. Notice the template metadata has labels that include app equals whoami, matching our selector. This is required or you'll get an error when you try to apply the YAML.
 
+The template spec is a full Pod spec with containers, just like we've seen before. However, you don't include a name field in the Pod metadata because the Deployment will generate names automatically. The labels in the Pod metadata must include the labels in the selector for the Deployment, or Kubernetes will reject it.
 
-Good, we're starting with an empty default namespace. If you completed the Pods lab, make sure you've cleaned up those resources first.
+## Create a Deployment for the whoami app
 
-## Create Your First Deployment
+Let's create our first Deployment. Your cluster should be empty if you cleared down the last lab. This spec describes a Deployment to create a whoami Pod. It's essentially the same Pod spec we've seen before, just wrapped in a Deployment.
 
-Let's look at the simplest Deployment specification. I'll open the whoami-v1.yaml file.
+When I apply this Deployment, it will create the Pod for us. Notice how the Pod name is generated. Deployments apply their own naming system when they create Pods. They end with a random string to ensure uniqueness.
 
+Deployments are first-class objects, so we work with them in kubectl in the usual way. Let me print the details of the Deployment with get and describe. The output shows useful information including the replica count, the selector, the Pod template, and events showing what the Deployment controller has done. Notice the events talk about another object called a ReplicaSet. We'll get to that concept soon.
 
-This looks similar to a Pod spec, but notice the key differences:
+## Scaling Deployments
 
-The **apiVersion** is "apps/v1" not just "v1" because Deployments are in the apps API group.
+The Deployment knows how to create Pods from the template in the spec. You can create as many replicas as your cluster can handle. Replicas are different Pods created from the same Pod spec.
 
-The **spec** contains three main parts:
-- The **selector** defines how the Deployment finds its Pods using the label "app: whoami"
-- The **template** is the Pod template - notice it's the same Pod spec we've seen before
-- The template **metadata** includes labels that must match the selector
+You can scale imperatively with kubectl. Let me scale our Deployment to three replicas. The Pods are created quickly, and now we have three instances of our application running. But here's the problem with imperative commands. The running Deployment object is now different from the spec we have in source control. This is bad because source control should be the true description of the application. In a production environment all your deployments will be automated from the YAML in source control, and any changes someone makes manually with kubectl will get overwritten.
 
-Notice there's no **replicas** field here. When omitted, it defaults to 1.
+It's better to make changes declaratively in YAML. Let me show you the whoami-v1-scale.yaml file which sets a replica level of two. When I apply this spec, let's check the Pods again. The Deployment removes one Pod, because the current state of three replicas does not match the desired state in the YAML of two replicas. This is declarative configuration ensuring the actual state matches the desired state.
 
-Let's create this Deployment.
+## Working with managed Pods
 
+Because Pod names are random, the easiest way to manage them with kubectl is to use labels. We've done that with get, and it works for logs too. I can view logs from all Pods with the app equals whoami label, and kubectl streams logs from all matching Pods.
 
-The output says "deployment.apps/whoami created". Now let's see what Kubernetes created.
+If you need to run commands in the Pod, you can use exec at the Deployment level. Let me try running the whoami application command. This fails because you can't run two copies of the app in one container as they both try to bind to the same port. But it demonstrates that exec works with Deployments, and Kubernetes just picks one of the Pods to run the command in.
 
+The Pod spec in the Deployment template applies labels automatically. Let me print details including IP address and labels for all Pods with the app equals whoami label. The label selector in Services can match these labels too. Let me deploy some Services for our application.
 
-Excellent! Look at what we have:
-- A **Deployment** named whoami
-- A **ReplicaSet** with a generated name - whoami plus a hash
-- A **Pod** with an even longer name - the ReplicaSet name plus another hash
+Now I can check the Pod IP endpoints for the Services. The Services have found our Pods using their labels. I can access the app from my local machine using either the LoadBalancer on port 8080 or the NodePort on port 30010. Making multiple requests shows load balancing across the two Pods as the responses show different hostnames.
 
-This shows the three-tier architecture we discussed. The Deployment created the ReplicaSet, and the ReplicaSet created the Pod.
+## Understanding ReplicaSets
 
-## Exploring Deployment Information
+Before we look at updates, let me explain an important detail about how Deployments work. Deployments don't actually create Pods directly. They delegate that responsibility to another object called a ReplicaSet.
 
-Let's get detailed information about our Deployment.
+When I list ReplicaSets, you'll see one with a name that's the Deployment name plus a hash. The hash is generated from the Pod template spec. Deployments manage updates by creating ReplicaSets and managing the number of desired Pods for each ReplicaSet.
 
+This might seem like unnecessary complexity, but it's what enables rolling updates and rollbacks. When you update a Deployment, it creates a new ReplicaSet with the new Pod template. The old ReplicaSet is scaled down to zero but kept around for rollback purposes. If you later apply an update that matches an old spec, the original ReplicaSet gets reused instead of creating a new one.
 
-The output shows:
-- **READY**: 1/1 - one Pod ready out of one desired
-- **UP-TO-DATE**: 1 - one Pod has the current template
-- **AVAILABLE**: 1 - one Pod is accepting traffic
+## Updating the application
 
-Now let's see more details with the wide output.
+Application updates usually mean a change to the Pod spec, such as a new container image or a configuration change. You can't change the spec of a running Pod, but you can change the Pod spec in a Deployment. It makes the change by starting up new Pods and terminating the old ones.
 
+Let me show you the whoami-v2.yaml file. This changes a configuration setting for the app by adding an environment variable. Environment variables are fixed for the life of a Pod container, so this change means we need new Pods.
 
-This adds the containers, images, and selector information. Very useful for quick verification.
+I'll open a watch window to monitor the Pods during the update, then apply the change. Watch what happens. You'll see new Pods created, and when they're running the old Pods are terminated. This is a rolling update. At every point during the update, at least some Pods are available to handle traffic.
 
-For even more detail, let's describe the Deployment.
+Let me try the app again. You'll see smaller output because the environment variable changed the application's behavior. If I repeat my requests, you can see they're load-balanced across the new Pods.
 
+Now let's look at the ReplicaSets again. We have two ReplicaSets now. The old one is scaled to zero replicas, and the new one has two replicas. The Deployment keeps the old ReplicaSet around so we can easily rollback if needed.
 
-Look at all this information:
-- The replica count and current status
-- The Pod template details
-- The selector being used
-- Conditions showing the Deployment is available and progressing
-- Events showing what the Deployment controller did
+Deployments store previous specifications in the Kubernetes database, and you can easily rollback if your release is broken. Let me check the rollout history. We can see two revisions in the history. Now I'll undo the rollout to go back to the previous version.
 
-In the Events section, you can see it mentions creating the ReplicaSet. The Deployment doesn't create Pods directly - it delegates that to the ReplicaSet.
+Watch the Pods as the rollback happens. It's another rolling update, but this time in reverse. The old ReplicaSet is scaled back up, and the new one is scaled down to zero. When I try the app again, we're back to the full output. The rollback worked perfectly.
 
-Let's look at that ReplicaSet.
+## Lab
 
+Now it's your turn to experiment. Rolling updates aren't always what you want because they mean the old and new versions of your app are running at the same time, both processing requests. You may want a blue-green deployment instead, where you have both versions running but only one is receiving traffic.
 
-The ReplicaSet name is the Deployment name plus a hash of the Pod template. Let's describe it.
+The lab challenge asks you to write your own Deployment and Service YAMLs to create a blue-green update for the whoami app. Start by running two replicas for v1 and two for v2, but only the v1 Pods should receive traffic. Then make your update to switch traffic to the v2 Pods without any changes to Deployments.
 
-
-The ReplicaSet's job is simpler - it just ensures the correct number of Pods exist. It doesn't handle updates or rollbacks; that's the Deployment's responsibility.
-
-## Scaling Deployments Imperatively
-
-Let's scale our application up. First, I'll show you the imperative approach with kubectl scale.
-
-
-The output says "deployment.apps/whoami scaled". Let's check the Pods.
-
-
-Excellent! Now we have three Pods running. Notice they all share the same prefix from the ReplicaSet, but each has a unique random suffix.
-
-Let's watch the Deployment status.
-
-
-Now it shows READY 3/3, UP-TO-DATE 3, and AVAILABLE 3. The Deployment ensured all replicas are running.
-
-But here's the problem with imperative commands: our running state doesn't match our YAML file anymore. If someone else applies the original YAML, they'll scale us back down to 1 replica without realizing it.
-
-This is why declarative management is better for production.
-
-## Scaling Deployments Declaratively
-
-Let's scale declaratively using YAML. I'll look at the whoami-v1-scale.yaml file.
-
-
-This sets replicas to 2. Everything else is the same.
-
-
-Now check the Pods again.
-
-
-One Pod was terminated! Kubernetes compared the desired state (2 replicas) with the actual state (3 replicas) and removed one Pod to match.
-
-This is declarative configuration in action. The YAML file is the source of truth.
-
-## Working with Managed Pods
-
-Because Pod names are generated, we use labels to work with them.
-
-Let's check the logs from all whoami Pods.
-
-
-Kubernetes streams logs from all matching Pods. In production, you'd use a centralized logging system, but this is handy for quick checks.
-
-You can also execute commands at the Deployment level.
-
-
-This runs the hostname command in one of the Pods. Kubernetes picks a Pod for you.
-
-Let's try something that will fail.
-
-
-This command fails! The whoami application tries to bind to port 80, but it's already bound in the container. This demonstrates that exec runs commands inside the existing container - it doesn't create a new one.
-
-## Verify Pod Details
-
-Let's look at our Pods more closely.
-
-
-Perfect! We can see:
-- The IP addresses assigned to each Pod
-- The node they're running on
-- All their labels, including "app=whoami" and "version=v1"
-
-## Deploy Services
-
-Pods have dynamic IP addresses that change when they're recreated. That's why we use Services for stable networking.
-
-Let's deploy Services for our Deployment. I'll apply all the Service specs.
-
-
-This creates two Services - a LoadBalancer and a NodePort. Let's check the endpoints.
-
-
-The endpoints show both Pod IP addresses! The Services use the same "app=whoami" label selector, so they automatically found our Pods.
-
-Now we can access the application from outside the cluster.
-
-
-Great! We get a response with the hostname and other details. Try it again.
-
-
-Notice the hostname changed? That's load balancing across our two Pods.
-
-You can also use the NodePort.
-
-
-Same result - the Services are distributing traffic across both Pods.
-
-## Performing a Rolling Update
-
-Now let's update our application. In the real world, this might be deploying a new container image with bug fixes or features.
-
-Let me show you the whoami-v2.yaml file.
-
-
-The change is subtle - we added an environment variable `WHOAMI_MODE=q`. This configures the app to return less output.
-
-Environment variables are set when the container starts and can't be changed after. So this requires new Pods.
-
-Let me open a second terminal to watch the Pods during the update.
-
-
-Now let's apply the update.
-
-
-Watch the terminal! You can see:
-1. A new Pod is created
-2. It becomes ready
-3. An old Pod is terminated
-4. Another new Pod is created
-5. When it's ready, the second old Pod is terminated
-
-This is a rolling update. At every moment, at least one Pod was available. This is zero-downtime deployment.
-
-Let's verify the update worked.
-
-
-The output is much shorter now! The environment variable changed the application's behavior. Make a few more requests to see load balancing across both new Pods.
-
-## Understanding the ReplicaSet Changes
-
-Let's look at the ReplicaSets now.
-
-
-Interesting! Now we have **two** ReplicaSets:
-- The old one, scaled to 0 replicas
-- The new one, with 2 replicas
-
-This is how rolling updates work. The Deployment:
-1. Created a new ReplicaSet with the updated Pod template
-2. Scaled up the new ReplicaSet
-3. Scaled down the old ReplicaSet
-4. Kept the old ReplicaSet for rollback purposes
-
-## Viewing Rollout History
-
-Kubernetes tracks deployment history. Let's view it.
-
-
-We can see two revisions:
-- Revision 1: Our original deployment
-- Revision 2: The update we just applied
-
-Let's get details about a specific revision.
-
-
-This shows the full Pod template for that revision. You can compare revisions to understand what changed.
-
-## Rolling Back
-
-What if our update had a bug? Kubernetes makes rollback easy.
-
-
-This command rolls back to the previous revision. Let's watch what happens.
-
-
-It's doing another rolling update, but this time back to version 1! The old ReplicaSet is scaled back up, and the new one is scaled down.
-
-Stop watching (Ctrl+C) and test the application.
-
-
-We're back to the full output! The rollback worked.
-
-Check the ReplicaSets again.
-
-
-Now the original ReplicaSet is active with 2 replicas, and the v2 ReplicaSet is at 0.
-
-Look at the rollout history again.
-
-
-Notice revision 1 is gone, and we now have revisions 2 and 3. When you roll back, it creates a new revision - it doesn't actually go back to revision 1. This maintains a linear history.
-
-## Lab Exercise: Blue-Green Deployment
-
-Now it's time for the lab challenge. The task is to implement a blue-green deployment pattern.
-
-In a blue-green deployment:
-- You run two versions simultaneously
-- Only one receives traffic at a time
-- You switch traffic by updating the Service selector
-- You can quickly switch back if there are issues
-
-Here's my approach: I'll create two separate Deployments and use Service label selectors to control which one receives traffic.
-
-Let me create the blue deployment - version 1.
-
-
-Notice the labels: both "app=whoami-bg" and "version=blue".
-
-And the green deployment - version 2.
-
-
-Same labels structure, but "version=green" and includes the environment variable.
-
-Now the key: the Service. Initially, it points to blue.
-
-
-The selector matches both "app=whoami-bg" AND "version=blue", so only blue Pods get traffic.
-
-Let me deploy these.
-
-
-Check what we created.
-
-
-Perfect! Both deployments are running with 2 replicas each, but let's check which receives traffic.
-
-
-We get the full output, so blue is receiving traffic. Make a few requests - you'll see load balancing across the two blue Pods.
-
-Now let's switch to green. I'll update the Service.
-
-
-Test immediately.
-
-
-Now we get the short output! The Service instantly switched to the green Pods.
-
-The beauty of this pattern:
-- Both versions are fully warmed up and ready
-- Switching is instantaneous
-- Rolling back is just as fast - reapply the blue Service
-- No Pods need to be created or destroyed during the switch
-
-This is perfect for critical production deployments where you want minimal risk.
+Think about how labels and selectors work. How can you use different version labels to control which Pods receive traffic through the Service? This pattern is extremely useful in production for controlled releases with instant rollback capability.
 
 ## Cleanup
 
-Before we finish, let's clean up everything we created.
+When you're finished with the lab, cleanup by removing objects with the kubernetes.courselabs.co equals deployments label. This removes all Deployments and Services we created in this session.
 
-
-This removes all Deployments and Services we created using the common label.
-
-For the lab resources:
-
-
-Verify everything is gone.
-
-
-Perfect! We're back to a clean namespace.
-
-## Summary
-
-In this demo, we covered:
-
-- Creating Deployments from YAML specifications
-- Understanding the Deployment → ReplicaSet → Pod hierarchy
-- Scaling applications imperatively with kubectl scale
-- Scaling declaratively with YAML updates
-- Working with Pods using labels and selectors
-- Performing rolling updates by changing the Pod template
-- Monitoring updates in real-time
-- Viewing rollout history
-- Rolling back to previous versions
-- Implementing blue-green deployments for instant cutover
-
-These are all essential skills for production Kubernetes work and for the CKAD exam.
-
-## Key Takeaways
-
-Remember these important points:
-
-1. **Declarative is better than imperative** - Your YAML should always match reality
-2. **Rolling updates provide zero downtime** - At least one Pod is always available
-3. **ReplicaSets enable updates** - New ReplicaSet for new template, old one kept for rollback
-4. **Rollbacks are safe and easy** - One command reverts to the previous working version
-5. **Labels enable advanced patterns** - Blue-green, canary, and other strategies rely on label selectors
-
-## Next Steps
-
-Now that you've seen Deployments in action, we're ready for CKAD-specific scenarios.
-
-In the next video, we'll explore:
-- Advanced deployment strategies (RollingUpdate configuration, Recreate)
-- Health checks ensuring zero-downtime updates
-- Resource requests and limits for production
-- Advanced rollout management (pause, resume, status)
-- Canary deployments
-- Production best practices
-- Exam-style exercises and quick commands
-
-Thanks for following along, and I'll see you in the CKAD preparation video!
-
----
-
-## Recording Notes
-
-**Screen Setup:**
-- Terminal on left (70% width) for most demonstrations
-- Split screen when showing YAML files
-- Two terminals side-by-side when watching Pods during updates
-- Clear terminal between major sections
-
-**Key Demonstrations:**
-1. Deployment creation showing three-tier architecture
-2. Scaling imperatively then declaratively (emphasize the difference)
-3. Rolling update with watch window visible
-4. Rollback showing ReplicaSet behavior
-5. Blue-green switch showing instant cutover
-
-**Commands to Type Carefully:**
-- Long resource names (use tab completion on screen)
-- Label selectors with -l flag
-- JSONPath queries if used
-- Multiple resource types in one command
-
-**Timing Breakdown:**
-- Environment setup: 1 min
-- First Deployment: 3 min
-- Exploring Deployment info: 3 min
-- Imperative scaling: 2 min
-- Declarative scaling: 2 min
-- Working with Pods: 2 min
-- Services setup: 1 min
-- Rolling update demo: 4 min
-- ReplicaSet explanation: 2 min
-- Rollout history: 1 min
-- Rollback demo: 2 min
-- Lab exercise (blue-green): 5 min
-- Cleanup and summary: 2 min
-
-**Total: ~30 minutes**
-
-**Common Mistakes to Avoid:**
-- Going too fast during the rolling update (pause to let viewers observe)
-- Not explaining why declarative is better
-- Forgetting to show both terminals during update watch
-- Not verifying the application actually changed after update
-
-**Points to Emphasize:**
-- Zero-downtime nature of rolling updates
-- ReplicaSets are the implementation detail
-- Rollback safety net
-- Labels as the key to advanced patterns
-- Source control as source of truth
-
-**Visual Highlights:**
-- Split screen for update watching is crucial
-- Clear terminal output for get commands
-- Highlight the READY and AVAILABLE columns
-- Show curl responses clearly
-- Terminal colors help distinguish old/new Pods
+That wraps up our hands-on exploration of Deployments. We've seen how to create Deployments from YAML, how to scale applications both imperatively and declaratively, how rolling updates work with ReplicaSets, how to rollback failed updates, and how to think about different deployment patterns like blue-green. These are essential skills for production Kubernetes work and for the CKAD exam. In the next video, we'll dive deeper into CKAD-specific scenarios including deployment strategies, health checks, resource management, and advanced rollout techniques.

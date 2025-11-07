@@ -1,214 +1,118 @@
-# Affinity - CKAD Exam Preparation
-## Narration Script for Exam-Focused Training (20-25 minutes)
+# Affinity - CKAD Narration Script
+
+**Duration:** 25-30 minutes
+**Format:** CKAD exam preparation focus
 
 ---
 
-### Section 1: CKAD Exam Context and Scope (2 min)
-**[00:00-02:00]**
+Welcome to CKAD exam preparation for Pod scheduling and affinity. While affinity is marked as advanced and beyond core CKAD requirements, understanding these concepts will help you deploy high-availability applications and optimize performance in real-world scenarios.
 
-Welcome to CKAD exam preparation for Pod scheduling and affinity. While affinity is marked as advanced and beyond core CKAD requirements, understanding these concepts will make you a more effective Kubernetes developer and may appear in exam scenarios.
+## Node Affinity Basics
 
-Let me be clear about what to expect. The CKAD exam primarily tests core application development skills. However, affinity and anti-affinity patterns frequently appear in real-world scenarios, especially when deploying high-availability applications or optimizing performance.
+Let's start with node affinity basics. Node affinity allows you to constrain which nodes your Pods can be scheduled on based on node labels. There are two key concepts you need to understand. Required affinity is a hard constraint, meaning the Pod won't schedule if the requirement is not met. Preferred affinity is a soft preference, meaning the Pod schedules anyway if the preference can't be met, but the scheduler will try to honor it.
 
-In this session, we'll focus on practical exam skills:
-- Recognizing when to use affinity versus simpler mechanisms
-- Reading and understanding affinity rules in existing deployments
-- Quickly identifying why Pods are pending due to affinity constraints
-- Using kubectl commands to troubleshoot scheduling issues
-- Common patterns you can apply quickly under exam time pressure
+The full name for required affinity is requiredDuringSchedulingIgnoredDuringExecution, which tells you exactly how it works. The required part means it must be satisfied for the Pod to schedule. The IgnoredDuringExecution part means running Pods won't be evicted if the rules change later.
 
-The key takeaway: you won't need to write complex affinity rules from scratch, but you should be able to work with existing ones and troubleshoot scheduling problems efficiently.
+Let me show you a required node affinity example. The Pod must run on nodes with label disktype equals ssd. The structure follows a specific nesting pattern: affinity, then nodeAffinity, then requiredDuringSchedulingIgnoredDuringExecution, then nodeSelectorTerms, and finally matchExpressions. Each match expression has three parts: a key for the label name, an operator that defines how to match, and values to match against.
 
----
+The operators are critical for CKAD, so let's review them. In means the label value must be in the provided list. NotIn means the label value must not be in the list. Exists means the label key must exist, and the value doesn't matter. DoesNotExist means the label key must not exist. Gt means greater than for numeric comparison. Lt means less than for numeric comparison.
 
-### Section 2: Understanding Affinity Types and Operators (3 min)
-**[02:00-05:00]**
+Now let's look at preferred node affinity. This is a soft preference with a weight from 1 to 100. Higher weight means higher priority. When you have multiple preferred terms, the scheduler calculates scores for each node based on how well it matches all preferences, then picks the node with the highest total score.
 
-Let's start with the fundamentals. There are three types of affinity in Kubernetes: node affinity, Pod affinity, and Pod anti-affinity.
+You can combine required and preferred affinity, which is the most common pattern in production. Use required for must-haves like running on Linux nodes. Use preferred for nice-to-haves like nodes with SSD storage. This gives you both hard constraints and soft preferences in the same Pod spec.
 
-Node affinity controls which nodes can run your Pods based on node labels. It comes in two flavors: required and preferred. The full name is requiredDuringSchedulingIgnoredDuringExecution. That's a mouthful, so focus on the key parts: "required" means it must be satisfied, "IgnoredDuringExecution" means running Pods won't be evicted if rules change.
+Let me explain match expression logic, which can be confusing. Multiple expressions within a single nodeSelectorTerm use AND logic, meaning the node must match all of them. For example, a node must have disktype equals ssd AND zone in us-west-1a or us-west-1b. Multiple nodeSelectorTerms use OR logic, meaning any one term can match. For example, disktype equals ssd AND zone equals zone-a, OR disktype equals hdd AND zone equals zone-b. Understanding AND/OR logic is critical for complex affinity rules in the exam.
 
-Let me show you the structure by checking the explain output.
+## Standard Node Labels
 
-Notice the structure. Required affinity uses nodeSelectorTerms with matchExpressions. Each match expression has a key, operator, and values.
+Kubernetes automatically adds standard labels to all nodes, and these are crucial for affinity rules. You can check node labels with kubectl get nodes show-labels to see all the labels applied. Common standard labels include kubernetes.io/arch for CPU architecture like amd64, kubernetes.io/os for operating system like linux, kubernetes.io/hostname for node hostname, topology.kubernetes.io/region for cloud region, topology.kubernetes.io/zone for availability zone, node-role.kubernetes.io/control-plane for control plane nodes, and node.kubernetes.io/instance-type for instance type in cloud environments. You should use these labels for common affinity scenarios rather than creating custom labels.
 
-The operators are critical for CKAD:
-- In: value must be in the list
-- NotIn: value must not be in the list
-- Exists: key must exist, value doesn't matter
-- DoesNotExist: key must not exist
-- Gt: greater than (for numeric values)
-- Lt: less than (for numeric values)
+Here's a common pattern for avoiding control plane nodes. Use nodeAffinity with requiredDuringScheduling, nodeSelectorTerms, matchExpressions, with key node-role.kubernetes.io/control-plane and operator DoesNotExist. This ensures your workload Pods only run on worker nodes.
 
-Here's a practical example. If you want Pods only on Linux nodes with SSD storage, you would create a pod and add node affinity. In the exam, you might be given this requirement and need to modify an existing spec. The key is knowing the structure.
+To target a specific region and zone, you use matchExpressions for both region and zone labels with the In operator and your desired values. This is common for geo-distributed applications where you want to ensure Pods run in specific locations.
 
-Pod affinity and anti-affinity use the same concepts but add a topology key. This defines the scope: kubernetes.io/hostname means same node, topology.kubernetes.io/zone means same zone.
+## Pod Affinity and Anti-Affinity
 
----
+Pod affinity basics involve scheduling Pods near other Pods for co-location. Here's an example where a Pod must run on a node where Pods with label app equals cache are running. The topologyKey kubernetes.io/hostname means same node, so the Pod will be scheduled on the exact same node as the cache Pods.
 
-### Section 3: Quick Command Reference for CKAD (3 min)
-**[05:00-08:00]**
+Pod anti-affinity basics involve scheduling Pods away from other Pods for spreading. An example would be ensuring this Pod doesn't schedule on nodes where Pods with label app equals web are running. This ensures each web Pod runs on a different node for high availability.
 
-Let me show you the essential kubectl commands for working with affinity in the exam. These will save you precious time.
+Topology keys define the scope of affinity, and understanding them is critical. Common topology keys include kubernetes.io/hostname for same node, which means co-locate on the exact same host. topology.kubernetes.io/zone means same zone, keeping Pods within the same availability zone. topology.kubernetes.io/region means same region, keeping Pods within the same cloud region.
 
-First, checking node labels - this is critical because affinity rules depend on labels. You can show all node labels, show specific labels as columns, or find nodes with a specific label.
+For CKAD, the pattern is to use hostname for strict co-location or anti-co-location where you want Pods on the same or different nodes. Use zone for availability zone spreading to improve availability. Use region for regional grouping when you want to keep traffic within a region.
 
-Adding labels to nodes is straightforward. Use kubectl label with the node name and key-value pair. Updating an existing label requires the --overwrite flag. Remove a label by adding a minus suffix to the key name.
+Preferred pod affinity gives you soft preferences with weights, similar to node affinity. This says prefer to run near Pods with app equals cache, but it's okay if we can't. The weight determines how strongly the scheduler tries to honor the preference.
 
-Checking Pod placement and troubleshooting involves several commands. You can see which node each Pod is on with the wide output. Check affinity rules on a running Pod by getting its YAML and grepping for affinity. See why a Pod is pending by describing it and checking the Events section.
+## Common Affinity Patterns
 
-The describe command is your best friend for debugging affinity issues. The Events section will tell you exactly which affinity constraints couldn't be satisfied.
+Let me walk through common patterns you'll see in the exam. Pattern one is High Availability, spreading across zones. Ensure pods run in different availability zones using podAntiAffinity with preferredDuringScheduling. The labelSelector matches the app label, and topologyKey is topology.kubernetes.io/zone. This is essential for multi-zone deployments for high availability.
 
-For quick debugging of scheduling issues, check if any nodes match your selector, check node capacity, and see if nodes are tainted using custom columns.
+Pattern two is co-locating app with cache. Run application pods near cache pods for performance using podAffinity with requiredDuringScheduling, labelSelector matching app equals redis-cache, and topologyKey kubernetes.io/hostname. This ensures low latency between the app and cache.
 
-Memorize these patterns. In the exam, every second counts, and knowing these commands by heart will save you valuable time.
+Pattern three is spreading replicas across nodes. Ensure no two replicas run on same node using podAntiAffinity with requiredDuringScheduling, labelSelector matching the app label, and topologyKey hostname. Warning: with required anti-affinity, pods may stay pending if there aren't enough nodes to satisfy the constraint.
 
----
+Pattern four is regional affinity with zone spreading. Stay in one region but spread across zones by using nodeAffinity to require the us-west region, and podAntiAffinity with preferred scheduling to spread across zones within that region. This demonstrates combining node and pod affinity for complex requirements.
 
-### Section 4: Common CKAD Patterns - Node Affinity (4 min)
-**[08:00-12:00]**
+Pattern five is avoiding noisy neighbors. Keep your app away from resource-intensive apps using podAntiAffinity with required scheduling. The labelSelector matches workload-type in batch or ml-training, and topologyKey is hostname. This ensures your latency-sensitive app doesn't share nodes with batch workloads.
 
-Now let's walk through common exam patterns. I'll show you templates you can reuse quickly.
+## Troubleshooting Affinity Issues
 
-Pattern 1: Schedule on specific node type.
+Now let's focus on troubleshooting, which is critical for the exam. Issue one is Pods stuck in Pending. First, check pod status with kubectl get pod. Describe the pod and look for scheduling failures in events. Look for messages like zero of three nodes are available, three nodes didn't match Pod's node affinity selector.
 
-Scenario: "Create a deployment that only runs on nodes with label environment=production."
+Common causes include no nodes matching required affinity. Check node labels to verify they exist. If no nodes have the required labels, either add the label to a node or change the affinity rule. Anti-affinity might be preventing scheduling. Check how many replicas are running and if they're on all available nodes. If you have 5 replicas, 3 nodes, and required anti-affinity, 2 pods will stay pending because there aren't enough nodes.
 
-The fastest approach is to generate a base deployment and then edit it to add node affinity. In the Pod template spec, add an affinity section with nodeAffinity, requiredDuringSchedulingIgnoredDuringExecution, nodeSelectorTerms, and matchExpressions. The match expression has the key, operator In, and values including production.
+Solutions include adding the required label to a node with kubectl label, changing required to preferred by editing the deployment YAML, or removing affinity rules temporarily to get things working while you debug.
 
-Pro tip: You can use a simpler nodeSelector if you just need equality matching. Just add nodeSelector with the key-value pair. Node selectors are easier to write and understand. Use them unless you need affinity's advanced features.
+Issue two is uneven Pod distribution where all pods are on one node despite spread preferences. The cause is usually using preferred not required anti-affinity. The solution is to change from preferred to required for strict spreading, though remember this might leave Pods pending if you don't have enough nodes.
 
-Pattern 2: Avoid control plane nodes.
+Issue three is Pods not co-locating when they should be together but are on different nodes. Debug by checking if target pods exist, which nodes they're on with wide output, and the affinity rules with kubectl get pod yaml and grep. Common mistakes include wrong label selector, wrong topology key, or target pods don't exist yet when the affinity rule is evaluated.
 
-This is extremely common. You use nodeAffinity with a matchExpression where the key is node-role.kubernetes.io/control-plane and the operator is DoesNotExist. The control plane label shouldn't be present.
+Issue four is node affinity not working. Verify the node has the required label. Check the exact label value because it's case-sensitive. Common issues include label value mismatch, using the wrong operator like In versus Exists, or a label key typo.
 
-Pattern 3: Specific region/zone.
+## Common CKAD Exam Scenarios
 
-For cloud environments, you would specify matchExpressions for both region and zone using the topology keys and the In operator with your desired values.
+Let's walk through common exam scenarios. Scenario one is scheduling on specific node type. The question might be create a deployment web with 3 replicas that only runs on nodes with label node-type equals compute. Quick imperative approach is to generate base deployment with dry-run, then edit to add nodeAffinity with required scheduling, nodeSelectorTerms, matchExpressions for key node-type, operator In, values compute.
 
-Multiple expressions in the same term use AND logic - the node must match all of them.
+Scenario two is spread across zones. Configure deployment api so replicas prefer to run in different availability zones. Add podAntiAffinity with preferred scheduling, weight 100, podAffinityTerm with labelSelector matching app=api, topologyKey topology.kubernetes.io/zone.
 
-Pattern 4: Preferred affinity with weights.
+Scenario three is co-locate Pods. Run pod worker on the same node as pods with label app equals database. Use podAffinity with required scheduling, labelSelector matching app=database, topologyKey kubernetes.io/hostname.
 
-When you want preference without hard requirements, use preferredDuringSchedulingIgnoredDuringExecution. Each preference has a weight from 1 to 100 and a matchExpression. Higher weight means stronger preference. For example, you might give SSD storage a weight of 80 and fast network a weight of 20.
+Scenario four is avoid control plane. Ensure deployment app never runs on control plane nodes. Use nodeAffinity with required scheduling, nodeSelectorTerms, matchExpressions, key node-role.kubernetes.io/control-plane, operator DoesNotExist.
 
----
+Scenario five is debug pending pod. A pod is stuck in Pending state, debug and fix the affinity issue. Check status with describe pod, look for scheduling errors in events, check node labels with show-labels, then fix by either adding required label to node, modifying affinity rule, or changing required to preferred.
 
-### Section 5: Common CKAD Patterns - Pod Affinity (4 min)
-**[12:00-16:00]**
+## Quick Command Reference and Exam Tips
 
-Now let's look at Pod affinity and anti-affinity patterns. These are all about relationships between Pods.
+Let me show you essential kubectl commands for working with affinity in the exam. Check node labels by showing all with kubectl get nodes show-labels. Show specific labels as columns with -L flag. Show nodes with specific label with -l selector.
 
-Pattern 1: High availability with anti-affinity.
+Add or remove node labels by adding with kubectl label node. Remove by adding minus suffix. Update existing label with overwrite flag.
 
-This is the most common exam scenario. Spread replicas across nodes using podAntiAffinity with requiredDuringSchedulingIgnoredDuringExecution. The labelSelector matches the app label, and the topologyKey is kubernetes.io/hostname, meaning different physical nodes. Each replica will be on a different node for high availability.
+Check pod placement to see which node each pod is on with wide output. Show pods on specific node with field-selector. Check pod affinity rules with yaml output and grep.
 
-Important warning: If you have 3 replicas but only 2 nodes, with required anti-affinity, one Pod will stay pending. Use preferred for more flexibility.
+Generate YAML template by creating deployment and outputting YAML with dry-run, then edit to add affinity rules.
 
-Pattern 2: Spread across zones (preferred).
+For debugging, check why pod isn't scheduling with describe and grep Events. Get pod scheduling info from events sorted by timestamp. Check node capacity with describe node. Count pods per node with custom formatting.
 
-This is better for real-world scenarios. Use preferredDuringSchedulingIgnoredDuringExecution with a high weight. The podAffinityTerm has the labelSelector and topologyKey set to topology.kubernetes.io/zone. This tries to spread across zones but allows multiple Pods per zone if necessary.
+For exam tips, speed tip one is to use imperative commands to generate base YAML with dry-run. Speed tip two is to use kubectl explain for syntax like explain pod.spec.affinity or explain pod.spec.affinity.nodeAffinity. Speed tip three is to copy-paste affinity blocks from existing resources to save time.
 
-Pattern 3: Co-locate with cache.
+Common mistakes to avoid include forgetting the nodeSelectorTerms wrapper, as matchExpressions must be inside nodeSelectorTerms. Don't use matchLabels with In operator, it's redundant - use matchLabels for single values. Watch out for wrong topology key - use kubernetes.io/hostname for same node, not zone. Remember case sensitivity in labels, diskType is not the same as disktype. Beware of required anti-affinity with too many replicas - if you have 5 replicas and 3 nodes with required anti-affinity, 2 pods will stay pending.
 
-Pod affinity for performance means using requiredDuringSchedulingIgnoredDuringExecution with a labelSelector matching your cache service, like app=redis-cache, and topologyKey kubernetes.io/hostname. This says: "schedule me on the same node as Pods labeled app=redis-cache."
+Time-saving patterns include quickly labeling a node with overwrite, quickly checking if a pod can schedule with describe and tail, generating and editing in one command with pipe, and finding nodes with label using name output.
 
-Pattern 4: Regional affinity with zone spreading.
+## Practice Exercises and Exam Strategy
 
-You can combine node and Pod affinity. Use nodeAffinity to require the us-west region, and Pod anti-affinity with preferred scheduling to spread across zones within that region.
+Let's review practice exercises from the CKAD material. Exercise one is basic node affinity. Create a deployment that must run on Linux nodes, prefers nodes with disktype=ssd label, and has 3 replicas. The approach is to generate base deployment, edit to add nodeAffinity with required for Linux and preferred for SSD with weights.
 
-This demonstrates a sophisticated pattern: "stay in one region, but spread across zones within it."
+Exercise two is pod anti-affinity for HA. Create a deployment that runs 5 replicas where each replica must run on a different node. If fewer than 5 nodes, some pods should stay pending. Use required anti-affinity with topologyKey hostname.
 
----
+Exercise three is co-locate with cache. Given a redis cache deployment with label app=cache, create an application deployment that runs on the same nodes as redis pods with 3 replicas. Use podAffinity with required scheduling and topologyKey hostname.
 
-### Section 6: Troubleshooting Affinity Issues (4 min)
-**[16:00-20:00]**
+Exercise four is zone spreading. Create a deployment that must stay in region us-west, prefers spreading across zones, and has 6 replicas. Use nodeAffinity for region and podAntiAffinity preferred for zone spreading.
 
-Now let's focus on troubleshooting - this is critical for the exam. When Pods are pending due to affinity, you need to diagnose and fix quickly.
+Exercise five is troubleshoot pending pods. Given a broken deployment with pods in pending state, identify why pods aren't scheduling, fix the affinity rules, and verify pods start running. Debug with describe pod, check node labels, fix by adding labels or changing affinity.
 
-Issue 1: Pods stuck in Pending.
+For exam strategy, prefer simpler mechanisms. If the question can be solved with nodeSelector, use it instead of node affinity. Use kubectl explain for syntax help when you need it. Generate and modify by starting with imperative commands, save to YAML with dry-run, then edit to add affinity.
 
-First step - always check the Pod status with kubectl get pods. If you see Pending, describe the Pod and look at the last 20 lines.
+Time management is critical. Read carefully to understand if the question is asking you to create or debug. For creation, use the simplest mechanism that works. For debugging, describe pod, check events, look at labels. Don't spend more than 5 minutes on any single question.
 
-Look for messages like "0/3 nodes are available: 3 node(s) didn't match Pod's node affinity/selector."
-
-This tells you the affinity rules can't be satisfied. Debug by checking what labels the affinity requires, then check if any nodes have those labels. If no nodes match, add the label or fix the affinity rule.
-
-Issue 2: Anti-affinity too restrictive.
-
-Scenario: You have required anti-affinity but not enough nodes. The error message says nodes didn't match pod affinity rules or had volume node affinity conflicts.
-
-Solution: Change from required to preferred by editing the deployment and modifying the anti-affinity section from requiredDuringScheduling to preferredDuringScheduling, adding a weight value.
-
-Issue 3: Pods not co-locating.
-
-You want Pod affinity but Pods are on different nodes. Debug by checking if target Pods exist, checking which nodes they're on with wide output, and verifying your affinity label selector.
-
-Common mistakes include wrong label selector, target Pods don't exist yet, or wrong topology key.
-
-Issue 4: Quick decision tree.
-
-In the exam, use this mental checklist: Is the Pod pending? Check describe for scheduling errors. Error mentions affinity/selector? Verify node labels match requirements. No nodes match? Label a node or change affinity. Anti-affinity preventing scheduling? Change required to preferred. Still stuck? Check taints, resource capacity, other constraints.
-
----
-
-### Section 7: Exam Strategies and Time-Saving Tips (3 min)
-**[20:00-23:00]**
-
-Let me share strategic advice for handling affinity in the CKAD exam.
-
-Strategy 1: Prefer simpler mechanisms.
-
-If the question can be solved with a nodeSelector instead of node affinity, use nodeSelector. It's faster to write and less error-prone. Only use affinity when you need its advanced features.
-
-Strategy 2: Use kubectl explain for syntax.
-
-Don't memorize the exact YAML structure. Use kubectl explain pod.spec.affinity, kubectl explain pod.spec.affinity.nodeAffinity, or kubectl explain pod.spec.affinity.podAntiAffinity. This shows you the exact field names and structure.
-
-Strategy 3: Generate and modify.
-
-Start with imperative commands to create a deployment, save it to YAML with dry-run, then edit it to add affinity. This is faster than writing from scratch.
-
-Strategy 4: Common mistakes to avoid.
-
-Forgetting nodeSelectorTerms wrapper - the matchExpressions must be inside nodeSelectorTerms. Wrong topology key - use kubernetes.io/hostname for same node, topology.kubernetes.io/zone for same zone. Case-sensitive labels - disktype is not the same as diskType. Required anti-affinity with too many replicas - if you have 5 replicas, 3 nodes, and required anti-affinity, 2 Pods will stay pending. Not checking if target Pods exist - Pod affinity fails if the target Pods haven't been created yet.
-
-Strategy 5: Time management.
-
-If you encounter an affinity question, read carefully - is it asking you to create or debug? For creation, use the simplest mechanism that works. For debugging, describe Pod, check Events, look at labels. Don't spend more than 5 minutes on any single question. Flag and move on if stuck.
-
----
-
-### Section 8: Practice Scenario Walkthrough (3 min)
-**[23:00-26:00]**
-
-Let's do a quick practice scenario that simulates exam conditions.
-
-Scenario: "Deploy application 'webapp' with 3 replicas. Pods must run on Linux nodes. Pods should be spread across different availability zones if possible, but all replicas must start even if only one zone is available."
-
-Time yourself. You have 4 minutes.
-
-Here's my approach: Step 1 takes 30 seconds - create the base deployment with dry-run and save to YAML. Step 2 takes 2 minutes - edit the YAML to add affinity rules. You need required nodeAffinity for Linux nodes with matchExpressions checking kubernetes.io/os equals linux. Then add preferred podAntiAffinity with weight 100, the podAffinityTerm has labelSelector matching app=webapp, and topologyKey is topology.kubernetes.io/zone.
-
-Key decisions: Required node affinity for Linux because it's a must-have. Preferred Pod anti-affinity for spreading because it's nice to have. Used preferredDuringScheduling because the question says "all replicas must start."
-
-Step 3 takes 1 minute - apply the YAML and verify with kubectl get pods showing the app label and wide output. Step 4 takes 30 seconds - confirm success by describing the deployment and checking replicas.
-
-Total time: 4 minutes. Practice this workflow until you can do it in under 3 minutes.
-
----
-
-### Section 9: Summary and Final Tips (1 min)
-**[26:00-27:00]**
-
-Let's wrap up with key takeaways for CKAD exam success with affinity.
-
-Remember these essentials: Node affinity controls placement based on node labels. Pod affinity co-locates, anti-affinity spreads. Required creates hard constraints, preferred creates soft preferences. Topology key defines the scope: hostname, zone, or region. Always check kubectl describe pod Events for scheduling issues.
-
-Practical exam tips: Use nodeSelector for simple cases. Use kubectl explain for syntax help. Generate base YAML with imperative commands. Understand required vs preferred deeply. Practice troubleshooting pending Pods. Know the standard labels: hostname, os, arch, zone, region.
-
-Time-saving commands to memorize: kubectl get nodes --show-labels, kubectl label node with key-value, kubectl describe pod and tail for recent events, kubectl get pod with yaml output and grep for affinity.
-
-Practice these patterns until they're second nature. The exam is time-pressured, so muscle memory with these commands is crucial.
-
-Good luck with your CKAD exam preparation!
+Practice these patterns until they're second nature. The exam is time-pressured, so muscle memory with these commands is crucial. Good luck with your CKAD exam preparation!
