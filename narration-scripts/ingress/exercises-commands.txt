@@ -1,0 +1,114 @@
+# Key commands to add to ingress/exercises.md:
+
+Line 38 (Commands section):
+```powershell
+ls ./labs/ingress/ingress-controller/
+```
+
+Line 53 (Deploy controller):
+```powershell
+kubectl apply -f ./labs/ingress/ingress-controller/
+kubectl get all -n ingress-nginx
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=60s
+```
+
+Line 92 (Examine default app):
+```powershell
+cat ./labs/ingress/default/deployment.yaml
+```
+
+Line 105 (Deploy default):
+```powershell
+kubectl apply -f ./labs/ingress/default/
+kubectl get pods,svc -l app=default
+```
+
+Line 118 (Examine ingress):
+```powershell
+cat ./labs/ingress/default/ingress.yaml
+```
+
+Line 126 (Deploy ingress):
+```powershell
+kubectl apply -f ./labs/ingress/default/ingress.yaml
+kubectl get ingress
+```
+
+Line 146 (Deploy whoami):
+```powershell
+kubectl apply -f ./labs/ingress/whoami/
+kubectl get pods,svc,ingress -l app=whoami
+```
+
+Line 152 (Describe ingress):
+```powershell
+kubectl describe ingress whoami
+```
+
+Line 164 (Update hosts):
+```powershell
+# Windows
+./scripts/add-to-hosts.ps1 whoami.local
+
+# Linux/Mac
+./scripts/add-to-hosts.sh whoami.local
+```
+
+Line 200 (Deploy pi):
+```powershell
+kubectl apply -f ./labs/ingress/pi/
+kubectl get all -l app=pi
+```
+
+Line 206 (Show initial ingress):
+```powershell
+cat ./labs/ingress/pi/ingress.yaml
+```
+
+Line 214 (Add to hosts):
+```powershell
+./scripts/add-to-hosts.ps1 pi.local
+```
+
+Line 231 (Show cached ingress):
+```powershell
+cat ./labs/ingress/pi/update/ingress-with-cache.yaml
+```
+
+Line 239 (Apply update):
+```powershell
+kubectl apply -f ./labs/ingress/pi/update/
+```
+
+Line 266 (Review ingresses):
+```powershell
+kubectl get ingress
+```
+
+Line 296 (Deploy configurable):
+```powershell
+kubectl apply -f ./labs/ingress/lab/
+kubectl get pods,svc -l app=configurable
+```
+
+Line 313 (Show solution):
+```powershell
+cat ./labs/ingress/lab/solution/ingress.yaml
+kubectl apply -f ./labs/ingress/lab/solution/
+```
+
+Line 319 (Edit service):
+```powershell
+kubectl edit svc ingress-nginx-controller -n ingress-nginx
+```
+
+Line 341 (Cleanup):
+```powershell
+kubectl delete all,ingress -l kubernetes.courselabs.co=ingress
+kubectl delete namespace ingress-nginx
+```
+
+Line 356 (Quick ingress):
+```powershell
+kubectl create ingress quick --rule="app.local/=myservice:80" --dry-run=client -o yaml
+```

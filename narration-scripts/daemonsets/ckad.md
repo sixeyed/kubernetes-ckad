@@ -1,524 +1,202 @@
 # DaemonSets - CKAD Exam Preparation
-## Narration Script for Exam Readiness Session
+## Narration Script for Exam-Focused Training
 
-**Duration: 15-20 minutes**
-**Target Audience: CKAD Exam Candidates**
-**Delivery Style: Exam-focused, concise, time-efficient**
+### Section 1: CKAD Exam Context and What Are DaemonSets?
 
----
+Welcome to CKAD exam preparation for DaemonSets. While DaemonSets are supplementary material for CKAD, they can appear on the exam, and understanding them demonstrates solid Kubernetes knowledge.
 
-## Introduction (90 seconds)
+First, let's understand what DaemonSets are and why they matter for CKAD. A DaemonSet ensures that a copy of a Pod runs on all (or some) nodes in the cluster. As nodes are added to the cluster, Pods are added to them. As nodes are removed, those Pods are garbage collected.
 
-Welcome to the CKAD exam preparation session for DaemonSets. While DaemonSets are supplementary material for CKAD, they can appear on the exam, and understanding them demonstrates solid Kubernetes knowledge.
+Key exam scenarios include creating DaemonSets with the correct structure, configuring HostPath volumes for node-level access, using nodeSelector to target specific nodes, working with init containers in DaemonSets, understanding update strategies (RollingUpdate vs OnDelete), and troubleshooting why Pods aren't scheduled.
 
-**Session Objectives**:
-1. Review essential DaemonSet concepts for the exam
-2. Practice timed scenarios with realistic constraints
-3. Master troubleshooting techniques
-4. Avoid common mistakes and pitfalls
-5. Learn quick reference commands
+DaemonSets are part of the Application Deployment domain (20% of exam). You might see 1-2 questions involving DaemonSets, often combined with node selection, init containers, HostPath volumes, or update strategies.
 
-**Exam Context**: DaemonSets are part of the "Application Deployment" domain (20% of exam). You might see 1-2 questions involving DaemonSets, often combined with:
-- Node selection and affinity
-- Init containers
-- HostPath volumes
-- Update strategies
+Time management: Target 3-5 minutes per DaemonSet question. They're simpler than StatefulSets (no headless Service, no volumeClaimTemplates) so they should be faster.
 
-**Time Management**: With 6-8 minutes per question, DaemonSets questions should be faster than StatefulSets (no headless Service, no volumeClaimTemplates). Target: 3-5 minutes per DaemonSet question.
+Essential commands to memorize: kubectl get daemonsets or ds for listing, kubectl describe daemonset for details, kubectl apply for creating or updating, kubectl delete for removal, kubectl get pods -o wide to verify Pod placement on nodes, and kubectl label node for adding node labels.
 
-**Key Advantage**: DaemonSets are simpler than StatefulSets, so they're less likely to consume excessive exam time. Master the basics and you'll handle these questions efficiently.
-
-Let's start with essential commands and quick reference material.
+Key differences from Deployments: DaemonSets have no replicas field - Pod count is automatic based on nodes. Scaling is done by adding/removing nodes or changing nodeSelector, not by changing replica count. Update strategy deletes old Pods before creating new ones (opposite of Deployments). Use cases are for node-level services like log collectors, monitoring agents, or storage daemons. HostPath volumes are common with DaemonSets for accessing node resources.
 
 ---
 
-## Section 1: Essential Commands and Quick Reference (2-3 minutes)
+### Section 2: Creating Basic DaemonSets
 
-### 1.1 Core kubectl Commands (90 seconds)
+Let's start with creating a basic DaemonSet. The structure is simpler than you might think.
 
-Here are the commands you must know by heart for DaemonSet questions:
+Here's the basic DaemonSet structure. Critical points: Use apiVersion apps/v1, kind is DaemonSet, there's NO replicas field, spec.selector must match spec.template.metadata.labels, and the template contains a standard Pod spec.
 
-**Create and View**:
+Common mistake: Don't try to add a replicas field. DaemonSets don't have one - the number of Pods is determined automatically by the number of matching nodes.
 
-**Update and Rollout Management**:
+Quick creation pattern: Start with kubectl create deployment dry-run to get basic structure, change kind to DaemonSet, remove the replicas field, adjust as needed, then apply.
 
-**Pod Management**:
+To verify your DaemonSet, check that DESIRED matches your node count, all Pods are in Running status, and each Pod is on a different node using kubectl get pods -o wide.
 
-**Node Operations**:
-
-**Deletion**:
-
-**Memory Aid**: Use  not  - saves 8 characters every time.
-
-### 1.2 DaemonSet vs Deployment - Quick Comparison (60 seconds)
-
-Know this cold for the exam:
-
-| Feature | DaemonSet | Deployment |
-|---------|-----------|------------|
-| **Replicas** | Automatic (one per node) | Manual specification |
-| **Scaling** | Add/remove nodes or change labels | Change replica count |
-| **Update Default** | RollingUpdate (delete first) | RollingUpdate (create first) |
-| **Use Case** | Node-level services | Application workloads |
-| **HostPath** | Common | Rare |
-
-**Decision Tree for Exam**:
-- Question mentions "every node" or "each node" → DaemonSet
-- Question mentions "log collector" or "monitoring agent" → Likely DaemonSet
-- Question specifies "3 replicas" → Deployment or StatefulSet
-- Question mentions "node resources" or HostPath → Likely DaemonSet
+Decision tree for the exam: If the question mentions "every node" or "each node", use a DaemonSet. If it mentions "log collector" or "monitoring agent", likely a DaemonSet. If it specifies "3 replicas", use a Deployment. If it mentions "node resources" or HostPath, likely a DaemonSet.
 
 ---
 
-## Section 2: Scenario 1 - Create Basic DaemonSet (3-4 minutes)
+### Section 3: HostPath Volumes with DaemonSets
 
-### 2.1 Scenario Setup (30 seconds)
+HostPath volumes are commonly used with DaemonSets to access node-level resources.
 
-**Time Target: 3-4 minutes**
+Here's a DaemonSet with HostPath volume configuration. The volumes section defines the HostPath at the Pod spec level. The volumeMounts section in the container references the volume. The name must match between volumes and volumeMounts. The path is where it mounts in the container, the hostPath.path is the path on the node, and the hostPath.type validates the path exists.
 
-**Exam Question Format**:
+Common HostPath types you should know: Directory means must exist as a directory (most common for exam), DirectoryOrCreate means create if doesn't exist, File means must exist as a file, and Socket is for Unix sockets like /var/run/docker.sock.
 
-"Create a DaemonSet named  that runs busybox:latest with the command . The DaemonSet should have the label . Verify that one Pod is running on each node."
+The pattern for mounting host directories: Define volume with hostPath at Pod spec level, specify the type for validation, mount the volume in container with desired mountPath, and use readOnly: true if you only need read access.
 
-**Constraints**:
-- Namespace: default
-- Must verify solution works
-- Efficient execution required
-
-### 2.2 Solution Walkthrough (2-3 minutes)
-
-**Step 1: Create the DaemonSet** (2 minutes target)
-
-**Critical Points**:
-- No  field - common mistake to include one
--  must match 
--  is an array of strings
-
-**Time-Saving Tip**: In the exam, don't overthink the YAML structure. DaemonSets are simpler than StatefulSets - just Pod spec, selector, and template.
-
-**Step 2: Verify DaemonSet Created** (30 seconds target)
-
-Check that  matches your cluster's node count.
-
-**Step 3: Verify Pods Running** (30 seconds target)
-
-Verify:
-- One Pod per node (check the NODE column)
-- All Pods in Running status
-
-**Exam Time Check**: This should take 3-4 minutes maximum. If you're over 5 minutes, you need more practice with YAML syntax.
-
-### 2.3 Common Mistakes (30 seconds)
-
-❌ **Mistake 1**: Adding a  field - DaemonSets don't have one
-
-❌ **Mistake 2**: Label mismatch between selector and template
-
-❌ **Mistake 3**: Wrong API version (use )
-
-❌ **Mistake 4**: Not verifying Pods are actually running
-
-✅ **Success Criteria**: DaemonSet exists, DESIRED equals node count, all Pods Running.
+Troubleshooting HostPath issues: If Pods are in CrashLoopBackOff, check the Pod events with describe. Common causes include path doesn't exist on node (wrong type specified), permission denied (may need securityContext), or wrong volumeMount name reference. Quick fix: If path validation fails, use DirectoryOrCreate instead of Directory.
 
 ---
 
-## Section 3: Scenario 2 - DaemonSet with HostPath Volume (3-4 minutes)
+### Section 4: Node Selection with nodeSelector
 
-### 3.1 Scenario Setup (30 seconds)
+One of DaemonSet's most powerful features is targeting specific nodes using nodeSelector.
 
-**Time Target: 3-4 minutes**
+Here's how to use nodeSelector. The nodeSelector field goes in spec.template.spec (the Pod spec), not in the DaemonSet spec. It uses simple key-value matching.
 
-**Exam Question Format**:
+Dynamic behavior: When you label a node that matches the selector, the DaemonSet creates a Pod there. When you remove a matching label, the DaemonSet deletes that Pod. This is dynamic - DaemonSets watch for node label changes.
 
-"Create a DaemonSet named  that runs busybox with the command . Mount the host's  directory as a read-only volume at  in the container."
+To label nodes, use kubectl label node node-name key=value to add a label, kubectl label node node-name key=value --overwrite to update, and kubectl label node node-name key- to remove a label.
 
-**Key Challenge**: Correct HostPath volume configuration.
+Common label patterns for the exam: Environment labels like env=production, hardware labels like disktype=ssd or gpu=true, location labels like topology.kubernetes.io/zone=us-west-1a, and workload type labels like workload=database.
 
-### 3.2 Solution Walkthrough (2-3 minutes)
+Verification workflow: Create DaemonSet with nodeSelector, check DESIRED equals 0 if no nodes match, label a node to match the selector, watch as Pod is created immediately, verify Pod is on the labeled node with kubectl get pods -o wide.
 
-**Step 1: Create DaemonSet with HostPath** (2-3 minutes target)
-
-**Critical Points**:
--  must match  (both )
--  is specified at the volumeMount level
--  validates that  exists as a directory
--  can be different from 
-
-**Common HostPath Types**:
--  - must exist (most common for exam)
--  - create if doesn't exist
--  - must exist as a file
--  - for Unix sockets (e.g., Docker socket)
-
-**Step 2: Verify Pods Started** (60 seconds target)
-
-You should see log output from the host's syslog.
-
-**Exam Time Check**: Should complete in 3-4 minutes.
-
-### 3.3 Troubleshooting HostPath Issues (30 seconds)
-
-If Pods are not Running:
-
-**Common issues**:
-- Path doesn't exist on node (wrong  specified)
-- Permission denied (may need securityContext)
-- Wrong volumeMount name reference
-
-**Quick Fix**: If path validation fails, use  instead of .
+Best practice: Always verify labels exist on nodes before expecting Pods to schedule. Use kubectl get nodes -l key=value to check.
 
 ---
 
-## Section 4: Scenario 3 - DaemonSet with Node Selector (3-4 minutes)
+### Section 5: Update Strategies
 
-### 4.1 Scenario Setup (30 seconds)
+DaemonSets support two update strategies: RollingUpdate and OnDelete.
 
-**Time Target: 3-4 minutes**
+RollingUpdate is the default strategy. When you update the DaemonSet spec, Pods are automatically updated. The update process deletes the old Pod first, then creates the new Pod (opposite of Deployments). This can cause temporary service interruption per node. Use this when you want automatic updates.
 
-**Exam Question Format**:
+OnDelete strategy means updates are manual. When you update the DaemonSet spec, existing Pods are NOT updated. Pods only update when you manually delete them. New nodes get the new spec immediately. Use this when you need complete control over rollout timing.
 
-"Create a DaemonSet named  that runs on nodes labeled . Use the nginx:alpine image. Then label one node with  and verify the Pod is created on that node."
+Here's how to configure OnDelete strategy. Set spec.updateStrategy.type to OnDelete in your DaemonSet spec.
 
-**Skills Tested**: Node selection, dynamic behavior, verification.
+The update workflow with OnDelete: Update the DaemonSet spec, verify existing Pods are still running with old spec, manually delete a Pod to trigger update with kubectl delete pod, the new Pod gets the updated spec, repeat for each node at your own pace.
 
-### 4.2 Solution Walkthrough (2-3 minutes)
+Decision for the exam: If question says "automatic updates", use RollingUpdate (or just omit the field, it's default). If question says "manual control" or "one at a time", use OnDelete.
 
-**Step 1: Create DaemonSet with nodeSelector** (90 seconds target)
-
-**Critical Point**:  is part of the Pod spec (), not the DaemonSet spec.
-
-**Step 2: Verify DaemonSet but No Pods** (30 seconds target)
-
-You should see  because no nodes match the selector.
-
-No Pods exist yet.
-
-**Step 3: Label a Node** (60 seconds target)
-
-**Step 4: Verify Pod Created** (30 seconds target)
-
-You should see one Pod created on the labeled node.
-
-**Exam Time Check**: Should complete in 3-4 minutes.
-
-### 4.3 Key Concepts (30 seconds)
-
-**Dynamic Behavior**:
-- Label a node → DaemonSet creates Pod
-- Remove label → DaemonSet deletes Pod
-- Relabel node → Pod moves
-
-**Use Cases**:
-- GPU nodes: 
-- Production nodes: 
-- SSD nodes: 
-- Zone-specific: 
-
-**Exam Tip**: If a question mentions specific node types or subsets, use nodeSelector.
+Critical difference from Deployments: Deployment RollingUpdate creates new Pods first, then deletes old ones (maintains availability). DaemonSet RollingUpdate deletes old Pods first, then creates new ones (can't have two on one node). This means DaemonSet updates can cause brief downtime per node.
 
 ---
 
-## Section 5: Scenario 4 - Update Strategy OnDelete (2-3 minutes)
+### Section 6: Init Containers with DaemonSets
 
-### 5.1 Scenario Setup (30 seconds)
+Init containers are commonly used with DaemonSets for setup tasks before the main container starts.
 
-**Time Target: 2-3 minutes**
+Here's the structure for init containers. The initContainers field is an array in spec.template.spec (the Pod spec). Init containers run in order before the main containers. They must complete successfully before the main container starts. They can share volumes with the main container.
 
-**Exam Question Format**:
+Common init container patterns for the exam: Wait for dependency like checking if a service is available, download config like fetching configuration files, set permissions like chmod operations on shared volumes, or prepare data like generating initial content.
 
-"Configure the DaemonSet  to use manual update control. When you update the image, Pods should only be updated when you manually delete them."
+The emptyDir volume pattern: Init container writes data to the shared volume, volume persists during Pod lifetime, main container reads from the shared volume. The volume is specific to that Pod instance and is lost when the Pod is deleted.
 
-**Key Concept**: OnDelete update strategy.
+Pod status during init: Init:0/1 means init container is running (0 of 1 complete). PodInitializing means init container completed, main container starting. Running means all containers (init and main) completed their lifecycle.
 
-### 5.2 Solution Walkthrough (90 seconds)
-
-**Step 1: Update DaemonSet with OnDelete Strategy** (60 seconds target)
-
-**Critical Field**: 
-
-**Step 2: Verify Pods NOT Updated** (30 seconds target)
-
-Pods are still running with the old spec. The update didn't trigger a rollout.
-
-**Step 3: Manually Trigger Update** (30 seconds target)
-
-The new Pod will have the updated image.
-
-**Exam Time Check**: Should complete in 2-3 minutes.
-
-### 5.3 RollingUpdate vs OnDelete (30 seconds)
-
-**RollingUpdate** (default):
-
-Automatic updates when spec changes.
-
-**OnDelete**:
-
-Manual updates only when Pods are deleted.
-
-**Exam Decision**:
-- Question says "automatic updates" → RollingUpdate
-- Question says "manual control" or "one at a time" → OnDelete
+To debug init containers, use kubectl describe pod to see init container status and events, kubectl logs pod-name -c init-container-name to view init container logs, and check if the init container completed successfully before troubleshooting main container.
 
 ---
 
-## Section 6: Scenario 5 - Init Container Pattern (2-3 minutes)
+### Section 7: Common CKAD Scenarios and Practice
 
-### 6.1 Scenario Setup (30 seconds)
+Let's walk through practical scenarios you'll encounter in the exam.
 
-**Time Target: 2-3 minutes**
+Scenario 1: Create a basic DaemonSet. Task: Create a DaemonSet named log-collector running busybox with label app=logging. Verify one Pod per node.
 
-**Exam Question Format**:
+Solution steps: Create YAML with apps/v1 and kind DaemonSet, no replicas field, selector matches template labels, apply and verify with kubectl get daemonset and kubectl get pods -o wide. Time target: 3-4 minutes.
 
-"Create a DaemonSet named  that runs nginx:alpine. Before nginx starts, an init container should create a custom index.html file in a shared volume."
+Scenario 2: DaemonSet with HostPath. Task: Create DaemonSet mounting host's /var/log at /host-logs as read-only.
 
-**Key Concept**: Init containers with shared volumes.
+Solution steps: Add volumes section with hostPath, specify type Directory, add volumeMount in container with readOnly true, verify Pods can access the path. Time target: 3-4 minutes.
 
-### 6.2 Solution Walkthrough (90 seconds)
+Scenario 3: Target specific nodes. Task: Create DaemonSet that only runs on nodes with label disktype=ssd.
 
-**Critical Points**:
-- Init container and main container share the volume 
-- Init container writes to 
-- Main container reads from 
-- Volume uses  for temporary storage
+Solution steps: Add nodeSelector in Pod spec, verify DESIRED=0 initially, label one node with disktype=ssd, watch Pod creation, verify Pod is on correct node. Time target: 3-4 minutes.
 
-**Verification** (30 seconds):
+Scenario 4: Manual update control. Task: Configure DaemonSet to use OnDelete strategy.
 
-Should show the custom HTML.
+Solution steps: Set updateStrategy.type to OnDelete, update the DaemonSet spec (like changing image), verify Pods don't automatically update, manually delete a Pod, verify new Pod has updated spec. Time target: 2-3 minutes.
 
-### 6.3 Init Container Patterns (30 seconds)
+Scenario 5: Init container setup. Task: Create DaemonSet with init container that prepares configuration before main container starts.
 
-**Common exam patterns**:
-
-**Pattern 1: Wait for dependency**:
-
-**Pattern 2: Download config**:
-
-**Pattern 3: Set permissions**:
+Solution steps: Add initContainers section, share volume with emptyDir, init container writes to volume, main container reads from volume, verify with kubectl logs. Time target: 3-4 minutes.
 
 ---
 
-## Section 7: Troubleshooting Common Issues (2-3 minutes)
+### Section 8: Troubleshooting DaemonSet Issues
 
-### 7.1 Issue 1: Pods Not Scheduling (60 seconds)
+Let's cover common issues and how to diagnose them quickly.
 
-**Symptoms**:
+Issue 1: Pods not scheduling. Symptoms: DaemonSet shows DESIRED=0 or Pods are Pending.
 
-**Diagnosis**:
+Diagnosis: Check DaemonSet spec with kubectl describe daemonset. Check node labels with kubectl get nodes --show-labels. Check if nodeSelector matches any nodes. Check for taints on nodes with kubectl describe node.
 
-**Common causes**:
-- nodeSelector doesn't match any nodes
-- Nodes have taints without corresponding tolerations
-- All nodes are tainted as NoSchedule
+Common causes: nodeSelector doesn't match any nodes, nodes have taints without corresponding tolerations, or all nodes are cordoned.
 
-**Quick Fix**:
+Fixes: Verify and fix node labels, add tolerations to Pod spec if nodes are tainted, or remove nodeSelector to run on all nodes.
 
-### 7.2 Issue 2: Update Not Happening (60 seconds)
+Issue 2: Update not happening. Symptoms: Updated DaemonSet but Pods still have old spec.
 
-**Symptoms**: You updated the DaemonSet but Pods still have old spec.
+Diagnosis: Check update strategy with kubectl get daemonset -o yaml and grep for updateStrategy.
 
-**Diagnosis**:
+If it shows OnDelete: This is expected behavior. You must manually delete Pods for updates.
 
-**If it says "OnDelete"**:
-- This is expected behavior
-- You must manually delete Pods for updates
+Fix: Either change to RollingUpdate or manually delete Pods one by one to trigger updates.
 
-**Fix**:
+Issue 3: HostPath volume failures. Symptoms: Pods in CrashLoopBackOff or Error state.
 
-### 7.3 Issue 3: HostPath Volume Failures (60 seconds)
+Diagnosis: Check Pod events with kubectl describe pod. Check Pod logs with kubectl logs. Look for path-related errors.
 
-**Symptoms**: Pods in CrashLoopBackOff or Error state.
+Common causes: Path doesn't exist on node, wrong type specified (like Directory when it should be DirectoryOrCreate), or permission denied errors.
 
-**Diagnosis**:
+Fixes: Use DirectoryOrCreate if path doesn't exist, add securityContext if permissions are needed, verify the hostPath.path is correct, or use kubectl exec to test path access from within Pod.
 
-**Common causes**:
-- Path doesn't exist on node
-- Wrong  specified
-- Permission denied
+Issue 4: One Pod per node violation. Symptoms: Multiple DaemonSet Pods on one node or no Pod on a node.
 
-**Fixes**:
-
-**If path doesn't exist**:
-
-**If permission issues**:
+This shouldn't happen normally, but if it does: Check if nodeSelector or tolerations changed, verify node labels haven't changed, check for multiple DaemonSets with same selector (conflict), or look for manual Pod creation with same labels.
 
 ---
 
-## Section 8: Exam Tips and Best Practices (2-3 minutes)
+### Section 9: Exam Tips and Strategy
 
-### 8.1 Time Management (90 seconds)
+Time management: DaemonSets are quicker than StatefulSets. No headless Service needed, no volumeClaimTemplates. Target 3-5 minutes per DaemonSet question.
 
-**1. DaemonSets are Quick**:
-- No headless Service (unlike StatefulSets)
-- No volumeClaimTemplates
-- Target: 3-5 minutes per DaemonSet question
+Memory aids: No replicas - remember "DaemonSet determines replicas automatically by node count". Delete first - DaemonSets delete old before creating new (opposite of Deployments). OnePerNode - only one DaemonSet Pod can run per node (enforced by name).
 
-**2. Use Heredocs for Speed**:
+Common mistakes to avoid: Adding a replicas field will cause the YAML to be invalid. Expecting Deployment-style updates where new Pods start before old ones terminate. Using wrong HostPath type - always specify the type field. Not verifying that nodeSelector labels exist on nodes. Forgetting that OnDelete requires manual Pod deletion. Wrong API version - use apps/v1, not extensions/v1beta1.
 
-**3. Verification Shortcuts**:
+Time-saving tips for the exam: Use kubectl create deployment with dry-run, change to DaemonSet, remove replicas. Use heredoc for multi-line YAML to avoid editor issues. Verify with kubectl get ds and kubectl get pods -o wide quickly. Don't watch Pods unnecessarily - check status and move on. Label nodes efficiently with kubectl label node $(kubectl get nodes -o name | head -1) key=value.
 
-**4. Don't Watch Unnecessarily**:
-- Use  to see first Pod start
-- Press Ctrl+C immediately when status is clear
-- Move to next task
+Quick reference commands: kubectl get ds for listing, kubectl describe ds name for details, kubectl get ds name -o yaml for full spec, kubectl get pods -o wide to see node placement, kubectl label node for node labels, and kubectl delete ds name for removal.
 
-**5. Label Nodes Efficiently**:
+Practice recommendations: Create 2-3 DaemonSets from scratch daily until you can do it in under 4 minutes. Practice the difference between RollingUpdate and OnDelete. Memorize HostPath volume syntax. Practice nodeSelector patterns. Time yourself on complete scenarios.
 
-### 8.2 Common Exam Pitfalls (90 seconds)
+DaemonSets are less common than Deployments but easier than StatefulSets. Master the basics, remember there's no replicas field, understand the update behavior, and these should be confidence-building questions on exam day.
 
-**Pitfall 1: Including replicas Field**
-✅ **Solution**: Remember - DaemonSets have NO replicas field
-
-**Pitfall 2: Expecting Deployment Update Behavior**
-✅ **Solution**: DaemonSets delete old Pods before creating new ones
-
-**Pitfall 3: Wrong HostPath Type**
-✅ **Solution**: Use  for existing paths,  for new paths
-
-**Pitfall 4: Init Container Not Sharing Volume**
-✅ **Solution**: Ensure both init and main containers reference the same volume name
-
-**Pitfall 5: Not Verifying Node Count**
-✅ **Solution**: Always check that DESIRED matches your node count
-
-**Pitfall 6: Forgetting to Label Nodes**
-✅ **Solution**: When using nodeSelector, remember to actually label nodes
-
-**Pitfall 7: Wrong Selector Syntax**
-✅ **Solution**: It's  (Pod spec) not  or 
+Good luck with your CKAD exam!
 
 ---
 
-## Section 9: Quick Command Reference Card (90 seconds)
+## Recording Notes
 
-### 9.1 Must-Know Commands
+**Key Points:**
+- Focus on the "no replicas field" concept - this is the most common mistake
+- Emphasize the difference between DaemonSet and Deployment update behavior
+- Show that DaemonSets are simpler than StatefulSets (no headless service, no PVC templates)
+- Demonstrate nodeSelector as the primary way to control DaemonSet placement
+- Highlight OnDelete strategy for manual control
+- Note that HostPath volumes are common with DaemonSets
+- Stress time management - DaemonSets should be quick wins
 
-**Creation and Viewing**:
-
-**Pod Operations**:
-
-**Updates and Rollouts**:
-
-**Node Operations**:
-
-**Troubleshooting**:
-
-**Deletion**:
-
----
-
-## Section 10: Practice Exercise - Full Exam Simulation (3-4 minutes)
-
-### 10.1 Timed Challenge (30 seconds)
-
-**Your challenge**: Complete this in 5 minutes or less.
-
-**Exam Question**:
-
-"Create a DaemonSet named  with these requirements:
-- Image: fluent/fluentd:latest
-- Label: app=fluentd
-- Mount host's  as read-only at  in the container
-- Use OnDelete update strategy
-- Should only run on nodes labeled 
-- Verify the DaemonSet is created but no Pods exist (nodes not labeled yet)"
-
-**Start your timer now.**
-
-### 10.2 Solution (2-3 minutes)
-
-After attempting it yourself:
-
-**Time Target**: 4-5 minutes total.
-
-### 10.3 Self-Assessment (30 seconds)
-
-**If you completed in**:
-- **Under 4 minutes**: Excellent, exam-ready for DaemonSet questions
-- **4-5 minutes**: Good, but practice the YAML structure more
-- **5-6 minutes**: You need more practice to build speed
-- **Over 6 minutes**: Review the syntax daily until under 5 minutes
-
-**Focus Areas**:
-- Struggled with YAML structure? Practice writing DaemonSets from scratch
-- Struggled with nodeSelector? Practice the Pod spec structure
-- Struggled with HostPath? Practice volume syntax
-
----
-
-## Conclusion and Next Steps (90 seconds)
-
-### Summary of Key Exam Points (60 seconds)
-
-**Must-Know Concepts**:
-
-**1. No Replicas Field**:
-- DaemonSets automatically match node count
-- Don't try to set replicas
-
-**2. Update Strategy Differences**:
-- RollingUpdate: Automatic, deletes before creating
-- OnDelete: Manual, update by deleting Pods
-
-**3. Node Selection**:
--  for simple label matching
-- Tolerations for tainted nodes
-- Labels are dynamic - add label, get Pod
-
-**4. HostPath Volumes**:
-- Specify  for validation
-- Use  when possible
-- Common types: Directory, DirectoryOrCreate, File, Socket
-
-**5. Init Containers**:
-- Run before main containers
-- Share volumes with main containers
-- Perfect for setup tasks
-
-**6. Time Management**:
-- Target 3-5 minutes per DaemonSet question
-- Simpler than StatefulSets
-- Verify quickly and move on
-
-### Practice Recommendations (30 seconds)
-
-**Before the exam**:
-1. **Daily Practice**: Create 2-3 DaemonSets from scratch daily
-2. **Timed Drills**: Set a 4-minute timer, practice under pressure
-3. **Memorization**: Write DaemonSet YAML structure from memory
-4. **Comparisons**: Practice explaining differences from Deployments
-5. **Troubleshooting**: Practice the diagnosis commands
-
-**Exam Day Strategy**:
-- DaemonSet questions should be quick wins
-- Don't overcomplicate - the YAML is straightforward
-- Verify with  and 
-- If nodeSelector is involved, verify the label logic
-- Move on quickly - don't burn time on simple questions
-
-**Final Thought**: DaemonSets are less common than Deployments but easier than StatefulSets. Master the basics, practice the syntax, and these should be confidence-building questions on exam day.
-
-Good luck on your CKAD exam!
-
----
-
-## Additional Resources
-
-**Official Documentation** (allowed during exam):
-- https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/
-- https://kubernetes.io/docs/concepts/workloads/pods/init-containers/
-
-**Practice Labs**:
-- Complete the full DaemonSets lab (README.md)
-- Work through all exercises in CKAD.md
-- Try the lab challenges
-
-**Next Topics to Review**:
-- Deployments (core topic, higher priority)
-- Services and networking
-- Init containers and multi-container patterns
-- Node affinity and taints/tolerations
-
-**Total Duration**: 15-20 minutes
-
----
+**Visual Focus:**
+- Show kubectl get ds output with DESIRED matching node count
+- Display kubectl get pods -o wide to show one Pod per node
+- Highlight the update sequence (delete then create vs create then delete)
+- Show nodeSelector effect with before/after node labeling
+- Demonstrate init container Pod status progression
+- Display HostPath volume mounting in Pod spec
+- Keep verification steps visible and quick

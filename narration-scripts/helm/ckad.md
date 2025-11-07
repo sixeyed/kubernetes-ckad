@@ -59,11 +59,38 @@ Let's review the core commands you must know by heart.
 
 **Repository Management:**
 
+```bash
+helm repo add <name> <url>
+helm repo update
+helm search repo <keyword>
+```
+
 **Release Management:**
+
+```bash
+helm install <release-name> <chart> [flags]
+helm upgrade <release-name> <chart> [flags]
+helm rollback <release-name> <revision>
+helm uninstall <release-name>
+```
 
 **Information:**
 
+```bash
+helm list [-n namespace]
+helm status <release-name>
+helm history <release-name>
+helm get values <release-name>
+helm show values <chart>
+```
+
 **Debugging:**
+
+```bash
+helm install --dry-run --debug <release-name> <chart>
+helm get manifest <release-name>
+kubectl get all -l app.kubernetes.io/instance=<release-name>
+```
 
 Practice typing these commands until they're muscle memory.
 
@@ -79,13 +106,25 @@ The CKAD exam is time-constrained. Here are techniques to work faster with Helm.
 
 Instead of creating a values file for one or two settings:
 
+```bash
+helm install myapp bitnami/nginx --set replicaCount=3
+```
+
 **Technique 2: Combine Multiple --set Flags**
 
 You can chain multiple --set flags in one command:
 
+```bash
+helm install myapp bitnami/nginx --set replicaCount=3 --set service.type=NodePort --set service.nodePo rt=30080
+```
+
 **Technique 3: Use Namespace Flags**
 
 Always specify namespace in the command rather than switching contexts:
+
+```bash
+helm install myapp bitnami/nginx -n web --create-namespace
+```
 
 The --create-namespace flag creates the namespace if it doesn't exist, saving you a separate kubectl command.
 
@@ -93,11 +132,19 @@ The --create-namespace flag creates the namespace if it doesn't exist, saving yo
 
 Use --dry-run to catch errors before actually installing:
 
+```bash
+helm install myapp bitnami/nginx --set replicaCount=3 --dry-run
+```
+
 This validates your syntax and values without modifying the cluster.
 
 **Technique 5: Quick Verification**
 
 After installing, verify quickly:
+
+```bash
+helm list -n web && kubectl get pods -n web
+```
 
 This confirms the release exists and pods are running in one line.
 
@@ -115,6 +162,13 @@ Task: "Install the nginx chart from the bitnami repository in the web namespace 
 
 Solution approach:
 
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm install nginx bitnami/nginx -n web --create-namespace --set replicaCount=3 --set service.type=NodePort --set service.nodePorts.http=30080
+kubectl get pods -n web
+```
+
 Time to complete: 2-3 minutes
 
 **Scenario 2: Upgrade Release with New Values**
@@ -122,6 +176,11 @@ Time to complete: 2-3 minutes
 Task: "Upgrade the nginx release to use image tag 1.25.0 and increase replicas to 5."
 
 Solution approach:
+
+```bash
+helm upgrade nginx bitnami/nginx -n web --set image.tag=1.25.0 --set replicaCount=5 --reuse-values
+helm status nginx -n web
+```
 
 Time to complete: 1 minute
 
@@ -131,6 +190,16 @@ Task: "The prometheus release in monitoring namespace is failing. Fix it."
 
 Solution approach:
 
+```bash
+helm status prometheus -n monitoring
+kubectl get pods -n monitoring
+kubectl describe pod <pod-name> -n monitoring
+# Identify the issue from events
+helm get values prometheus -n monitoring
+# Fix the issue (e.g., resource limits, image pull, etc.)
+helm upgrade prometheus <chart> -n monitoring --set <fixed-value> --reuse-values
+```
+
 Time to complete: 3-5 minutes depending on issue
 
 **Scenario 4: Rollback After Failed Upgrade**
@@ -138,6 +207,14 @@ Time to complete: 3-5 minutes depending on issue
 Task: "The recent upgrade to redis broke the application. Rollback to the previous working version."
 
 Solution approach:
+
+```bash
+helm history redis
+helm rollback redis
+# OR specify revision explicitly
+helm rollback redis 2
+kubectl get pods -l app.kubernetes.io/instance=redis
+```
 
 Time to complete: 1-2 minutes
 
@@ -151,21 +228,69 @@ Quick troubleshooting workflow for Helm issues in the exam.
 
 **Step 1: Check Release Status**
 
+```bash
+helm list -n <namespace>
+helm status <release-name> -n <namespace>
+```
+
 **Step 2: Check Kubernetes Objects**
+
+```bash
+kubectl get all -l app.kubernetes.io/instance=<release-name> -n <namespace>
+```
 
 **Step 3: Check Pod Issues**
 
+```bash
+kubectl get pods -n <namespace>
+kubectl describe pod <pod-name> -n <namespace>
+kubectl logs <pod-name> -n <namespace>
+```
+
 **Step 4: Check Values**
+
+```bash
+helm get values <release-name> -n <namespace>
+helm get manifest <release-name> -n <namespace>
+```
 
 **Common Issues and Solutions:**
 
 **Issue: Image Pull Error**
 
+```bash
+# Check the image name in values
+helm get values myapp
+# Fix with correct image
+helm upgrade myapp <chart> --set image.repository=correct-image --reuse-values
+```
+
 **Issue: Port Conflict**
+
+```bash
+# Check service port
+kubectl get svc -n <namespace>
+# Fix with different port
+helm upgrade myapp <chart> --set service.nodePort=30081 --reuse-values
+```
 
 **Issue: Insufficient Resources**
 
+```bash
+# Check resource requests/limits
+kubectl describe pod <pod-name>
+# Fix by reducing requests or increasing cluster resources
+helm upgrade myapp <chart> --set resources.requests.memory=128Mi --reuse-values
+```
+
 **Issue: Wrong Configuration**
+
+```bash
+# Check current values
+helm get values myapp
+# Fix configuration
+helm upgrade myapp <chart> --set config.database.host=db.example.com --reuse-values
+```
 
 ---
 
@@ -182,7 +307,26 @@ Sometimes the exam provides a values file or asks you to use one.
 
 **Quick Values File Creation:**
 
+```bash
+cat > values.yaml <<EOF
+replicaCount: 3
+service:
+  type: NodePort
+  nodePort: 30080
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+EOF
+
+helm install myapp bitnami/nginx -f values.yaml
+```
+
 **Combining Values Files and --set:**
+
+```bash
+helm install myapp bitnami/nginx -f base-values.yaml --set replicaCount=5
+```
 
 The --set flags override values from files, allowing you to have a base configuration file and environment-specific overrides.
 
@@ -208,6 +352,16 @@ Deploy a PostgreSQL database using Helm with these requirements:
 
 **Solution:**
 
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm install db bitnami/postgresql -n database --create-namespace \
+  --set auth.postgresPassword=mypassword \
+  --set primary.persistence.enabled=false \
+  --set replicaCount=1
+kubectl get pods -n database
+```
+
 How did you do? If you completed it in under 3 minutes, excellent! If not, practice until you can.
 
 ---
@@ -220,6 +374,22 @@ How did you do? If you completed it in under 3 minutes, excellent! If not, pract
 A release named "webapp" in namespace "production" was upgraded and now pods are failing. Rollback to the previous working version.
 
 **Solution workflow:**
+
+```bash
+# Check status and identify issue
+helm status webapp -n production
+kubectl get pods -n production
+
+# View history to identify last working revision
+helm history webapp -n production
+
+# Rollback to previous revision
+helm rollback webapp -n production
+
+# Verify rollback
+kubectl get pods -n production
+helm status webapp -n production
+```
 
 This should take about 1-2 minutes. Practice until it's automatic.
 

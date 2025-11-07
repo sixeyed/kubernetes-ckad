@@ -1,29 +1,25 @@
 # API Versions - CKAD Exam Preparation
-## Narration Script for Exam-Focused Training (15-20 minutes)
+## Narration Script for Exam-Focused Training
 
----
-
-### Section 1: CKAD Exam Relevance (2 min)
-**[00:00-02:00]**
+### Section 1: CKAD Exam Context and What Are API Versions?
 
 Welcome to CKAD exam preparation for Kubernetes API versions and deprecations. This topic appears directly in exam scenarios and is critical for troubleshooting.
 
-You'll encounter API version questions in several forms:
-- Identifying the correct API version for a resource type
-- Fixing manifests that use deprecated APIs
-- Converting resources to current versions
-- Troubleshooting "no matches for kind" errors
+First, let's understand what API versions are and why they matter for CKAD. Kubernetes resources are exposed through versioned APIs - each resource type like Deployment, Pod, or Ingress has an API version. These versions evolve over time as features mature or change.
 
-Time allocation: Spend no more than 3-4 minutes on API version questions. These are usually quick wins if you know the commands.
+You'll encounter API version questions in several forms: Identifying the correct API version for a resource type, fixing manifests that use deprecated APIs, converting resources to current versions, and troubleshooting "no matches for kind" errors.
 
-Essential commands to memorize: kubectl api-resources with grep, kubectl api-versions, kubectl explain for resources, and kubectl convert for file conversion.
+Time allocation: Spend no more than 3-4 minutes on API version questions. These are usually quick wins if you know the commands and patterns.
+
+Essential commands to memorize: kubectl api-resources with grep for finding current versions, kubectl api-versions for listing all available APIs, kubectl explain for understanding resource structure, and kubectl convert for automated migration (though manual is often faster).
+
+Key exam skills include recognizing API version errors immediately, quickly finding correct versions using api-resources, understanding common deprecated APIs and their replacements, and knowing which fields change between versions.
 
 Let's practice these systematically.
 
 ---
 
-### Section 2: Finding Current API Versions (3 min)
-**[02:00-05:00]**
+### Section 2: Finding Current API Versions
 
 Scenario: "What API version should be used for creating an Ingress resource?"
 
@@ -46,14 +42,13 @@ Time yourself - you should complete this in under 30 seconds per resource.
 
 ---
 
-### Section 3: Fixing Deprecated API Errors (4 min)
-**[05:00-09:00]**
+### Section 3: Fixing Deprecated API Errors
 
 Scenario: "A deployment fails with error: no matches for kind Ingress in version networking.k8s.io/v1beta1. Fix it."
 
 This is a deprecated API error. Here's the systematic approach:
 
-Step 1 takes 15 seconds: Identify current version with kubectl api-resources.
+Step 1: Identify current version with kubectl api-resources - this takes about 15 seconds.
 Step 2: Get the failing resource if it exists using kubectl get.
 Step 3: Edit the apiVersion field, changing from v1beta1 to v1.
 Step 4: Check for schema changes with kubectl explain.
@@ -72,8 +67,7 @@ Practice: Fix these broken manifests in under 2 minutes each.
 
 ---
 
-### Section 4: Using kubectl explain Efficiently (3 min)
-**[09:00-12:00]**
+### Section 4: Using kubectl explain Efficiently
 
 kubectl explain is your on-demand documentation. Use it to verify API structure without leaving the terminal.
 
@@ -100,10 +94,9 @@ Practice drill: Use explain to answer these in under 30 seconds each:
 
 ---
 
-### Section 5: Quick Migration Patterns (3 min)
-**[12:00-15:00]**
+### Section 5: Quick Migration Patterns
 
-When you need to update a resource's API version quickly:
+When you need to update a resource's API version quickly, you have several approaches:
 
 Pattern 1: In-place edit. Get the deployment YAML, use sed to replace the old API version with the new one, add required fields if needed, then apply.
 
@@ -123,8 +116,7 @@ Practice: Migrate a Deployment from extensions/v1beta1 to apps/v1 in under 2 min
 
 ---
 
-### Section 6: Troubleshooting Decision Tree (2 min)
-**[15:00-17:00]**
+### Section 6: Troubleshooting Decision Tree
 
 Use this mental flowchart for API version errors:
 
@@ -141,18 +133,35 @@ Fix: The apps/v1 Deployment requires spec.selector.matchLabels.
 Error 3: "Unknown field serviceName in Ingress backend"
 Fix: v1 Ingress uses service.name instead of serviceName.
 
-Speed check: When you see an API error, you should identify it's an API issue in 5 seconds, find correct version in 15 seconds, check schema with explain in 30 seconds, and update and apply in 60 seconds.
-
-Total: approximately 110 seconds maximum.
+Speed check: When you see an API error, you should identify it's an API issue in 5 seconds, find correct version in 15 seconds, check schema with explain in 30 seconds, and update and apply in 60 seconds. Total: approximately 110 seconds maximum.
 
 ---
 
-### Section 7: Exam Tips and Practice Scenarios (3 min)
-**[17:00-20:00]**
+### Section 7: Common CKAD Scenarios and Practice
 
-Tip 1: Memorize common current versions - apps/v1, batch/v1, networking.k8s.io/v1, policy/v1, and v1.
+Let's walk through common scenarios you'll encounter in the exam.
 
-Tip 2: Use api-resources, not documentation. It's faster than searching docs and always shows your cluster's versions.
+Scenario 1: Creating a resource with the correct API version. When asked to create an Ingress, you need to know it uses networking.k8s.io/v1. Quick check with kubectl api-resources confirms this.
+
+Scenario 2: Fixing a deprecated API. Given an Ingress using v1beta1 that won't apply. The error message tells you "no matches for kind Ingress in version networking.k8s.io/v1beta1". Solution: Update to networking.k8s.io/v1, add pathType field, and update backend structure.
+
+Scenario 3: Understanding schema changes. When migrating from extensions/v1beta1 Deployment to apps/v1, the selector field becomes required. Use kubectl explain deployment.spec to discover this.
+
+Scenario 4: Quick verification. Before applying a large manifest, use kubectl apply with dry-run server to catch API version errors without creating resources.
+
+Here's a complete practice exercise: "Update this Ingress to use the current API version and make it work."
+
+The Ingress uses v1beta1 with the old backend structure. Solution steps: Check current version with kubectl api-resources, fix the YAML by updating apiVersion to networking.k8s.io/v1, add pathType: Prefix as required, and change the backend structure to use service with name and port number fields.
+
+Time yourself. With practice, this should take under 2 minutes.
+
+---
+
+### Section 8: Exam Tips and Strategy
+
+Tip 1: Memorize common current versions - apps/v1 for workloads, batch/v1 for jobs, networking.k8s.io/v1 for networking, policy/v1 for policies, and v1 for core resources.
+
+Tip 2: Use api-resources, not documentation. It's faster than searching docs and always shows your cluster's supported versions.
 
 Tip 3: kubectl explain is your friend. No internet needed and shows exact structure required.
 
@@ -160,12 +169,32 @@ Tip 4: Test with dry-run. Use kubectl apply with --dry-run=server to catch API e
 
 Tip 5: Don't overthink. If it says wrong API version, fix the API version. Use kubectl api-resources to find the right one. Move on quickly.
 
-Practice Scenario 1 takes 4 minutes: "Update this Ingress to use the current API version and make it work."
+Final Exam Strategy: Read question carefully - are you creating or fixing? For create, use current stable versions. For fix, use kubectl api-resources first to identify correct version. Don't spend more than 4 minutes on API questions. Move on if stuck, flag for review.
 
-The Ingress uses v1beta1 with the old backend structure. Solution: Check current version, then fix the YAML by updating apiVersion to v1, adding pathType: Prefix as required, and changing the backend structure to use service with name and port number fields.
+Time-saving commands for the exam: kubectl api-resources grep pattern for quick lookups, kubectl explain resource.field for schema verification, kubectl apply dry-run server for validation, and kubectl get resource -o yaml for exporting current state.
 
-Time yourself. With practice, this should take under 2 minutes.
+Common mistakes to avoid: Not checking if schema changed between versions, forgetting that selector is required in apps/v1 Deployments, not adding pathType to v1 Ingress, and spending too long trying to remember - just use api-resources.
 
-Final Exam Strategy: Read question carefully - create or fix? For create, use current stable versions. For fix, use kubectl api-resources first. Don't spend more than 4 minutes on API questions. Move on if stuck, flag for review.
+Practice these patterns until they become muscle memory. API version questions are quick points in the exam if you know the workflow.
 
 Good luck with your CKAD exam!
+
+---
+
+## Recording Notes
+
+**Key Points:**
+- Focus on speed and efficiency - API questions are quick wins
+- Emphasize kubectl api-resources as the primary discovery tool
+- Show the complete troubleshooting workflow step-by-step
+- Highlight common deprecated APIs and their schema changes
+- Demonstrate kubectl explain for quick reference without documentation
+- Note that 2-4 minutes is the target time for API version questions
+
+**Visual Focus:**
+- Show error messages clearly and explain what they mean
+- Display api-resources output and how to read it
+- Demonstrate kubectl explain output for key fields
+- Highlight the differences in YAML structure between versions (especially Ingress)
+- Show the complete workflow: error to api-resources to explain to fix
+- Keep timing visible when demonstrating the speed check workflow
