@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-canary
+  labels:
+    app: whoami-canary
+    kubernetes.courselabs.co: deployments-ckad
+  annotations:
+    kubernetes.io/change-cause: "Canary version v2"
+spec:
+  # Start with 1 replica for canary testing (25% of traffic with 3 main replicas)
+  replicas: 1
+  selector:
+    matchLabels:
+      app: whoami-canary
+      version: canary
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: whoami-canary
+        version: canary
+        track: canary
+    spec:
+      containers:
+      - name: app
+        # New version for canary testing
+        image: sixeyed/whoami:21.04.01
+        env:
+        - name: VERSION
+          value: "2.0-canary"
+        - name: DEPLOYMENT
+          value: "canary"
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10

@@ -1,0 +1,13 @@
+apiVersion: web.example.com/v1
+kind: Website
+metadata:
+  name: staging-site
+  namespace: default
+  labels:
+    environment: staging
+spec:
+  domain: staging.example.com
+  replicas: 2
+  sslEnabled: true
+  image: nginx:1.25-alpine
+  port: 443

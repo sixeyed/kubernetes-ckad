@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-throttled
+  labels:
+    app: troubleshooting-demo
+    scenario: performance
+spec:
+  containers:
+  - name: cpu-intensive
+    image: ubuntu
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      # CPU-intensive workload
+      while true; do
+        echo "Computing..." > /dev/null
+      done
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "100m"  # Very low limit - will cause throttling
+        memory: "128Mi"

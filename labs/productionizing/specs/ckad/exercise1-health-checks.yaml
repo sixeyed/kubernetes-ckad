@@ -1,0 +1,72 @@
+# Exercise 1: Complete Health Check Implementation
+# A web application with all three probe types configured properly
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp-probes
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: webapp-probes
+  template:
+    metadata:
+      labels:
+        app: webapp-probes
+    spec:
+      containers:
+      - name: app
+        image: httpd:alpine
+        ports:
+        - containerPort: 80
+
+        # Startup probe: allows 60 seconds for initialization
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 6  # 6 * 10 = 60 seconds
+          initialDelaySeconds: 5
+
+        # Readiness probe: checks /ready endpoint
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+          timeoutSeconds: 2
+
+        # Liveness probe: checks /health endpoint
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 3
+          timeoutSeconds: 3
+          initialDelaySeconds: 0  # Can be 0 since startup probe runs first
+
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp-probes
+spec:
+  selector:
+    app: webapp-probes
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP

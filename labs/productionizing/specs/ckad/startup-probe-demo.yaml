@@ -1,0 +1,50 @@
+# Demonstrates how startup probe prevents premature liveness failures
+# This app takes 45 seconds to start but only 10 seconds after that to be healthy
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slow-start-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: slow-start
+  template:
+    metadata:
+      labels:
+        app: slow-start
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command:
+        - sh
+        - -c
+        - |
+          echo "Application starting..."
+          sleep 45
+          echo "ready" > /tmp/ready
+          echo "Application started and ready"
+          sleep 3600
+
+        # Startup probe: allows up to 90 seconds for initialization
+        # Without this, the liveness probe would kill the container prematurely
+        startupProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/ready
+          periodSeconds: 5
+          failureThreshold: 18  # 18 * 5 = 90 seconds maximum
+
+        # Liveness probe: only starts checking after startup succeeds
+        # If this ran immediately, it would fail and restart the container
+        livenessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/ready
+          periodSeconds: 10
+          failureThreshold: 3

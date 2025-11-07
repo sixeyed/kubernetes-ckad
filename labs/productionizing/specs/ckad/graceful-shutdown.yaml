@@ -1,0 +1,41 @@
+# Demonstrates graceful termination and lifecycle hooks
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: graceful-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: graceful-app
+  template:
+    metadata:
+      labels:
+        app: graceful-app
+    spec:
+      terminationGracePeriodSeconds: 60  # Allow 60 seconds for graceful shutdown
+
+      containers:
+      - name: app
+        image: nginx:alpine
+
+        lifecycle:
+          # preStop hook runs before SIGTERM is sent
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - |
+                echo "Received shutdown signal, waiting for connections to drain..."
+                sleep 15
+                echo "Graceful shutdown complete"
+
+        # Graceful shutdown workflow:
+        # 1. Pod marked for deletion, removed from Service endpoints
+        # 2. preStop hook executes (sleep 15 seconds)
+        # 3. SIGTERM sent to main process
+        # 4. Container has (terminationGracePeriodSeconds - preStop time) to exit
+        # 5. If still running, SIGKILL sent

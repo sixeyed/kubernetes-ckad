@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: port-mismatch-svc
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  selector:
+    app: port-test
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080  # Service expects pod on 8080
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: port-mismatch-deploy
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: port-test
+  template:
+    metadata:
+      labels:
+        app: port-test
+    spec:
+      containers:
+        - name: whoami
+          image: sixeyed/whoami:21.04
+          ports:
+            - containerPort: 80  # Pod actually listens on 80, not 8080

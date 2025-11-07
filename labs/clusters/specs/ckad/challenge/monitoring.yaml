@@ -1,0 +1,35 @@
+# Monitoring Tier - Challenge
+# Requirements: All nodes including control plane, tolerate all taints
+
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: monitoring
+  labels:
+    app: monitoring
+    tier: system
+spec:
+  selector:
+    matchLabels:
+      app: monitoring
+  template:
+    metadata:
+      labels:
+        app: monitoring
+        tier: system
+    spec:
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: node-exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+          name: metrics
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"

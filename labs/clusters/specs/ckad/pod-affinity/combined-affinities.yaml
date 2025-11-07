@@ -1,0 +1,360 @@
+# Combined Affinities - CKAD Practice
+#
+# Combines node affinity, pod affinity, and pod anti-affinity
+
+---
+# Example 1: Basic combination (node + pod anti-affinity)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-combined
+  labels:
+    app: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: web
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 2: Complete combination (node + pod affinity + anti-affinity)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-advanced
+  labels:
+    app: api
+    tier: backend
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        tier: backend
+    spec:
+      affinity:
+        # Run on SSD nodes
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+        # Be in same zone as database
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - database
+            topologyKey: topology.kubernetes.io/zone
+        # Spread across different nodes
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: api
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Example 3: Required and preferred combinations
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-optimized
+  labels:
+    app: cache
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload
+                operator: In
+                values:
+                - memory-intensive
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: memory
+                operator: In
+                values:
+                - high
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: database
+              topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: cache
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+
+---
+# Example 4: Multi-tier application
+# First deploy database
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-master
+  labels:
+    app: database
+    role: master
+    tier: data
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+            - nvme
+          - key: environment
+            operator: In
+            values:
+            - production
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+
+---
+# Application tier near database, spread across nodes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-tier
+  labels:
+    app: application
+    tier: app
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: application
+  template:
+    metadata:
+      labels:
+        app: application
+        tier: app
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: role
+                operator: In
+                values:
+                - master
+            topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: application
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 5: Avoid batch jobs on production nodes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-migration
+  labels:
+    app: migration
+    workload: batch
+spec:
+  parallelism: 3
+  template:
+    metadata:
+      labels:
+        app: migration
+        workload: batch
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload
+                operator: In
+                values:
+                - batch
+                - compute
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: tier
+                operator: In
+                values:
+                - data
+            topologyKey: kubernetes.io/hostname
+          - labelSelector:
+              matchLabels:
+                workload: batch
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: migration
+        image: busybox
+        command: ["sh", "-c", "echo 'Migrating data'; sleep 60"]
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+      restartPolicy: Never
+
+---
+# Example 6: Complex StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd-cluster
+  labels:
+    app: etcd
+spec:
+  serviceName: etcd
+  replicas: 3
+  selector:
+    matchLabels:
+      app: etcd
+  template:
+    metadata:
+      labels:
+        app: etcd
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - nvme
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: etcd
+            topologyKey: kubernetes.io/hostname
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: etcd
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: etcd
+        image: quay.io/coreos/etcd:v3.5.0
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"

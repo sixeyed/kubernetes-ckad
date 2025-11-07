@@ -1,0 +1,170 @@
+# DaemonSet Update Strategies - CKAD Practice
+
+---
+# Example 1: RollingUpdate strategy (default)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: rolling-update-ds
+  labels:
+    app: rolling-demo
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: rolling-demo
+  template:
+    metadata:
+      labels:
+        app: rolling-demo
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.21-alpine
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 2: OnDelete strategy (manual updates)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ondelete-ds
+  labels:
+    app: ondelete-demo
+spec:
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: ondelete-demo
+  template:
+    metadata:
+      labels:
+        app: ondelete-demo
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.21-alpine
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 3: Aggressive rolling update (maxSurge not supported in DaemonSet)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fast-update-ds
+  labels:
+    app: fast-update
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 3  # Update up to 3 nodes at once
+  selector:
+    matchLabels:
+      app: fast-update
+  template:
+    metadata:
+      labels:
+        app: fast-update
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.21-alpine
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 4: Conservative rolling update
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: safe-update-ds
+  labels:
+    app: safe-update
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1  # Update one node at a time (safest)
+  selector:
+    matchLabels:
+      app: safe-update
+  template:
+    metadata:
+      labels:
+        app: safe-update
+    spec:
+      containers:
+      - name: app
+        image: nginx:1.21-alpine
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 5: Production-ready DaemonSet with update strategy
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prod-daemon
+  labels:
+    app: production-service
+    environment: production
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  minReadySeconds: 30  # Wait 30s before considering Pod ready
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: production-service
+  template:
+    metadata:
+      labels:
+        app: production-service
+    spec:
+      containers:
+      - name: service
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"

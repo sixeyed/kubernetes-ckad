@@ -1,0 +1,49 @@
+# Exercise 1: Create ServiceAccount with Basic Permissions
+# Task: Create a ServiceAccount named 'webapp' with permissions to:
+# - Get and list Pods
+# - Get and list Services
+# - Get ConfigMaps named 'app-config' only
+# Then deploy a Pod using this ServiceAccount and verify permissions
+
+# Step 1: Create the ServiceAccount
+# TODO: Create ServiceAccount named 'webapp' in default namespace
+
+# Step 2: Create ConfigMap for testing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.url: "postgresql://db:5432/myapp"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: other-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  other: "data"
+---
+# Step 3: Create a Role with required permissions
+# TODO: Create Role named 'webapp-role' with:
+# - Pods: get, list
+# - Services: get, list
+# - ConfigMaps named 'app-config': get
+
+# Step 4: Create RoleBinding
+# TODO: Create RoleBinding named 'webapp-binding' connecting ServiceAccount to Role
+
+# Step 5: Create Pod using the ServiceAccount
+# TODO: Create Pod named 'webapp-pod' using ServiceAccount 'webapp'
+
+# Verification commands:
+# kubectl auth can-i get pods --as=system:serviceaccount:default:webapp
+# kubectl auth can-i list services --as=system:serviceaccount:default:webapp
+# kubectl auth can-i get configmap/app-config --as=system:serviceaccount:default:webapp
+# kubectl auth can-i get configmap/other-config --as=system:serviceaccount:default:webapp
+# kubectl auth can-i delete pods --as=system:serviceaccount:default:webapp

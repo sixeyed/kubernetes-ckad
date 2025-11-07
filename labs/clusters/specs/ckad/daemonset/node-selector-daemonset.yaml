@@ -1,0 +1,115 @@
+# DaemonSet with Node Selector - CKAD Practice
+# Runs only on nodes with specific labels
+
+---
+# Example 1: GPU device plugin (only on GPU nodes)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-device-plugin
+  labels:
+    app: gpu-plugin
+spec:
+  selector:
+    matchLabels:
+      app: gpu-plugin
+  template:
+    metadata:
+      labels:
+        app: gpu-plugin
+    spec:
+      nodeSelector:
+        accelerator: nvidia
+      containers:
+      - name: plugin
+        image: nvidia/k8s-device-plugin:v0.12.0
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 2: SSD node monitoring
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ssd-monitor
+  labels:
+    app: storage-monitor
+spec:
+  selector:
+    matchLabels:
+      app: ssd-monitor
+  template:
+    metadata:
+      labels:
+        app: ssd-monitor
+    spec:
+      nodeSelector:
+        disk: ssd
+      containers:
+      - name: monitor
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Monitoring SSD'; sleep 60; done"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+
+---
+# Example 3: Production nodes only
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prod-metrics
+  labels:
+    app: metrics
+    environment: production
+spec:
+  selector:
+    matchLabels:
+      app: prod-metrics
+  template:
+    metadata:
+      labels:
+        app: prod-metrics
+    spec:
+      nodeSelector:
+        environment: production
+      containers:
+      - name: exporter
+        image: prom/node-exporter:latest
+        ports:
+        - containerPort: 9100
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 4: Zone-specific DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: zone-agent
+  labels:
+    app: zone-service
+spec:
+  selector:
+    matchLabels:
+      app: zone-agent
+  template:
+    metadata:
+      labels:
+        app: zone-agent
+    spec:
+      nodeSelector:
+        topology.kubernetes.io/zone: us-east-1a
+      containers:
+      - name: agent
+        image: busybox
+        command: ["sh", "-c", "echo 'Zone-specific agent'; sleep 3600"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"

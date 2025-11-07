@@ -1,0 +1,275 @@
+# Exercise 5 Solution: Secure Application Deployment with Production-Grade RBAC
+# Step 1: Create production namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    environment: production
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Frontend resources
+# Frontend ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: frontend-config
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  api.url: "https://api.production.example.com"
+  theme: "dark"
+  version: "2.0"
+---
+# Frontend Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: frontend-secrets
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  cdn.token: "cdn-token-xyz"
+  analytics.key: "UA-12345-67"
+---
+# Frontend ServiceAccount (token automounting disabled)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-app
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+automountServiceAccountToken: false  # Disabled for security
+---
+# Frontend Role (minimal permissions)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: frontend-role
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Read specific ConfigMap only
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["frontend-config"]
+  verbs: ["get"]
+# Read specific Secret only
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["frontend-secrets"]
+  verbs: ["get"]
+---
+# Frontend RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: frontend-binding
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: frontend-role
+subjects:
+- kind: ServiceAccount
+  name: frontend-app
+  namespace: production
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: production
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      serviceAccountName: frontend-app
+      automountServiceAccountToken: false  # Extra safety
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: CONFIG
+          valueFrom:
+            configMapKeyRef:
+              name: frontend-config
+              key: api.url
+        - name: CDN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: frontend-secrets
+              key: cdn.token
+---
+# Backend resources
+# Backend ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.host: "postgres.production.svc"
+  database.port: "5432"
+  cache.enabled: "true"
+---
+# Backend Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backend-secrets
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  database.password: "SecureDBPassword123"
+  api.key: "api-key-xyz-production"
+  jwt.secret: "jwt-secret-key-production"
+---
+# Backend ServiceAccount (token mounting enabled - needs API access)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-api
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+automountServiceAccountToken: true  # Enabled for service discovery
+---
+# Backend Role (specific permissions for API access)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: backend-role
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Read specific ConfigMap only
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["backend-config"]
+  verbs: ["get"]
+# Read specific Secret only
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["backend-secrets"]
+  verbs: ["get"]
+# List Services for service discovery
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+# Get and list Pods for health checks
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+# Backend RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-binding
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: backend-role
+subjects:
+- kind: ServiceAccount
+  name: backend-api
+  namespace: production
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      serviceAccountName: backend-api
+      containers:
+      - name: backend
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: backend-config
+              key: database.host
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: backend-secrets
+              key: database.password
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+# Backend Service (for frontend to discover)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: production
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 8080
+    targetPort: 8080
+  type: ClusterIP

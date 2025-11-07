@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quota-test
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: quota-test
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    pods: "5"
+---
+# This pod will fail - exceeds quota
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-exceeded
+  namespace: quota-test
+  labels:
+    app: troubleshooting-demo
+spec:
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      requests:
+        memory: "3Gi"  # Exceeds namespace quota of 2Gi
+        cpu: "3"       # Exceeds namespace quota of 2
+      limits:
+        memory: "3Gi"
+        cpu: "3"

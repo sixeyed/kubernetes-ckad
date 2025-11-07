@@ -1,0 +1,127 @@
+# Exercise using built-in ClusterRoles for different personas
+# Demonstrates: view, edit, admin ClusterRoles applied via RoleBindings
+---
+# Create namespaces for different environments
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# ServiceAccount: Developer (needs edit access in dev)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Grant edit permissions in development namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-edit
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit  # Built-in edit ClusterRole
+subjects:
+- kind: ServiceAccount
+  name: developer
+  namespace: development
+---
+# Grant view-only in production namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-view-prod
+  namespace: production
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view  # Built-in view ClusterRole
+subjects:
+- kind: ServiceAccount
+  name: developer
+  namespace: development
+---
+# ServiceAccount: Operator (needs admin access in production)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator
+  namespace: production
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Grant admin permissions in production namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: operator-admin
+  namespace: production
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin  # Built-in admin ClusterRole
+subjects:
+- kind: ServiceAccount
+  name: operator
+  namespace: production
+---
+# ServiceAccount: Read-only user (view access in both namespaces)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: viewer
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: viewer-dev
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+- kind: ServiceAccount
+  name: viewer
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: viewer-prod
+  namespace: production
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+- kind: ServiceAccount
+  name: viewer
+  namespace: default

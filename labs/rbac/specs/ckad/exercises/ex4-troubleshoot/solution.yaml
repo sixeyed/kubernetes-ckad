@@ -1,0 +1,72 @@
+# Exercise 4 Solution: Fixed RBAC Configuration
+# Application Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-app
+  namespace: default
+  labels:
+    app: fixed-app
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: app-reader
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never
+---
+# ConfigMap the app needs to read
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.url: "postgresql://db:5432/app"
+  api.endpoint: "https://api.example.com"
+---
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# FIXED Role with correct API group
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configmap-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]  # FIXED: ConfigMaps are in core API group (empty string)
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+---
+# FIXED RoleBinding with namespace in subject
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-reader-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: configmap-reader
+subjects:
+- kind: ServiceAccount
+  name: app-reader
+  namespace: default  # FIXED: Added required namespace field
+
+# Verification:
+# kubectl auth can-i get configmaps --as=system:serviceaccount:default:app-reader
+# Should now return "yes"

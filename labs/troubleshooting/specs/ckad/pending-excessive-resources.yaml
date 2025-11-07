@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pending-excessive-resources
+  labels:
+    app: troubleshooting-demo
+    scenario: pending
+spec:
+  containers:
+  - name: web
+    image: nginx
+    resources:
+      requests:
+        memory: "1000Gi"  # Requesting 1000 GB - likely exceeds cluster capacity
+        cpu: "100"        # Requesting 100 CPU cores
+      limits:
+        memory: "1000Gi"
+        cpu: "100"

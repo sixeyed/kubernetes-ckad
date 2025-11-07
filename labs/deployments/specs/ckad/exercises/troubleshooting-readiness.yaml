@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: troubleshoot-readiness
+  labels:
+    app: troubleshoot
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: troubleshoot-readiness
+  template:
+    metadata:
+      labels:
+        app: troubleshoot-readiness
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+        # Readiness probe checking wrong port - will never be ready
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080  # Wrong port! App runs on 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 3

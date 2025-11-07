@@ -1,0 +1,47 @@
+# Demonstrates PodDisruptionBudget preventing node drain
+# First, create a Deployment with multiple replicas
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+---
+# Create PodDisruptionBudget requiring minimum availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-app-pdb
+spec:
+  minAvailable: 3  # At least 3 pods must remain available
+  selector:
+    matchLabels:
+      app: web-app
+---
+# Alternative: Use maxUnavailable instead
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-app-pdb-max
+spec:
+  maxUnavailable: 1  # At most 1 pod can be unavailable
+  selector:
+    matchLabels:
+      app: web-app

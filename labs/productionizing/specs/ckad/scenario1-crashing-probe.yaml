@@ -1,0 +1,77 @@
+# Scenario 1: Debug Crashing Container due to misconfigured liveness probe
+# PROBLEM: Pod keeps restarting due to aggressive liveness probe
+
+# Broken version - will crash loop
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crash-loop-broken
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crash-loop
+  template:
+    metadata:
+      labels:
+        app: crash-loop
+    spec:
+      containers:
+      - name: app
+        image: httpd:alpine
+        ports:
+        - containerPort: 80
+
+        # PROBLEM: Liveness probe is too aggressive
+        # App takes 30 seconds to start, but liveness starts checking at 5 seconds
+        # This causes the container to be killed before it finishes starting
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5   # TOO SHORT!
+          periodSeconds: 5
+          failureThreshold: 2      # TOO AGGRESSIVE!
+          timeoutSeconds: 1
+---
+# Fixed version - uses startup probe
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crash-loop-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crash-loop-fixed
+  template:
+    metadata:
+      labels:
+        app: crash-loop-fixed
+    spec:
+      containers:
+      - name: app
+        image: httpd:alpine
+        ports:
+        - containerPort: 80
+
+        # SOLUTION: Add startup probe to handle slow initialization
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 12  # 12 * 5 = 60 seconds for startup
+
+        # Liveness probe only runs after startup succeeds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 3
+          timeoutSeconds: 3

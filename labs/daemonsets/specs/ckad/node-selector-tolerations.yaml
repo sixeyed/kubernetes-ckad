@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: monitoring-agent
+  labels:
+    app: monitoring-agent
+spec:
+  selector:
+    matchLabels:
+      app: monitoring-agent
+  template:
+    metadata:
+      labels:
+        app: monitoring-agent
+    spec:
+      nodeSelector:
+        monitoring: enabled  # Only run on nodes with this label
+      tolerations:
+      # Tolerate node pressure conditions
+      - key: node.kubernetes.io/memory-pressure
+        effect: NoSchedule
+      - key: node.kubernetes.io/disk-pressure
+        effect: NoSchedule
+      - key: node.kubernetes.io/pid-pressure
+        effect: NoSchedule
+      containers:
+      - name: agent
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Monitoring agent started on ${NODE_NAME}"
+          while true; do
+            echo "$(date): Collecting metrics from ${NODE_NAME}"
+            # Simulate monitoring work
+            sleep 10
+          done
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"

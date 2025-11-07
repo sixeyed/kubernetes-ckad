@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: timeouts-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: slow-api
+  namespace: timeouts-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: slow-api
+  template:
+    metadata:
+      labels:
+        app: slow-api
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: slow-api-svc
+  namespace: timeouts-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: slow-api
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+# Custom timeout configuration for long-running requests
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: custom-timeouts
+  namespace: timeouts-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    # Connection timeout (seconds)
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "120"
+    # Send timeout (seconds)
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+    # Read timeout (seconds)
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    # Max body size for uploads
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    # Buffer size
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "8k"
+spec:
+  rules:
+  - host: slow-api.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: slow-api-svc
+            port:
+              number: 8080
+---
+# Short timeouts for fast API
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fast-timeouts
+  namespace: timeouts-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    # Short timeouts for quick responses
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "10"
+    # Small body size
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+spec:
+  rules:
+  - host: fast-api.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: slow-api-svc
+            port:
+              number: 8080

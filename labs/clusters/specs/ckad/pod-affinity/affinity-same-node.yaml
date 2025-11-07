@@ -1,0 +1,148 @@
+# Pod Affinity - Same Node - CKAD Practice
+#
+# Schedule Pods close together using topology key: kubernetes.io/hostname
+
+---
+# Step 1: Deploy cache Pod first
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-pod
+  labels:
+    app: cache
+    tier: backend
+spec:
+  containers:
+  - name: redis
+    image: redis:7-alpine
+    ports:
+    - containerPort: 6379
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+
+---
+# Step 2: Deploy app Pod with affinity to cache (same node)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-cache
+  labels:
+    app: web-app
+    tier: frontend
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cache
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 3: Multiple app Pods near cache
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-near-cache
+  labels:
+    app: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: cache
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 4: Preferred pod affinity (soft constraint)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: flexible-app
+  labels:
+    app: flexible
+spec:
+  affinity:
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cache
+          topologyKey: kubernetes.io/hostname
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 5: Multiple label selectors
+apiVersion: v1
+kind: Pod
+metadata:
+  name: specific-affinity
+  labels:
+    app: api
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cache
+          - key: tier
+            operator: In
+            values:
+            - backend
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: api
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"

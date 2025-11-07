@@ -1,0 +1,56 @@
+# Role with permissions for multiple resources and API groups
+# Demonstrates: Multiple rules, different API groups, various verbs
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-manager
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Core resources - Pods and logs
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+# Core resources - ConfigMaps and Secrets (read-only)
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+# Core resources - Services
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+# Apps API group - Deployments
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+# Apps API group - ReplicaSets
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+---
+# ServiceAccount for testing
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-manager-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-manager-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-manager
+subjects:
+- kind: ServiceAccount
+  name: app-manager-sa
+  namespace: default

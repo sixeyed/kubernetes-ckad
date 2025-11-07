@@ -1,0 +1,224 @@
+# Exercise 3: Namespace Migration
+# Example resources to migrate from dev to prod
+
+# Source namespace (dev)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+
+---
+# Dev ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: dev
+data:
+  APP_ENV: development
+  LOG_LEVEL: debug
+  DATABASE_URL: postgres://db.dev.svc.cluster.local:5432/devdb
+
+---
+# Dev Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: dev
+type: Opaque
+stringData:
+  API_KEY: dev-api-key-12345
+  DB_PASSWORD: dev-password
+
+---
+# Dev Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: dev
+  labels:
+    app: myapp
+    env: dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+        env: dev
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: LOG_LEVEL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: API_KEY
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+
+---
+# Dev Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-service
+  namespace: dev
+  labels:
+    app: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+
+---
+# Target namespace (prod)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+
+---
+# Prod ResourceQuota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: prod-quota
+  namespace: prod
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+
+---
+# Prod ConfigMap (updated values)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: prod
+data:
+  APP_ENV: production
+  LOG_LEVEL: info
+  DATABASE_URL: postgres://db.prod.svc.cluster.local:5432/proddb
+
+---
+# Prod Secret (updated values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: prod
+type: Opaque
+stringData:
+  API_KEY: prod-api-key-67890
+  DB_PASSWORD: prod-secure-password
+
+---
+# Prod Deployment (scaled up)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+  namespace: prod
+  labels:
+    app: myapp
+    env: prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+        env: prod
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        env:
+        - name: APP_ENV
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: APP_ENV
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: LOG_LEVEL
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secret
+              key: API_KEY
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+---
+# Prod Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-service
+  namespace: prod
+  labels:
+    app: myapp
+spec:
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP

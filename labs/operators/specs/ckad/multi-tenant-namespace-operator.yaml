@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: multitenant-operator
+  namespace: operator-system
+  labels:
+    app: multitenant-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: multitenant-operator
+rules:
+# Watch WebApps across all namespaces
+- apiGroups: ["apps.example.com"]
+  resources: ["webapps"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: ["apps.example.com"]
+  resources: ["webapps/status"]
+  verbs: ["update", "patch"]
+# Manage resources across all namespaces
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: multitenant-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: multitenant-operator
+subjects:
+- kind: ServiceAccount
+  name: multitenant-operator
+  namespace: operator-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: multitenant-operator
+  namespace: operator-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: multitenant-operator
+  template:
+    metadata:
+      labels:
+        app: multitenant-operator
+    spec:
+      serviceAccountName: multitenant-operator
+      containers:
+      - name: operator
+        image: kiamol/ch10-image-gallery-operator:latest
+        env:
+        - name: WATCH_NAMESPACE
+          value: ""  # Watch all namespaces
+        - name: ENABLE_TENANT_ISOLATION
+          value: "true"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi

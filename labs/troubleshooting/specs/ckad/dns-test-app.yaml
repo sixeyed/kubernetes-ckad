@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-backend-service
+spec:
+  selector:
+    app: backend
+    # Note: No pods have this label yet, so no endpoints
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-test-client
+  labels:
+    app: client
+spec:
+  containers:
+  - name: client
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "Testing DNS resolution..."
+      # This will fail because service has no endpoints
+      wget -qO- --timeout=5 my-backend-service || echo "Connection failed"
+      sleep 3600

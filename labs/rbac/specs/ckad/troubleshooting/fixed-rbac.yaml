@@ -1,0 +1,175 @@
+# Fixed versions of the broken RBAC configurations
+# Use this as reference for troubleshooting exercise solutions
+# Fix 1: Create the missing Role
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fixed-sa-1
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader  # Role now exists
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fixed-binding-1
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader  # FIXED: References existing role
+subjects:
+- kind: ServiceAccount
+  name: fixed-sa-1
+  namespace: default
+---
+# Fix 2: Add namespace to ServiceAccount subject
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fixed-sa-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fixed-binding-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader-2
+subjects:
+- kind: ServiceAccount
+  name: fixed-sa-2
+  namespace: default  # FIXED: Added namespace
+---
+# Fix 3: Use correct API group for Pods
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fixed-role-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]  # FIXED: Pods are in core API group (empty string)
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fixed-sa-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fixed-binding-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fixed-role-3
+subjects:
+- kind: ServiceAccount
+  name: fixed-sa-3
+  namespace: default
+---
+# Fix 4: Remove resourceNames when using list, or use get instead
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fixed-role-4
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Option 1: Use 'get' with resourceNames
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["my-secret"]
+  verbs: ["get"]  # FIXED: Using 'get' instead of 'list'
+# Option 2: Use 'list' without resourceNames
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["list"]  # FIXED: No resourceNames specified
+---
+# Fix 5: Put Role and RoleBinding in same namespace, or use ClusterRole
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fixed-ns
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader-5
+  namespace: fixed-ns  # FIXED: Same namespace as RoleBinding
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fixed-sa-5
+  namespace: fixed-ns
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fixed-binding-5
+  namespace: fixed-ns  # FIXED: Same namespace as Role
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader-5
+subjects:
+- kind: ServiceAccount
+  name: fixed-sa-5
+  namespace: fixed-ns

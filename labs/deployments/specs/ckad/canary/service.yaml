@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-canary
+  labels:
+    app: whoami-canary
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  type: NodePort
+  # Service selects BOTH main and canary deployments
+  # Traffic is distributed based on replica count
+  # Example: 3 main + 1 canary = 75% main, 25% canary
+  selector:
+    app: whoami-canary
+  ports:
+  - port: 80
+    targetPort: http
+    nodePort: 30024
+    name: http

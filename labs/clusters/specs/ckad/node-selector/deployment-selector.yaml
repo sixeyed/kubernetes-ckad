@@ -1,0 +1,167 @@
+# Deployment with Node Selector - CKAD Practice
+#
+# Demonstrates node selectors in Deployments
+
+---
+# Example 1: Basic Deployment with node selector
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    app: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      nodeSelector:
+        disk: ssd
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 2: Backend API on compute nodes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  labels:
+    app: backend
+    tier: api
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: api
+    spec:
+      nodeSelector:
+        workload: compute-intensive
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        env:
+        - name: APP_MODE
+          value: "production"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Example 3: Database Deployment on specific environment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-db
+  labels:
+    app: database
+    type: postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+        type: postgres
+    spec:
+      nodeSelector:
+        environment: production
+        disk: ssd
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "example123"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "1"
+          limits:
+            memory: "1Gi"
+            cpu: "2"
+
+---
+# Example 4: StatefulSet with node selector
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cache
+  labels:
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 2
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      nodeSelector:
+        workload: memory-intensive
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+# Example 5: Job with node selector
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: data-processor
+  labels:
+    app: batch-job
+spec:
+  completions: 3
+  parallelism: 2
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      nodeSelector:
+        workload: compute-intensive
+      containers:
+      - name: processor
+        image: busybox
+        command: ["sh", "-c", "echo Processing data...; sleep 10; echo Done"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "250m"
+      restartPolicy: Never
+  backoffLimit: 2

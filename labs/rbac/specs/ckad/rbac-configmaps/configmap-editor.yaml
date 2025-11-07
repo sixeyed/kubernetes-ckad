@@ -1,0 +1,91 @@
+# ConfigMap editing with RBAC
+# Demonstrates: Full CRUD permissions for ConfigMaps
+# Create test ConfigMaps
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.url: "postgresql://db:5432/myapp"
+  log.level: "INFO"
+  feature.flags: "v2-ui:enabled,beta-api:disabled"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shared-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  timezone: "UTC"
+  locale: "en_US"
+---
+# Role with full ConfigMap permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configmap-editor
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+# ServiceAccount for ConfigMap editing
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: configmap-editor-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: configmap-editor-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: configmap-editor
+subjects:
+- kind: ServiceAccount
+  name: configmap-editor-sa
+  namespace: default
+---
+# Example: Read-only ConfigMap access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configmap-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]  # Read-only
+---
+# Example: Specific ConfigMap access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-config-only
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["app-config"]  # Only this ConfigMap
+  verbs: ["get", "update", "patch"]

@@ -1,0 +1,318 @@
+# Examples: StatefulSet with Init Containers
+# Use cases: DB schema initialization, config generation, permissions setup
+# Benefit: Ensure proper initialization before main container starts
+
+---
+# Example 1: Database with Schema Initialization
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-init
+  labels:
+    app: mysql-init
+spec:
+  clusterIP: None
+  selector:
+    app: mysql-init
+  ports:
+  - port: 3306
+    name: mysql
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-scripts
+data:
+  init-schema.sql: |
+    CREATE DATABASE IF NOT EXISTS appdb;
+    USE appdb;
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      username VARCHAR(50) NOT NULL,
+      email VARCHAR(100) NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id INT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    INSERT INTO users (username, email) VALUES
+      ('admin', 'admin@example.com'),
+      ('user1', 'user1@example.com')
+    ON DUPLICATE KEY UPDATE username=username;
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql-init
+spec:
+  serviceName: mysql-init
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql-init
+  template:
+    metadata:
+      labels:
+        app: mysql-init
+    spec:
+      initContainers:
+      # Init container 1: Fix permissions on data directory
+      - name: fix-permissions
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Fixing permissions for MySQL data directory..."
+          chown -R 999:999 /var/lib/mysql
+          chmod 755 /var/lib/mysql
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+
+      # Init container 2: Wait for primary if not the first Pod
+      - name: wait-for-primary
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          POD_ORDINAL=$(echo $HOSTNAME | grep -o '[0-9]*$')
+          if [ "$POD_ORDINAL" != "0" ]; then
+            echo "Waiting for primary instance mysql-init-0..."
+            until nslookup mysql-init-0.mysql-init.default.svc.cluster.local; do
+              echo "Primary not ready, waiting 2s..."
+              sleep 2
+            done
+            echo "Primary is ready!"
+            # Additional wait for MySQL to be fully ready
+            sleep 10
+          else
+            echo "I am the primary instance (mysql-init-0)"
+          fi
+
+      # Init container 3: Copy initialization scripts
+      - name: prepare-init-scripts
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Copying initialization scripts..."
+          cp /config/*.sql /docker-entrypoint-initdb.d/
+          ls -la /docker-entrypoint-initdb.d/
+        volumeMounts:
+        - name: init-scripts
+          mountPath: /config
+        - name: init-db
+          mountPath: /docker-entrypoint-initdb.d
+
+      containers:
+      - name: mysql
+        image: mysql:8.0
+        ports:
+        - containerPort: 3306
+          name: mysql
+        env:
+        - name: MYSQL_ROOT_PASSWORD
+          value: rootpassword
+        - name: MYSQL_DATABASE
+          value: appdb
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: mysql-data
+          mountPath: /var/lib/mysql
+          subPath: mysql
+        - name: init-db
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - mysqladmin
+            - ping
+            - -h
+            - localhost
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - mysql
+            - -h
+            - localhost
+            - -uroot
+            - -prootpassword
+            - -e
+            - SELECT 1
+          initialDelaySeconds: 10
+          periodSeconds: 5
+
+      volumes:
+      - name: init-scripts
+        configMap:
+          name: mysql-init-scripts
+      - name: init-db
+        emptyDir: {}
+
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 2Gi
+
+---
+# Example 2: Application with Dynamic Configuration Generation
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-with-config
+  labels:
+    app: app-with-config
+spec:
+  clusterIP: None
+  selector:
+    app: app-with-config
+  ports:
+  - port: 8080
+    name: http
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-base-config
+data:
+  cluster.name: "production"
+  log.level: "info"
+  feature.flags: "new-ui,advanced-search"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: app-with-config
+spec:
+  serviceName: app-with-config
+  replicas: 3
+  selector:
+    matchLabels:
+      app: app-with-config
+  template:
+    metadata:
+      labels:
+        app: app-with-config
+    spec:
+      initContainers:
+      # Generate instance-specific configuration
+      - name: generate-config
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Generating configuration for $HOSTNAME..."
+
+          # Extract Pod ordinal from hostname
+          POD_ORDINAL=$(echo $HOSTNAME | grep -o '[0-9]*$')
+
+          # Generate instance-specific config
+          cat > /config/app.conf <<EOF
+          # Generated configuration for $HOSTNAME
+          instance.id=$POD_ORDINAL
+          instance.name=$HOSTNAME
+          instance.dns=$HOSTNAME.app-with-config.default.svc.cluster.local
+
+          # Role assignment based on ordinal
+          EOF
+
+          if [ "$POD_ORDINAL" = "0" ]; then
+            echo "instance.role=primary" >> /config/app.conf
+            echo "replication.enabled=true" >> /config/app.conf
+            echo "replication.mode=master" >> /config/app.conf
+          else
+            echo "instance.role=replica" >> /config/app.conf
+            echo "replication.enabled=true" >> /config/app.conf
+            echo "replication.mode=slave" >> /config/app.conf
+            echo "replication.master=app-with-config-0.app-with-config.default.svc.cluster.local" >> /config/app.conf
+          fi
+
+          # Add cluster-wide settings from ConfigMap
+          echo "" >> /config/app.conf
+          echo "# Cluster-wide settings" >> /config/app.conf
+          cat /base-config/* >> /config/app.conf
+
+          echo "Configuration generated:"
+          cat /config/app.conf
+        env:
+        - name: HOSTNAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: config
+          mountPath: /config
+        - name: base-config
+          mountPath: /base-config
+
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+          name: http
+        volumeMounts:
+        - name: config
+          mountPath: /etc/app
+        - name: data
+          mountPath: /data
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting application with configuration:"
+          cat /etc/app/app.conf
+          echo ""
+          echo "Serving configuration on port 8080..."
+          mkdir -p /usr/share/nginx/html
+          cp /etc/app/app.conf /usr/share/nginx/html/config.txt
+          nginx -g 'daemon off;'
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+
+      volumes:
+      - name: config
+        emptyDir: {}
+      - name: base-config
+        configMap:
+          name: app-base-config
+
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 100Mi

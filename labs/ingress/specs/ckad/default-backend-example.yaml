@@ -1,0 +1,116 @@
+# Example: Default backend configuration
+# Shows how to use defaultBackend in Ingress spec
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: default-backend
+  namespace: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: default-backend
+  template:
+    metadata:
+      labels:
+        app: default-backend
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: main-app
+  namespace: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: main-app
+  template:
+    metadata:
+      labels:
+        app: main-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: default-svc
+  namespace: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: default-backend
+  ports:
+  - port: 80
+    targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: main-svc
+  namespace: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: main-app
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# Ingress with custom default backend
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: with-default-backend
+  namespace: default-backend-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  defaultBackend:
+    service:
+      name: default-svc
+      port:
+        number: 80
+  rules:
+  - host: defaultbackend.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: main-svc
+            port:
+              number: 80
+
+# Testing:
+# curl -H "Host: defaultbackend.example.com" http://<ingress-ip>/api       -> main-svc
+# curl -H "Host: defaultbackend.example.com" http://<ingress-ip>/other     -> default-svc
+# curl -H "Host: unknown.example.com" http://<ingress-ip>/                 -> default-svc

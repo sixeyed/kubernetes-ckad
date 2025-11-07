@@ -1,0 +1,15 @@
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: dev-mysql
+  namespace: default
+  labels:
+    environment: dev
+    team: backend
+spec:
+  engine: mysql
+  version: "8.0"
+  storageSize: 10Gi
+  replicas: 1
+  backup:
+    enabled: false

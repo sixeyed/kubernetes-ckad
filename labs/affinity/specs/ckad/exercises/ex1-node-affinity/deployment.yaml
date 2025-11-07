@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-affinity-demo
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: node-affinity-demo
+  template:
+    metadata:
+      labels:
+        app: node-affinity-demo
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        nodeAffinity:
+          # MUST run on Linux nodes
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+          # PREFER nodes with SSD
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: disktype
+                operator: In
+                values:
+                - ssd
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

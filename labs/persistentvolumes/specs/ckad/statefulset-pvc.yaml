@@ -1,0 +1,450 @@
+# Complete StatefulSet Example with PersistentVolumeClaims
+# Demonstrates how each Pod gets its own PVC that persists across Pod restarts
+---
+# Headless Service for StatefulSet (required for stable network identity)
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-stateful
+  labels:
+    app: nginx-stateful
+spec:
+  ports:
+  - port: 80
+    name: web
+  clusterIP: None  # Headless service
+  selector:
+    app: nginx-stateful
+---
+# StatefulSet with volumeClaimTemplates
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: "nginx-stateful"  # Must match headless service name
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-stateful
+  template:
+    metadata:
+      labels:
+        app: nginx-stateful
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: web
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+        # Initialize with unique content per Pod
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                echo "<h1>Pod: $(hostname)</h1>" > /usr/share/nginx/html/index.html
+                echo "<p>Created at: $(date)</p>" >> /usr/share/nginx/html/index.html
+                echo "<p>PVC: www-$(hostname)</p>" >> /usr/share/nginx/html/index.html
+  # volumeClaimTemplates automatically creates a PVC for each Pod
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+# StatefulSet Example 2: Database cluster with separate data and logs
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-stateful
+  labels:
+    app: postgres
+spec:
+  ports:
+  - port: 5432
+    name: postgres
+  clusterIP: None
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: "postgres-stateful"
+  replicas: 2
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        ports:
+        - containerPort: 5432
+          name: postgres
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "example"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        - name: logs
+          mountPath: /var/log/postgresql
+        lifecycle:
+          postStart:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - |
+                echo "PostgreSQL instance $(hostname) started at $(date)" >> /var/log/postgresql/startup.log
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 5Gi
+  - metadata:
+      name: logs
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+# Test Pod to demonstrate PVC persistence
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: statefulset-test-script
+data:
+  test-persistence.sh: |
+    #!/bin/sh
+    set -e
+
+    echo "=== StatefulSet PVC Persistence Test ==="
+    echo ""
+
+    echo "Step 1: Check initial StatefulSet Pods"
+    kubectl get pods -l app=nginx-stateful
+    echo ""
+
+    echo "Step 2: Check PVCs created by StatefulSet"
+    kubectl get pvc -l app=nginx-stateful
+    echo ""
+
+    echo "Step 3: Write unique data to each Pod"
+    for i in 0 1 2; do
+      kubectl exec web-$i -- sh -c "echo 'Data written at $(date)' >> /usr/share/nginx/html/data.txt"
+      echo "Wrote data to web-$i"
+    done
+    echo ""
+
+    echo "Step 4: Verify data in each Pod"
+    for i in 0 1 2; do
+      echo "=== web-$i content ==="
+      kubectl exec web-$i -- cat /usr/share/nginx/html/index.html
+      kubectl exec web-$i -- cat /usr/share/nginx/html/data.txt
+      echo ""
+    done
+
+    echo "Step 5: Delete one Pod (web-1)"
+    kubectl delete pod web-1
+    echo "Waiting for Pod to be recreated..."
+    kubectl wait --for=condition=Ready pod/web-1 --timeout=60s
+    echo ""
+
+    echo "Step 6: Verify data persisted in recreated Pod"
+    echo "=== web-1 content after recreation ==="
+    kubectl exec web-1 -- cat /usr/share/nginx/html/index.html
+    kubectl exec web-1 -- cat /usr/share/nginx/html/data.txt
+    echo ""
+
+    echo "Step 7: Scale down StatefulSet"
+    kubectl scale statefulset web --replicas=1
+    echo "Waiting for scale down..."
+    sleep 10
+    kubectl get pods -l app=nginx-stateful
+    echo ""
+
+    echo "Step 8: Check that PVCs still exist"
+    kubectl get pvc
+    echo "Notice: PVCs www-web-1 and www-web-2 still exist even though Pods are gone"
+    echo ""
+
+    echo "Step 9: Scale back up"
+    kubectl scale statefulset web --replicas=3
+    echo "Waiting for scale up..."
+    kubectl wait --for=condition=Ready pod/web-2 --timeout=60s
+    echo ""
+
+    echo "Step 10: Verify data persisted through scaling"
+    for i in 0 1 2; do
+      echo "=== web-$i content after scaling ==="
+      kubectl exec web-$i -- cat /usr/share/nginx/html/data.txt
+      echo ""
+    done
+
+    echo "=== Test Complete ==="
+    echo "Key Observations:"
+    echo "1. Each Pod gets its own PVC (www-web-0, www-web-1, www-web-2)"
+    echo "2. Data persists when Pods are deleted and recreated"
+    echo "3. PVCs remain when StatefulSet is scaled down"
+    echo "4. When scaled back up, Pods reconnect to their original PVCs"
+---
+# Example 3: StatefulSet with ordered deployment and parallel deletion
+apiVersion: v1
+kind: Service
+metadata:
+  name: ordered-stateful
+spec:
+  ports:
+  - port: 80
+  clusterIP: None
+  selector:
+    app: ordered-app
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ordered
+spec:
+  serviceName: "ordered-stateful"
+  replicas: 3
+  podManagementPolicy: OrderedReady  # Pods created one at a time: 0, then 1, then 2
+  selector:
+    matchLabels:
+      app: ordered-app
+  template:
+    metadata:
+      labels:
+        app: ordered-app
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Pod $(hostname) starting at $(date)" > /data/startup.log
+            echo "Ordinal: ${HOSTNAME##*-}" >> /data/startup.log
+            cat /data/startup.log
+            sleep 3600
+        volumeMounts:
+        - name: data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 100Mi
+---
+# Example 4: StatefulSet with Parallel pod management
+apiVersion: v1
+kind: Service
+metadata:
+  name: parallel-stateful
+spec:
+  ports:
+  - port: 80
+  clusterIP: None
+  selector:
+    app: parallel-app
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: parallel
+spec:
+  serviceName: "parallel-stateful"
+  replicas: 3
+  podManagementPolicy: Parallel  # All Pods created simultaneously
+  selector:
+    matchLabels:
+      app: parallel-app
+  template:
+    metadata:
+      labels:
+        app: parallel-app
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            echo "Pod $(hostname) starting at $(date)" | tee /data/startup.log
+            sleep 3600
+        volumeMounts:
+        - name: data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 100Mi
+---
+# Documentation ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: statefulset-pvc-guide
+data:
+  guide.md: |
+    # StatefulSet PVC Management Guide
+
+    ## Key Concepts
+
+    1. **Stable Pod Identity**: Each Pod gets a predictable name (web-0, web-1, web-2)
+    2. **Stable Storage**: Each Pod gets its own PVC that persists across restarts
+    3. **Ordered Operations**: Pods can be created/deleted in order (OrderedReady) or parallel
+    4. **PVC Retention**: PVCs are NOT deleted when StatefulSet scales down or is deleted
+
+    ## PVC Naming Convention
+
+    Format: `{volumeClaimTemplate-name}-{statefulset-name}-{ordinal}`
+    Example: `www-web-0`, `www-web-1`, `www-web-2`
+
+    ## Common Operations
+
+    ### Deploy StatefulSet
+    ```bash
+    kubectl apply -f statefulset-pvc.yaml
+    kubectl get statefulset
+    kubectl get pods -l app=nginx-stateful -w
+    ```
+
+    ### Check PVCs
+    ```bash
+    kubectl get pvc
+    # Shows: www-web-0, www-web-1, www-web-2
+    ```
+
+    ### Test Data Persistence
+    ```bash
+    # Write data to Pod
+    kubectl exec web-0 -- sh -c 'echo "test data" > /usr/share/nginx/html/test.txt'
+
+    # Delete Pod
+    kubectl delete pod web-0
+
+    # Wait for recreation
+    kubectl wait --for=condition=Ready pod/web-0
+
+    # Verify data persisted
+    kubectl exec web-0 -- cat /usr/share/nginx/html/test.txt
+    ```
+
+    ### Scale StatefulSet
+    ```bash
+    # Scale down
+    kubectl scale statefulset web --replicas=1
+
+    # PVCs still exist!
+    kubectl get pvc
+
+    # Scale back up
+    kubectl scale statefulset web --replicas=3
+
+    # Pods reconnect to their original PVCs
+    ```
+
+    ### Manual PVC Cleanup
+    ```bash
+    # StatefulSet deletion does NOT delete PVCs
+    kubectl delete statefulset web
+    kubectl get pvc  # PVCs still there
+
+    # Manual cleanup required
+    kubectl delete pvc www-web-0 www-web-1 www-web-2
+    ```
+
+    ## PVC Retention Behavior
+
+    | Action | PVC Behavior |
+    |--------|--------------|
+    | Pod deleted | PVC retained |
+    | StatefulSet scaled down | PVC retained |
+    | StatefulSet deleted | PVC retained |
+    | Namespace deleted | PVCs deleted |
+
+    ## Troubleshooting
+
+    ### Pod stuck in Pending
+    ```bash
+    kubectl describe pod web-0
+    # Check for PVC binding issues
+    kubectl describe pvc www-web-0
+    ```
+
+    ### PVC not binding
+    ```bash
+    # Check StorageClass
+    kubectl get sc
+
+    # Check PV availability
+    kubectl get pv
+
+    # Check events
+    kubectl get events --sort-by='.lastTimestamp'
+    ```
+
+    ### Data not persisting
+    ```bash
+    # Verify PVC is mounted
+    kubectl describe pod web-0 | grep -A 5 Volumes
+
+    # Check PVC status
+    kubectl get pvc www-web-0 -o yaml
+
+    # Verify mount in Pod
+    kubectl exec web-0 -- df -h /usr/share/nginx/html
+    ```
+
+    ## Best Practices
+
+    1. **Always use headless Service** with StatefulSet
+    2. **Plan for PVC cleanup** - they're not auto-deleted
+    3. **Use appropriate storage class** for your workload
+    4. **Set resource requests** on volumeClaimTemplates
+    5. **Test scale operations** before production
+    6. **Monitor PVC usage** to prevent running out of space
+    7. **Backup strategy** for StatefulSet data
+
+    ## CKAD Exam Tips
+
+    - Know how to create StatefulSet with volumeClaimTemplates
+    - Understand PVC naming convention
+    - Remember PVCs persist even when StatefulSet is deleted
+    - Practice scaling operations quickly
+    - Know difference between OrderedReady vs Parallel podManagementPolicy

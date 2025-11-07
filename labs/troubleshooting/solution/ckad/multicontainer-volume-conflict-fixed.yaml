@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multicontainer-volume-conflict-fixed
+  labels:
+    app: troubleshooting-demo
+    scenario: multicontainer
+spec:
+  containers:
+  - name: writer
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      while true; do
+        echo "Writing data at $(date)" > /data/output.txt
+        sleep 5
+      done
+    volumeMounts:
+    - name: shared-data
+      mountPath: /data
+      # Fixed: Removed readOnly to allow writing
+  - name: reader
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      while true; do
+        if [ -f /data/output.txt ]; then
+          cat /data/output.txt
+        else
+          echo "No data file yet"
+        fi
+        sleep 5
+      done
+    volumeMounts:
+    - name: shared-data
+      mountPath: /data
+      readOnly: true  # Reader can stay readOnly
+  volumes:
+  - name: shared-data
+    emptyDir: {}

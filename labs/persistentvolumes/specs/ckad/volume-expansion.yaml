@@ -1,0 +1,201 @@
+# Storage Class that supports volume expansion
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: expandable-storage
+provisioner: kubernetes.io/no-provisioner  # Change to your provisioner
+allowVolumeExpansion: true  # Critical: enables PVC expansion
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete
+---
+# Initial PVC with 1Gi storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: expandable-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: expandable-storage
+  resources:
+    requests:
+      storage: 1Gi
+---
+# Pod using the PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: expansion-test-pod
+  labels:
+    app: expansion-test
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Initial storage info:"
+        df -h /data
+        echo "Writing test file..."
+        dd if=/dev/zero of=/data/testfile bs=1M count=100
+        echo "Sleeping... Expand PVC now!"
+        sleep 3600
+        echo "After expansion:"
+        df -h /data
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: expandable-pvc
+---
+# Example: Deployment with expandable PVC
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: expandable-storage
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: expandable-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: expandable-app
+  template:
+    metadata:
+      labels:
+        app: expandable-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+        ports:
+        - containerPort: 80
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: app-data-pvc
+---
+# ConfigMap with expansion documentation
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: volume-expansion-guide
+data:
+  expansion-support.txt: |
+    Volume Type Support for Expansion:
+
+    ✅ SUPPORTED (Online expansion - no Pod restart needed):
+    - AWS EBS (gp2, gp3, io1, io2)
+    - Azure Disk (Standard, Premium SSD)
+    - GCP Persistent Disk (pd-standard, pd-ssd, pd-balanced)
+    - Ceph RBD
+    - Cinder (OpenStack)
+    - Portworx
+
+    ✅ SUPPORTED (Offline expansion - Pod restart required):
+    - Azure File
+    - GlusterFS
+
+    ❌ NOT SUPPORTED (Cannot expand):
+    - HostPath
+    - Local volumes
+    - NFS (depends on backend)
+    - EmptyDir (ephemeral, no persistence)
+
+    EXPANSION STEPS:
+    1. Verify StorageClass has allowVolumeExpansion: true
+       kubectl get sc <storage-class-name> -o yaml | grep allowVolumeExpansion
+
+    2. Edit PVC to increase storage size
+       kubectl patch pvc <pvc-name> -p '{"spec":{"resources":{"requests":{"storage":"10Gi"}}}}'
+
+       OR edit directly:
+       kubectl edit pvc <pvc-name>
+       # Change spec.resources.requests.storage to desired size
+
+    3. Check expansion status
+       kubectl get pvc <pvc-name>
+       kubectl describe pvc <pvc-name>
+
+    4. Monitor events
+       kubectl get events --field-selector involvedObject.name=<pvc-name>
+
+    5. For offline expansion, restart Pod
+       kubectl delete pod <pod-name>
+       # Or for Deployments:
+       kubectl rollout restart deployment <deployment-name>
+
+    6. Verify new size in Pod
+       kubectl exec <pod-name> -- df -h <mount-path>
+
+    IMPORTANT NOTES:
+    - You can only INCREASE size, never decrease
+    - Expansion is one-way operation
+    - Some volume types require Pod restart to complete expansion
+    - Check PVC conditions for expansion progress:
+      kubectl get pvc <pvc-name> -o yaml | grep -A 5 conditions
+
+    TROUBLESHOOTING:
+    - If expansion fails, check StorageClass configuration
+    - Verify cloud provider supports volume expansion
+    - Check for quota limits in cloud provider
+    - Review CSI driver logs for expansion errors
+
+  expansion-commands.sh: |
+    #!/bin/bash
+    # Volume Expansion Helper Script
+
+    PVC_NAME="${1:-expandable-pvc}"
+    NEW_SIZE="${2:-2Gi}"
+
+    echo "=== Volume Expansion Process ==="
+    echo "PVC: $PVC_NAME"
+    echo "New Size: $NEW_SIZE"
+    echo ""
+
+    echo "Step 1: Current PVC status"
+    kubectl get pvc $PVC_NAME
+    echo ""
+
+    echo "Step 2: Current storage size"
+    kubectl get pvc $PVC_NAME -o jsonpath='{.spec.resources.requests.storage}'
+    echo ""
+    echo ""
+
+    echo "Step 3: Checking if StorageClass supports expansion"
+    SC_NAME=$(kubectl get pvc $PVC_NAME -o jsonpath='{.spec.storageClassName}')
+    kubectl get sc $SC_NAME -o jsonpath='{.allowVolumeExpansion}'
+    echo ""
+    echo ""
+
+    echo "Step 4: Expanding PVC to $NEW_SIZE"
+    kubectl patch pvc $PVC_NAME -p "{\"spec\":{\"resources\":{\"requests\":{\"storage\":\"$NEW_SIZE\"}}}}"
+    echo ""
+
+    echo "Step 5: Monitoring expansion progress (wait 30 seconds)"
+    sleep 30
+    kubectl describe pvc $PVC_NAME | grep -A 10 "Conditions"
+    echo ""
+
+    echo "Step 6: Final PVC status"
+    kubectl get pvc $PVC_NAME
+    echo ""
+
+    echo "Done! If the volume requires filesystem expansion, restart the Pod."

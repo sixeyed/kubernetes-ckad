@@ -1,0 +1,41 @@
+# PodDisruptionBudgets - Challenge
+# Protect critical services during maintenance
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: database-pdb
+  labels:
+    tier: database
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      tier: database
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cache-pdb
+  labels:
+    tier: cache
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      tier: cache
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: application-pdb
+  labels:
+    tier: app
+spec:
+  maxUnavailable: 2
+  selector:
+    matchLabels:
+      tier: app

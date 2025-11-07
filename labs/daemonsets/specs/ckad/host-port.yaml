@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-monitor-hostport
+  labels:
+    app: network-monitor
+    mode: hostport
+spec:
+  selector:
+    matchLabels:
+      app: network-monitor
+      mode: hostport
+  template:
+    metadata:
+      labels:
+        app: network-monitor
+        mode: hostport
+    spec:
+      # Normal pod networking (NOT hostNetwork)
+      containers:
+      - name: monitor
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Network monitor with hostPort"
+          echo "Pod has its own IP (different from node)"
+          echo "Pod IP: $(hostname -i)"
+          echo "But port 9101 is exposed on the host"
+
+          # Start simple HTTP server
+          while true; do
+            echo -e "HTTP/1.1 200 OK\n\nHost Port Mode - $(hostname)" | nc -l -p 9101
+          done
+        ports:
+        - containerPort: 9101
+          hostPort: 9101  # Expose this port on the host
+          protocol: TCP
+          name: metrics
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

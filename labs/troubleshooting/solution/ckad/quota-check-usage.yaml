@@ -1,0 +1,45 @@
+# This file demonstrates checking quota usage
+# Run these commands to check resource quota status:
+#
+# kubectl get resourcequota -n quota-test
+# kubectl describe resourcequota compute-quota -n quota-test
+# kubectl describe limitrange resource-limits -n limitrange-test
+#
+# The output shows:
+# - Hard limits set by the quota
+# - Current usage
+# - Remaining capacity
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-usage-demo-1
+  namespace: quota-test
+spec:
+  containers:
+  - name: app1
+    image: nginx
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: quota-usage-demo-2
+  namespace: quota-test
+spec:
+  containers:
+  - name: app2
+    image: nginx
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"

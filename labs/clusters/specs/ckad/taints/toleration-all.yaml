@@ -1,0 +1,216 @@
+# Tolerate All Taints - CKAD Practice
+#
+# Pods that can be scheduled anywhere regardless of taints
+
+---
+# Example 1: Universal toleration - runs anywhere
+apiVersion: v1
+kind: Pod
+metadata:
+  name: universal-pod
+  labels:
+    app: admin-tools
+spec:
+  tolerations:
+  - operator: "Exists"
+  containers:
+  - name: admin
+    image: busybox
+    command: ["sh", "-c", "echo 'Admin pod can run on any node'; sleep 3600"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+
+---
+# Example 2: Monitoring DaemonSet that runs everywhere
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-monitor
+  labels:
+    app: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: monitoring
+  template:
+    metadata:
+      labels:
+        app: monitoring
+    spec:
+      tolerations:
+      - operator: "Exists"
+      containers:
+      - name: monitor
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Monitoring node'; sleep 60; done"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 3: System DaemonSet (logs, metrics, security)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluentd-logging
+  namespace: kube-system
+  labels:
+    app: fluentd
+spec:
+  selector:
+    matchLabels:
+      app: fluentd
+  template:
+    metadata:
+      labels:
+        app: fluentd
+    spec:
+      tolerations:
+      # Tolerate everything - logging needs to run on all nodes
+      - operator: "Exists"
+      containers:
+      - name: fluentd
+        image: fluent/fluentd:v1.14-1
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+# Example 4: Network plugin DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-agent
+  namespace: kube-system
+  labels:
+    app: network
+spec:
+  selector:
+    matchLabels:
+      app: network
+  template:
+    metadata:
+      labels:
+        app: network
+    spec:
+      hostNetwork: true
+      tolerations:
+      - operator: "Exists"
+      containers:
+      - name: agent
+        image: busybox
+        command: ["sh", "-c", "echo 'Network agent on all nodes'; sleep 3600"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 5: Debug Pod for troubleshooting
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-pod
+  labels:
+    app: debug
+spec:
+  tolerations:
+  - operator: "Exists"
+  containers:
+  - name: debug
+    image: nicolaka/netshoot
+    command: ["sleep", "3600"]
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+
+---
+# Example 6: Administrative Job that must complete
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cluster-backup
+  labels:
+    app: backup
+spec:
+  template:
+    metadata:
+      labels:
+        app: backup
+    spec:
+      tolerations:
+      - operator: "Exists"
+      containers:
+      - name: backup
+        image: busybox
+        command: ["sh", "-c", "echo 'Performing backup'; sleep 30; echo 'Backup complete'"]
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+      restartPolicy: Never
+  backoffLimit: 3
+
+---
+# Example 7: Critical system component
+apiVersion: v1
+kind: Pod
+metadata:
+  name: critical-system-pod
+  namespace: kube-system
+  labels:
+    app: system-critical
+    tier: control-plane
+spec:
+  tolerations:
+  - operator: "Exists"
+  priorityClassName: system-node-critical
+  containers:
+  - name: critical-app
+    image: busybox
+    command: ["sh", "-c", "echo 'Critical system component'; sleep 3600"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+
+---
+# Example 8: Deployment with universal toleration (not recommended for regular apps)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anywhere-deployment
+  labels:
+    app: flexible
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: flexible
+  template:
+    metadata:
+      labels:
+        app: flexible
+    spec:
+      tolerations:
+      - operator: "Exists"
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"

@@ -1,0 +1,38 @@
+# Exercise 5: Secure Application Deployment
+# Deploy a complete application with production-grade RBAC:
+# - Custom ServiceAccount with minimal permissions
+# - Disable token automounting where not needed
+# - Configure access to specific Secrets and ConfigMaps
+# - Use namespaces for isolation
+# - Verify with kubectl auth can-i commands
+
+# Requirements:
+# 1. Create namespace 'production'
+# 2. Create frontend app with ServiceAccount that:
+#    - Can read ConfigMap 'frontend-config' only
+#    - Can read Secret 'frontend-secrets' only
+#    - CANNOT access any other resources
+#    - Has token automounting disabled
+# 3. Create backend app with ServiceAccount that:
+#    - Can read ConfigMap 'backend-config' only
+#    - Can read Secret 'backend-secrets' only
+#    - Can list Services (for service discovery)
+#    - Can get and list Pods (for health checks)
+#    - Has token mounted (needs API access)
+# 4. Deploy both applications with proper RBAC
+
+# TODO: Implement the complete secure deployment
+
+# Verification checklist:
+# [ ] Frontend can read frontend-config
+# [ ] Frontend can read frontend-secrets
+# [ ] Frontend CANNOT read backend-config
+# [ ] Frontend CANNOT read backend-secrets
+# [ ] Frontend CANNOT list Services
+# [ ] Backend can read backend-config
+# [ ] Backend can read backend-secrets
+# [ ] Backend can list Services
+# [ ] Backend can list Pods
+# [ ] Backend CANNOT read frontend-secrets
+# [ ] Frontend has no token mounted
+# [ ] Backend has token mounted

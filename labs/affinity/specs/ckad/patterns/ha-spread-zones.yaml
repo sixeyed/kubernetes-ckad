@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ha
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: web
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: web
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

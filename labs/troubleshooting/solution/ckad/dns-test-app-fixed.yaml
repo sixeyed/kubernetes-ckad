@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-pod
+  labels:
+    app: backend  # Matches service selector
+spec:
+  containers:
+  - name: api
+    image: nginx
+    ports:
+    - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-backend-service-fixed
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 80  # Fixed to match nginx port
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dns-test-client-fixed
+  labels:
+    app: client
+spec:
+  containers:
+  - name: client
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "Testing DNS resolution..."
+      # Wait for backend to be ready
+      sleep 5
+      # Test different DNS formats
+      wget -qO- --timeout=5 my-backend-service-fixed
+      echo ""
+      wget -qO- --timeout=5 my-backend-service-fixed.default
+      echo ""
+      wget -qO- --timeout=5 my-backend-service-fixed.default.svc.cluster.local
+      sleep 3600

@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-aggregator-app
+  labels:
+    app: log-aggregator
+spec:
+  volumes:
+  - name: app-logs
+    emptyDir: {}
+  containers:
+  # Main application container generating logs
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        while true; do
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] INFO: Processing request #$RANDOM" >> /var/log/app/application.log
+          echo "[$(date '+%Y-%m-%d %H:%M:%S')] DEBUG: Database query executed" >> /var/log/app/application.log
+          if [ $((RANDOM % 10)) -eq 0 ]; then
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Connection timeout" >> /var/log/app/application.log
+          fi
+          sleep 2
+        done
+    volumeMounts:
+    - name: app-logs
+      mountPath: /var/log/app
+
+  # Sidecar container aggregating and processing logs
+  - name: log-aggregator
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Log aggregator started. Monitoring /var/log/app/application.log"
+        tail -f /var/log/app/application.log | while read line; do
+          # Count log levels
+          if echo "$line" | grep -q "ERROR"; then
+            echo "[ALERT] Error detected: $line" >> /var/log/app/aggregated.log
+          elif echo "$line" | grep -q "INFO"; then
+            echo "[METRICS] Info log processed" >> /var/log/app/aggregated.log
+          fi
+        done
+    volumeMounts:
+    - name: app-logs
+      mountPath: /var/log/app
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-forwarder-pattern
+  labels:
+    app: log-forwarder
+spec:
+  volumes:
+  - name: logs
+    emptyDir: {}
+  containers:
+  # Application container
+  - name: web-server
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: logs
+      mountPath: /var/log/nginx
+
+  # Log forwarder sidecar (simulates Fluentd/Filebeat)
+  - name: log-forwarder
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Log forwarder monitoring nginx logs..."
+        while true; do
+          if [ -f /logs/access.log ]; then
+            tail -f /logs/access.log | while read line; do
+              echo "[FORWARDED] $(date '+%Y-%m-%d %H:%M:%S') - $line"
+            done
+          else
+            echo "Waiting for access.log to be created..."
+            sleep 5
+          fi
+        done
+    volumeMounts:
+    - name: logs
+      mountPath: /logs

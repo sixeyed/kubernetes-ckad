@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zone-spread-demo
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: zone-spread-demo
+  template:
+    metadata:
+      labels:
+        app: zone-spread-demo
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        # MUST be in us-west region
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/region
+                operator: In
+                values:
+                - us-west
+        # PREFER spreading across zones
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: zone-spread-demo
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-a
+  labels:
+    tenant: a
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-b
+  labels:
+    tenant: b
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tenant-c
+  labels:
+    tenant: c
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: operator-system
+  labels:
+    component: operator

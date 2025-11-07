@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-access-policy
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+      tier: data
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              tier: api
+      ports:
+        - protocol: TCP
+          port: 5432

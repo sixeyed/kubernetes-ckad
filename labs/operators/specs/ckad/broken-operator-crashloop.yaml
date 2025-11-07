@@ -1,0 +1,37 @@
+# Broken operator - will crash due to resource limits
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crashloop-operator
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop-operator
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crashloop-operator
+  template:
+    metadata:
+      labels:
+        app: crashloop-operator
+    spec:
+      serviceAccountName: crashloop-operator
+      containers:
+      - name: operator
+        image: nonexistent-image:latest  # Image doesn't exist
+        imagePullPolicy: Always
+        env:
+        - name: WATCH_NAMESPACE
+          value: ""
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 20m
+            memory: 32Mi  # Too low for the operator

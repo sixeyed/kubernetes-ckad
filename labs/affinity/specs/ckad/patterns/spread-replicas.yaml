@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: api
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

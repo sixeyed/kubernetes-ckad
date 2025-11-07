@@ -38,7 +38,7 @@ Node affinity allows you to constrain which nodes your Pods can be scheduled on 
 
 Schedule Pods only on nodes matching specific criteria:
 
-**TODO**: Create example `specs/ckad/node-affinity-required.yaml`
+📋 **Example**: See `specs/ckad/node-affinity-required.yaml`
 
 ```yaml
 apiVersion: v1
@@ -74,7 +74,7 @@ spec:
 
 Soft preference with weight (1-100):
 
-**TODO**: Create example `specs/ckad/node-affinity-preferred.yaml`
+📋 **Example**: See `specs/ckad/node-affinity-preferred.yaml`
 
 ```yaml
 apiVersion: v1
@@ -113,7 +113,7 @@ spec:
 
 Most common pattern in production:
 
-**TODO**: Create example `specs/ckad/node-affinity-combined.yaml`
+📋 **Example**: See `specs/ckad/node-affinity-combined.yaml`
 
 ```yaml
 apiVersion: v1
@@ -248,7 +248,11 @@ nodeAffinity:
         - us-west-1b
 ```
 
-**TODO**: Create examples for common node label patterns
+📋 **More Examples**: See `specs/ckad/node-labels-examples.yaml` for additional patterns including:
+- Avoiding control plane nodes
+- Targeting specific regions and zones
+- Selecting CPU architecture (arm64, amd64)
+- Choosing instance types in cloud environments
 
 ## Pod Affinity and Anti-Affinity
 
@@ -256,7 +260,7 @@ nodeAffinity:
 
 Schedule Pods near other Pods (co-location):
 
-**TODO**: Create example `specs/ckad/pod-affinity-basic.yaml`
+📋 **Example**: See `specs/ckad/pod-affinity-basic.yaml`
 
 ```yaml
 apiVersion: v1
@@ -287,7 +291,7 @@ spec:
 
 Schedule Pods away from other Pods (spreading):
 
-**TODO**: Create example `specs/ckad/pod-anti-affinity-basic.yaml`
+📋 **Example**: See `specs/ckad/pod-anti-affinity-basic.yaml`
 
 ```yaml
 apiVersion: v1
@@ -342,7 +346,7 @@ topologyKey: topology.kubernetes.io/region
 
 Soft preference with weights:
 
-**TODO**: Create example `specs/ckad/pod-affinity-preferred.yaml`
+📋 **Example**: See `specs/ckad/pod-affinity-preferred.yaml`
 
 ```yaml
 apiVersion: v1
@@ -377,7 +381,7 @@ spec:
 
 Ensure pods run in different availability zones:
 
-**TODO**: Create example `specs/ckad/patterns/ha-spread-zones.yaml`
+📋 **Example**: See `specs/ckad/patterns/ha-spread-zones.yaml`
 
 ```yaml
 apiVersion: apps/v1
@@ -414,7 +418,7 @@ spec:
 
 Run application pods near cache pods:
 
-**TODO**: Create example `specs/ckad/patterns/colocate-cache.yaml`
+📋 **Example**: See `specs/ckad/patterns/colocate-cache.yaml`
 
 ```yaml
 apiVersion: v1
@@ -440,7 +444,7 @@ spec:
 
 Ensure no two replicas run on same node:
 
-**TODO**: Create example `specs/ckad/patterns/spread-replicas.yaml`
+📋 **Example**: See `specs/ckad/patterns/spread-replicas.yaml`
 
 ```yaml
 apiVersion: apps/v1
@@ -475,7 +479,7 @@ spec:
 
 Stay in one region but spread across zones:
 
-**TODO**: Create example `specs/ckad/patterns/region-with-zone-spread.yaml`
+📋 **Example**: See `specs/ckad/patterns/region-with-zone-spread.yaml`
 
 ```yaml
 apiVersion: apps/v1
@@ -522,7 +526,7 @@ spec:
 
 Keep your app away from resource-intensive apps:
 
-**TODO**: Create example `specs/ckad/patterns/avoid-noisy.yaml`
+📋 **Example**: See `specs/ckad/patterns/avoid-noisy.yaml`
 
 ```yaml
 apiVersion: v1
@@ -602,7 +606,7 @@ kubectl edit deployment myapp
 # Remove or comment out affinity section
 ```
 
-**TODO**: Create broken example for practice: `specs/ckad/troubleshooting/pending-affinity.yaml`
+📋 **Practice Example**: See `specs/ckad/troubleshooting/pending-affinity.yaml` for examples of broken affinity configurations that result in pending pods. Deploy these to practice troubleshooting skills.
 
 ### Issue 2: Uneven Pod Distribution
 
@@ -671,7 +675,13 @@ Create a deployment that:
 2. Prefers nodes with `disktype=ssd` label
 3. Has 3 replicas
 
-**TODO**: Create in `specs/ckad/exercises/ex1-node-affinity/`
+📋 **Solution**: See `specs/ckad/exercises/ex1-node-affinity/` for complete instructions and solution.
+
+```bash
+# Deploy and test
+kubectl apply -f specs/ckad/exercises/ex1-node-affinity/deployment.yaml
+kubectl get pods -l app=node-affinity-demo -o wide
+```
 
 ### Exercise 2: Pod Anti-Affinity for HA
 
@@ -680,7 +690,13 @@ Create a deployment that:
 2. Each replica must run on a different node
 3. If fewer than 5 nodes, some pods should stay pending
 
-**TODO**: Create in `specs/ckad/exercises/ex2-anti-affinity/`
+📋 **Solution**: See `specs/ckad/exercises/ex2-anti-affinity/` for complete instructions and solution.
+
+```bash
+# Deploy and test
+kubectl apply -f specs/ckad/exercises/ex2-anti-affinity/deployment.yaml
+kubectl get pods -l app=anti-affinity-demo -o wide
+```
 
 ### Exercise 3: Co-locate with Cache
 
@@ -691,7 +707,14 @@ Create an application deployment that:
 - Runs on the same nodes as redis pods
 - Has 3 replicas
 
-**TODO**: Create in `specs/ckad/exercises/ex3-colocate/`
+📋 **Solution**: See `specs/ckad/exercises/ex3-colocate/` for complete instructions and solution.
+
+```bash
+# Deploy cache first, then application
+kubectl apply -f specs/ckad/exercises/ex3-colocate/cache.yaml
+kubectl apply -f specs/ckad/exercises/ex3-colocate/application.yaml
+kubectl get pods -o wide
+```
 
 ### Exercise 4: Zone Spreading
 
@@ -700,7 +723,13 @@ Create a deployment that:
 2. Prefers spreading across zones
 3. Has 6 replicas
 
-**TODO**: Create in `specs/ckad/exercises/ex4-zone-spread/`
+📋 **Solution**: See `specs/ckad/exercises/ex4-zone-spread/` for complete instructions and solution.
+
+```bash
+# Label nodes first (if needed), then deploy
+kubectl apply -f specs/ckad/exercises/ex4-zone-spread/deployment.yaml
+kubectl get pods -l app=zone-spread-demo -o wide
+```
 
 ### Exercise 5: Troubleshoot Pending Pods
 
@@ -709,7 +738,18 @@ Given a broken deployment with pods in pending state:
 2. Fix the affinity rules
 3. Verify pods start running
 
-**TODO**: Create in `specs/ckad/exercises/ex5-troubleshoot/`
+📋 **Solution**: See `specs/ckad/exercises/ex5-troubleshoot/` for complete instructions and solution.
+
+```bash
+# Deploy broken configuration
+kubectl apply -f specs/ckad/exercises/ex5-troubleshoot/broken-deployment.yaml
+
+# Diagnose the problem
+kubectl describe pod -l app=troubleshoot-demo
+
+# Fix it
+kubectl apply -f specs/ckad/exercises/ex5-troubleshoot/fixed-deployment.yaml
+```
 
 ## Common CKAD Exam Scenarios
 

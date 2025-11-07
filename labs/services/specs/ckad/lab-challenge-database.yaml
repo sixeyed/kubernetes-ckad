@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  serviceName: database-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: database
+      tier: data
+  template:
+    metadata:
+      labels:
+        app: database
+        tier: data
+    spec:
+      containers:
+        - name: db
+          image: postgres:13-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              value: "ckad-password"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-headless
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  clusterIP: None
+  selector:
+    app: database
+    tier: data
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-read
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  type: ClusterIP
+  selector:
+    app: database
+    tier: data
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

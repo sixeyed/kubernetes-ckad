@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pending-node-selector-fixed
+  labels:
+    app: troubleshooting-demo
+    scenario: pending
+spec:
+  containers:
+  - name: web
+    image: nginx
+  # Removed nodeSelector or use labels that actually exist
+  # You can check existing node labels with: kubectl get nodes --show-labels
+  # Example of a valid nodeSelector (if applicable):
+  # nodeSelector:
+  #   kubernetes.io/os: linux

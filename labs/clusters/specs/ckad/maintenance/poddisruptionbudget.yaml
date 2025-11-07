@@ -1,0 +1,207 @@
+# PodDisruptionBudget Examples - CKAD Practice
+#
+# Protects applications during node maintenance
+
+---
+# Example 1: Minimum available Pods
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web-app-pdb
+  labels:
+    app: web
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: web
+
+---
+# Deployment for PDB
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  labels:
+    app: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 2: Maximum unavailable Pods
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-pdb
+  labels:
+    app: api
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: api
+
+---
+# API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-deployment
+  labels:
+    app: api
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 3: Percentage-based PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: worker-pdb
+  labels:
+    app: worker
+spec:
+  minAvailable: 75%
+  selector:
+    matchLabels:
+      app: worker
+
+---
+# Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-deployment
+  labels:
+    app: worker
+spec:
+  replicas: 8
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker
+        image: busybox
+        command: ["sh", "-c", "while true; do echo Working...; sleep 60; done"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 4: Database with strict PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: database-pdb
+  labels:
+    app: database
+spec:
+  minAvailable: 100%
+  selector:
+    matchLabels:
+      app: database
+      role: primary
+
+---
+# Database Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-primary
+  labels:
+    app: database
+    role: primary
+spec:
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+---
+# Example 5: StatefulSet with PDB
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: redis-pdb
+  labels:
+    app: redis
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: redis
+
+---
+# Redis StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  labels:
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"

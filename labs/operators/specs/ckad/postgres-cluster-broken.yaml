@@ -1,0 +1,15 @@
+apiVersion: postgres.example.com/v1
+kind: PostgresCluster
+metadata:
+  name: broken-db
+  namespace: default
+spec:
+  version: "15"
+  replicas: 3
+  storage:
+    size: 1Gi  # Too small for production database
+    storageClass: nonexistent-storage-class  # This storage class doesn't exist
+  backup:
+    enabled: true
+    schedule: "invalid-cron"  # Invalid cron expression
+    retention: 100  # Exceeds maximum of 90

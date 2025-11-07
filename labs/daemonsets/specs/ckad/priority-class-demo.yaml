@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: critical-system-ds
+  labels:
+    app: critical-system
+spec:
+  selector:
+    matchLabels:
+      app: critical-system
+  template:
+    metadata:
+      labels:
+        app: critical-system
+    spec:
+      priorityClassName: system-node-critical
+
+      containers:
+      - name: system-app
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Critical system DaemonSet running"
+          echo "Priority: system-node-critical"
+          echo "This pod will preempt lower-priority pods if needed"
+          while true; do
+            echo "$(date): Critical system running"
+            sleep 30
+          done
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: normal-priority-app
+  labels:
+    app: normal-app
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: normal-app
+  template:
+    metadata:
+      labels:
+        app: normal-app
+    spec:
+      # No priorityClassName - uses default priority (0)
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo "Normal priority app" && sleep 3600']
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"

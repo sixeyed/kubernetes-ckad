@@ -1,0 +1,188 @@
+# Multi-namespace application with cross-namespace access
+# Demonstrates: Complex scenario with shared resources across namespaces
+# Create namespaces
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    tier: frontend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    tier: backend
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    tier: shared
+---
+# Shared resources in 'shared' namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shared-config
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  api.version: "v2"
+  cache.ttl: "3600"
+  environment: "production"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: shared-credentials
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  redis.password: "redis123"
+  cache.token: "cache-token-xyz"
+---
+# Frontend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-app
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Backend ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-api
+  namespace: backend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Role in shared namespace (read-only access to shared resources)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shared-reader
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+---
+# Frontend gets access to shared namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: frontend-shared-access
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shared-reader
+subjects:
+- kind: ServiceAccount
+  name: frontend-app
+  namespace: frontend
+---
+# Backend gets access to shared namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-shared-access
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shared-reader
+subjects:
+- kind: ServiceAccount
+  name: backend-api
+  namespace: backend
+---
+# Backend resources
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: backend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.host: "postgres.backend.svc"
+  database.port: "5432"
+---
+# Role: Frontend can query backend services
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: service-reader
+  namespace: backend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: frontend-backend-services
+  namespace: backend
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: service-reader
+subjects:
+- kind: ServiceAccount
+  name: frontend-app
+  namespace: frontend
+---
+# Example Pods
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-pod
+  namespace: frontend
+  labels:
+    app: frontend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: frontend-app
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-pod
+  namespace: backend
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: backend-api
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]

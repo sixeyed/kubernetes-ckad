@@ -1,0 +1,135 @@
+# BROKEN: Wrong pathType causes 404 errors
+# Issue: Using Exact when should use Prefix, or vice versa
+# Fix: Use correct pathType for the use case
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: web-app
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# BROKEN: Wrong pathType
+# Using Exact means only /api works, but /api/users will 404
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-pathtype-ingress
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: broken3.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Exact  # Wrong! Only matches /api exactly
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80
+
+# SOLUTION: Use Prefix to match /api and /api/*
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fixed-pathtype-ingress
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: fixed3.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix  # Correct! Matches /api, /api/, /api/users, etc.
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80
+---
+# BROKEN: Another common mistake - missing trailing slash handling
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-exact-slash
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: slash.example.com
+    http:
+      paths:
+      - path: /health/
+        pathType: Exact  # Only matches /health/ (with slash)
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80
+
+# FIX: Remove trailing slash with Exact, or use Prefix
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fixed-exact-slash
+  namespace: troubleshoot-3
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: fixed-slash.example.com
+    http:
+      paths:
+      - path: /health
+        pathType: Exact  # Matches /health exactly
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80

@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-service
+  template:
+    metadata:
+      labels:
+        app: api-service
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "api-general"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-v2-service
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-v2-service
+  template:
+    metadata:
+      labels:
+        app: api-v2-service
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "api-v2"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: health-service
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: health-service
+  template:
+    metadata:
+      labels:
+        app: health-service
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "health-check"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-svc
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: api-service
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-v2-svc
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: api-v2-service
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: health-svc
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: health-service
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+# Demonstrates path priority and mixing Exact + Prefix path types
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mixed-paths-ingress
+  namespace: mixed-paths
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: mixedpaths.local
+    http:
+      paths:
+      # Exact match takes priority - only matches /api/health exactly
+      - path: /api/health
+        pathType: Exact
+        backend:
+          service:
+            name: health-svc
+            port:
+              number: 8080
+      # Longer prefix takes priority - matches /api/v2 and /api/v2/*
+      - path: /api/v2
+        pathType: Prefix
+        backend:
+          service:
+            name: api-v2-svc
+            port:
+              number: 8080
+      # Shorter prefix - matches /api and /api/* (excluding already matched paths)
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api-svc
+            port:
+              number: 8080

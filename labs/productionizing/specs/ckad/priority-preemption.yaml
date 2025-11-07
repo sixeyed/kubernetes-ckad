@@ -1,0 +1,60 @@
+# Demonstrates Pod Priority and Preemption behavior
+# Create priority classes
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: low-priority
+value: 100
+globalDefault: false
+description: "Low priority for batch jobs"
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 1000
+globalDefault: false
+description: "High priority for critical services"
+---
+# Low priority pods - can be preempted
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: low-priority-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: low-priority
+  template:
+    metadata:
+      labels:
+        app: low-priority
+    spec:
+      priorityClassName: low-priority
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+---
+# High priority pod - will preempt low priority pods if needed
+apiVersion: v1
+kind: Pod
+metadata:
+  name: critical-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  priorityClassName: high-priority
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "2"
+        memory: "2Gi"

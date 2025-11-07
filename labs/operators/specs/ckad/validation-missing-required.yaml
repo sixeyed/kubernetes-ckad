@@ -1,0 +1,8 @@
+# This will fail validation - missing required fields
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: missing-fields
+spec:
+  engine: postgres
+  # Missing required fields: version and storageSize

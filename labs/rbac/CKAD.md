@@ -53,7 +53,25 @@ kubectl describe sa myapp
 
 📋 **CKAD Pattern**: You'll often need to create a ServiceAccount, configure RBAC, and attach it to a Pod.
 
-**TODO**: Create example `specs/ckad/serviceaccounts/basic-sa.yaml` with ServiceAccount, Role, RoleBinding, and Pod
+**Example**: [specs/ckad/serviceaccounts/basic-sa.yaml](specs/ckad/serviceaccounts/basic-sa.yaml)
+
+This example demonstrates the complete flow:
+1. ServiceAccount creation
+2. Role with pod reading permissions
+3. RoleBinding connecting SA to Role
+4. Pod configured to use the ServiceAccount
+
+```bash
+# Deploy the example
+kubectl apply -f labs/rbac/specs/ckad/serviceaccounts/basic-sa.yaml
+
+# Verify permissions
+kubectl auth can-i get pods --as=system:serviceaccount:default:basic-app
+kubectl auth can-i list pods --as=system:serviceaccount:default:basic-app
+
+# Check the pod
+kubectl get pod basic-app-pod -o jsonpath='{.spec.serviceAccountName}'
+```
 
 ### Using ServiceAccounts in Pods
 
@@ -85,7 +103,7 @@ kubectl set serviceaccount deployment myapp myapp
 
 Security best practice: Disable token mounting for apps that don't use the API:
 
-**TODO**: Create example `specs/ckad/serviceaccounts/no-token-pod.yaml`
+**Example**: [specs/ckad/serviceaccounts/no-token-pod.yaml](specs/ckad/serviceaccounts/no-token-pod.yaml)
 
 ```yaml
 # Option 1: Disable at Pod level
@@ -109,13 +127,22 @@ automountServiceAccountToken: false
 
 📋 **CKAD Security Tip**: Always disable automount for ServiceAccounts/Pods that don't need API access.
 
+```bash
+# Deploy the example
+kubectl apply -f labs/rbac/specs/ckad/serviceaccounts/no-token-pod.yaml
+
+# Verify no token is mounted
+kubectl exec no-token-pod -- ls /var/run/secrets/kubernetes.io/serviceaccount/
+# Should fail or show empty directory
+```
+
 ## Complex RBAC Rules
 
 ### Multiple Resources and Verbs
 
 Roles can define permissions for multiple resources:
 
-**TODO**: Create example `specs/ckad/roles/multi-resource-role.yaml`
+**Example**: [specs/ckad/roles/multi-resource-role.yaml](specs/ckad/roles/multi-resource-role.yaml)
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -144,11 +171,21 @@ rules:
 - Jobs, CronJobs: `apiGroups: ["batch"]`
 - NetworkPolicies: `apiGroups: ["networking.k8s.io"]`
 
+```bash
+# Deploy and test multi-resource role
+kubectl apply -f labs/rbac/specs/ckad/roles/multi-resource-role.yaml
+
+# Test various permissions
+kubectl auth can-i get pods --as=system:serviceaccount:default:app-manager-sa
+kubectl auth can-i update deployments --as=system:serviceaccount:default:app-manager-sa
+kubectl auth can-i get secrets --as=system:serviceaccount:default:app-manager-sa
+```
+
 ### Resource-Specific Permissions (resourceNames)
 
 Grant access to specific named resources:
 
-**TODO**: Create example `specs/ckad/roles/named-resources.yaml`
+**Example**: [specs/ckad/roles/named-resources.yaml](specs/ckad/roles/named-resources.yaml)
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -165,11 +202,27 @@ rules:
 
 ⚠️ **CKAD Gotcha**: `resourceNames` works with `get`, `delete`, `update`, `patch` but NOT with `list` or `watch`.
 
+```bash
+# Deploy example with named resource restrictions
+kubectl apply -f labs/rbac/specs/ckad/roles/named-resources.yaml
+
+# Verify specific secret access works
+kubectl auth can-i get secret/db-password --as=system:serviceaccount:default:secret-reader-sa
+
+# Verify other secrets are blocked
+kubectl auth can-i get secret/other-secret --as=system:serviceaccount:default:secret-reader-sa
+# Should return "no"
+
+# List won't work with resourceNames
+kubectl auth can-i list secrets --as=system:serviceaccount:default:secret-reader-sa
+# Returns "no" because resourceNames doesn't work with list
+```
+
 ### Subresource Permissions
 
 Some resources have subresources requiring explicit permissions:
 
-**TODO**: Create example `specs/ckad/roles/subresources.yaml`
+**Example**: [specs/ckad/roles/subresources.yaml](specs/ckad/roles/subresources.yaml)
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -195,6 +248,16 @@ Common subresources:
 - `pods/portforward` - Port forwarding
 - `pods/status` - Pod status updates
 - `deployments/scale` - Scaling deployments
+
+```bash
+# Deploy subresource example
+kubectl apply -f labs/rbac/specs/ckad/roles/subresources.yaml
+
+# Test subresource permissions
+kubectl auth can-i get pods/log --as=system:serviceaccount:default:pod-operator-sa
+kubectl auth can-i create pods/exec --as=system:serviceaccount:default:pod-operator-sa
+kubectl auth can-i update deployments/scale --as=system:serviceaccount:default:pod-operator-sa
+```
 
 ### Wildcard Permissions
 
@@ -254,13 +317,34 @@ kubectl create clusterrolebinding admin-user \
   --user=admin@example.com
 ```
 
-**TODO**: Create exercise using built-in roles for different personas
+**Example**: [specs/ckad/built-in-roles/personas.yaml](specs/ckad/built-in-roles/personas.yaml)
+
+This example demonstrates using built-in ClusterRoles for different user personas:
+- **Developer**: edit access in development, view in production
+- **Operator**: admin access in production
+- **Viewer**: view access across namespaces
+
+```bash
+# Deploy persona example
+kubectl apply -f labs/rbac/specs/ckad/built-in-roles/personas.yaml
+
+# Test developer permissions
+kubectl auth can-i create pods --as=system:serviceaccount:development:developer -n development  # yes
+kubectl auth can-i create pods --as=system:serviceaccount:development:developer -n production   # no
+
+# Test operator permissions
+kubectl auth can-i create rolebindings --as=system:serviceaccount:production:operator -n production  # yes
+
+# Test viewer permissions
+kubectl auth can-i get pods --as=system:serviceaccount:default:viewer -n development  # yes
+kubectl auth can-i delete pods --as=system:serviceaccount:default:viewer -n development  # no
+```
 
 ### Using ClusterRoles with RoleBindings
 
 ClusterRoles can be bound at namespace level for restricted scope:
 
-**TODO**: Create example `specs/ckad/rolebindings/clusterrole-in-namespace.yaml`
+**Example**: [specs/ckad/rolebindings/clusterrole-in-namespace.yaml](specs/ckad/rolebindings/clusterrole-in-namespace.yaml)
 
 ```yaml
 # ClusterRole defines permissions (reusable)
@@ -291,11 +375,25 @@ subjects:
 
 📋 **CKAD Pattern**: Use ClusterRole + RoleBinding to apply consistent permissions across multiple namespaces.
 
+```bash
+# Deploy ClusterRole in namespace example
+kubectl apply -f labs/rbac/specs/ckad/rolebindings/clusterrole-in-namespace.yaml
+
+# Verify SA can access secrets in dev namespace
+kubectl auth can-i get secrets --as=system:serviceaccount:dev:myapp -n dev  # yes
+
+# Verify SA can access secrets in staging namespace
+kubectl auth can-i get secrets --as=system:serviceaccount:dev:myapp -n staging  # yes
+
+# Verify SA cannot access secrets in other namespaces
+kubectl auth can-i get secrets --as=system:serviceaccount:dev:myapp -n default  # no
+```
+
 ## Aggregated ClusterRoles
 
 Aggregate permissions from multiple ClusterRoles using label selectors:
 
-**TODO**: Create example `specs/ckad/clusterroles/aggregated.yaml`
+**Example**: [specs/ckad/clusterroles/aggregated.yaml](specs/ckad/clusterroles/aggregated.yaml)
 
 ```yaml
 # Aggregated ClusterRole (collects permissions)
@@ -336,7 +434,37 @@ rules:
 
 📋 **CKAD Use Case**: Built-in roles like `admin`, `edit`, `view` use aggregation - you can extend them!
 
-**TODO**: Create exercise extending built-in view role with custom permissions
+```bash
+# Deploy aggregated ClusterRole example
+kubectl apply -f labs/rbac/specs/ckad/clusterroles/aggregated.yaml
+
+# Check that monitoring-reader has aggregated permissions
+kubectl describe clusterrole monitoring-reader
+
+# Test aggregated permissions
+kubectl auth can-i get pods --as=system:serviceaccount:default:monitoring-sa  # yes
+kubectl auth can-i get nodes --as=system:serviceaccount:default:monitoring-sa  # yes
+kubectl auth can-i get services --as=system:serviceaccount:default:monitoring-sa  # yes
+```
+
+**Exercise: Extending Built-in View Role**
+
+Example: [specs/ckad/aggregation/extend-view-role.yaml](specs/ckad/aggregation/extend-view-role.yaml)
+
+This demonstrates extending the built-in `view` ClusterRole with custom permissions:
+
+```bash
+# Deploy the extension
+kubectl apply -f labs/rbac/specs/ckad/aggregation/extend-view-role.yaml
+
+# The built-in 'view' ClusterRole now includes NetworkPolicy and PV permissions
+kubectl describe clusterrole view | grep -A 5 networkpolicies
+kubectl describe clusterrole view | grep -A 5 persistentvolumes
+
+# Test extended permissions
+kubectl create rolebinding test-view --clusterrole=view --serviceaccount=default:extended-viewer
+kubectl auth can-i get networkpolicies --as=system:serviceaccount:default:extended-viewer  # yes (extended)
+```
 
 ## RBAC for Specific Resources
 
@@ -344,7 +472,7 @@ rules:
 
 Grant restricted access to secrets:
 
-**TODO**: Create example `specs/ckad/rbac-secrets/secret-manager.yaml`
+**Example**: [specs/ckad/rbac-secrets/secret-manager.yaml](specs/ckad/rbac-secrets/secret-manager.yaml)
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -366,11 +494,25 @@ rules:
 
 ⚠️ **Security Note**: The `view` ClusterRole intentionally excludes Secrets and ConfigMaps.
 
+```bash
+# Deploy secret RBAC example
+kubectl apply -f labs/rbac/specs/ckad/rbac-secrets/secret-manager.yaml
+
+# Verify can list secrets
+kubectl auth can-i list secrets --as=system:serviceaccount:default:secret-manager-sa  # yes
+
+# Verify can get specific secret
+kubectl auth can-i get secret/app-secrets --as=system:serviceaccount:default:secret-manager-sa  # yes
+
+# Verify cannot get other secrets
+kubectl auth can-i get secret/admin-secrets --as=system:serviceaccount:default:secret-manager-sa  # no
+```
+
 ### ConfigMaps Access
 
 Similar pattern for ConfigMaps:
 
-**TODO**: Create example `specs/ckad/rbac-configmaps/configmap-editor.yaml`
+**Example**: [specs/ckad/rbac-configmaps/configmap-editor.yaml](specs/ckad/rbac-configmaps/configmap-editor.yaml)
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -382,6 +524,17 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+```
+
+```bash
+# Deploy ConfigMap RBAC examples
+kubectl apply -f labs/rbac/specs/ckad/rbac-configmaps/configmap-editor.yaml
+
+# Test full editor permissions
+kubectl auth can-i create configmaps --as=system:serviceaccount:default:configmap-editor-sa  # yes
+kubectl auth can-i delete configmaps --as=system:serviceaccount:default:configmap-editor-sa  # yes
+
+# The file also includes read-only and specific ConfigMap examples
 ```
 
 ### Service Account Token Access
@@ -409,7 +562,7 @@ rules:
 
 RoleBindings can reference subjects from other namespaces:
 
-**TODO**: Create example `specs/ckad/cross-namespace/cross-ns-access.yaml`
+**Example**: [specs/ckad/cross-namespace/cross-ns-access.yaml](specs/ckad/cross-namespace/cross-ns-access.yaml)
 
 ```yaml
 # ServiceAccount in namespace "app"
@@ -448,6 +601,18 @@ subjects:
 
 📋 **CKAD Pattern**: Apps often need to access resources in other namespaces (shared configs, monitoring).
 
+```bash
+# Deploy cross-namespace access example
+kubectl apply -f labs/rbac/specs/ckad/cross-namespace/cross-ns-access.yaml
+
+# Verify ServiceAccount from 'app' namespace can access resources in 'data' namespace
+kubectl auth can-i get configmaps --as=system:serviceaccount:app:data-processor -n data  # yes
+kubectl auth can-i get secrets --as=system:serviceaccount:app:data-processor -n data  # yes
+
+# Verify no access in app's own namespace (no binding there)
+kubectl auth can-i get configmaps --as=system:serviceaccount:app:data-processor -n app  # no
+```
+
 ### Listing Namespaces
 
 Namespace listing requires cluster-level permissions:
@@ -463,7 +628,30 @@ rules:
   verbs: ["get", "list"]
 ```
 
-**TODO**: Create exercise with multi-namespace application requiring cross-namespace access
+**Exercise: Multi-Namespace Application**
+
+Example: [specs/ckad/cross-namespace/multi-namespace-app.yaml](specs/ckad/cross-namespace/multi-namespace-app.yaml)
+
+This demonstrates a realistic multi-tier application with cross-namespace dependencies:
+
+```bash
+# Deploy multi-namespace application
+kubectl apply -f labs/rbac/specs/ckad/cross-namespace/multi-namespace-app.yaml
+
+# Verify frontend can access shared resources
+kubectl auth can-i get configmaps --as=system:serviceaccount:frontend:frontend-app -n shared  # yes
+kubectl auth can-i get secrets --as=system:serviceaccount:frontend:frontend-app -n shared  # yes
+
+# Verify frontend can query backend services
+kubectl auth can-i get services --as=system:serviceaccount:frontend:frontend-app -n backend  # yes
+
+# Verify backend can access shared resources
+kubectl auth can-i get configmaps --as=system:serviceaccount:backend:backend-api -n shared  # yes
+
+# Check the pods are running with correct permissions
+kubectl get pods -n frontend
+kubectl get pods -n backend
+```
 
 ## RBAC Troubleshooting
 
@@ -514,7 +702,22 @@ kubectl get rolebinding app-admin -o yaml
 
 ### Common RBAC Errors
 
-**TODO**: Create troubleshooting exercise with common errors
+**Troubleshooting Exercise**: [specs/ckad/troubleshooting/broken-rbac.yaml](specs/ckad/troubleshooting/broken-rbac.yaml) | [Fixed version](specs/ckad/troubleshooting/fixed-rbac.yaml)
+
+The broken-rbac.yaml file contains 5 common RBAC errors for practice. Try to identify and fix them!
+
+```bash
+# Deploy broken examples (they won't work correctly)
+kubectl apply -f labs/rbac/specs/ckad/troubleshooting/broken-rbac.yaml
+
+# Test and identify issues
+kubectl auth can-i get pods --as=system:serviceaccount:default:broken-sa-1
+kubectl describe rolebinding broken-binding-1
+kubectl describe role broken-role-3
+
+# Compare with fixed version
+kubectl apply -f labs/rbac/specs/ckad/troubleshooting/fixed-rbac.yaml
+```
 
 **Error 1**: Forbidden - Missing permissions
 ```
@@ -563,7 +766,24 @@ kubectl auth can-i get pods --as=system:serviceaccount:default:myapp
 
 ### Principle of Least Privilege
 
-**TODO**: Create examples demonstrating least privilege
+**Examples**: [specs/ckad/least-privilege/good-vs-bad.yaml](specs/ckad/least-privilege/good-vs-bad.yaml)
+
+This file contains 5 examples comparing bad (overly permissive) vs good (least privilege) RBAC patterns:
+
+```bash
+# Deploy good vs bad examples
+kubectl apply -f labs/rbac/specs/ckad/least-privilege/good-vs-bad.yaml
+
+# Review bad examples (labeled example: bad)
+kubectl get roles -l example=bad
+
+# Review good examples (labeled example: good)
+kubectl get roles -l example=good
+
+# Compare the differences
+kubectl describe role bad-wildcard-role
+kubectl describe role good-minimal-role
+```
 
 **Bad Example** (overly permissive):
 ```yaml
@@ -603,7 +823,7 @@ kubectl create sa data-processor
 
 Use namespaces + RBAC for environment isolation:
 
-**TODO**: Create example `specs/ckad/isolation/namespace-isolation.yaml`
+**Example**: [specs/ckad/isolation/namespace-isolation.yaml](specs/ckad/isolation/namespace-isolation.yaml)
 
 ```yaml
 # Dev namespace with relaxed permissions
@@ -647,6 +867,24 @@ subjects:
   name: developers
 ```
 
+```bash
+# Deploy namespace isolation example
+kubectl apply -f labs/rbac/specs/ckad/isolation/namespace-isolation.yaml
+
+# Test developer permissions (edit in dev, view in prod)
+kubectl auth can-i create pods --as=system:serviceaccount:default:developer -n dev  # yes
+kubectl auth can-i create pods --as=system:serviceaccount:default:developer -n prod  # no
+kubectl auth can-i get pods --as=system:serviceaccount:default:developer -n prod  # yes
+
+# Test SRE permissions (admin in prod)
+kubectl auth can-i create rolebindings --as=system:serviceaccount:default:sre -n prod  # yes
+kubectl auth can-i create rolebindings --as=system:serviceaccount:default:sre -n dev  # no
+
+# Test app ServiceAccount permissions (scoped to own namespace)
+kubectl auth can-i get secrets --as=system:serviceaccount:prod:app-prod -n prod  # yes
+kubectl auth can-i get secrets --as=system:serviceaccount:prod:app-prod -n dev  # no
+```
+
 ### Audit and Review
 
 Regular RBAC audits:
@@ -678,7 +916,28 @@ Create a ServiceAccount named `webapp` in the default namespace with permissions
 
 Deploy a Pod using this ServiceAccount and verify permissions.
 
-**TODO**: Create exercise spec and solution in `specs/ckad/exercises/ex1-basic-rbac/`
+**Exercise Files**:
+- [Exercise](specs/ckad/exercises/ex1-basic-rbac/exercise.yaml)
+- [Solution](specs/ckad/exercises/ex1-basic-rbac/solution.yaml)
+
+```bash
+# Try the exercise first
+cat labs/rbac/specs/ckad/exercises/ex1-basic-rbac/exercise.yaml
+
+# Create your solution
+kubectl create serviceaccount webapp
+kubectl create role webapp-role --verb=get,list --resource=pods,services
+kubectl create role configmap-getter --verb=get --resource=configmaps --resource-name=app-config
+# ... complete the rest
+
+# Or check the solution
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex1-basic-rbac/solution.yaml
+
+# Verify
+kubectl auth can-i get pods --as=system:serviceaccount:default:webapp  # yes
+kubectl auth can-i get configmap/app-config --as=system:serviceaccount:default:webapp  # yes
+kubectl auth can-i get configmap/other-config --as=system:serviceaccount:default:webapp  # no
+```
 
 ### Exercise 2: Multi-Resource Role
 
@@ -690,7 +949,28 @@ Create a Role named `developer` in namespace `dev` that allows:
 
 Bind this role to a ServiceAccount named `dev-user`.
 
-**TODO**: Create exercise spec and solution in `specs/ckad/exercises/ex2-multi-resource/`
+**Exercise Files**:
+- [Exercise](specs/ckad/exercises/ex2-multi-resource/exercise.yaml)
+- [Solution](specs/ckad/exercises/ex2-multi-resource/solution.yaml)
+
+```bash
+# Review the exercise
+cat labs/rbac/specs/ckad/exercises/ex2-multi-resource/exercise.yaml
+
+# Deploy the solution
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex2-multi-resource/solution.yaml
+
+# Verify full Pod access
+kubectl auth can-i create pods --as=system:serviceaccount:dev:dev-user -n dev  # yes
+kubectl auth can-i delete pods --as=system:serviceaccount:dev:dev-user -n dev  # yes
+
+# Verify read-only Deployment access
+kubectl auth can-i get deployments --as=system:serviceaccount:dev:dev-user -n dev  # yes
+kubectl auth can-i update deployments --as=system:serviceaccount:dev:dev-user -n dev  # no
+
+# Verify no Secret access
+kubectl auth can-i get secrets --as=system:serviceaccount:dev:dev-user -n dev  # no
+```
 
 ### Exercise 3: Cross-Namespace Access
 
@@ -701,7 +981,26 @@ Setup scenario:
 
 Configure RBAC to enable this access pattern.
 
-**TODO**: Create exercise spec and solution in `specs/ckad/exercises/ex3-cross-namespace/`
+**Exercise Files**:
+- [Exercise](specs/ckad/exercises/ex3-cross-namespace/exercise.yaml)
+- [Solution](specs/ckad/exercises/ex3-cross-namespace/solution.yaml)
+
+```bash
+# Review the exercise requirements
+cat labs/rbac/specs/ckad/exercises/ex3-cross-namespace/exercise.yaml
+
+# Deploy the solution
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex3-cross-namespace/solution.yaml
+
+# Verify cross-namespace access works
+kubectl auth can-i get configmap/shared-config --as=system:serviceaccount:app:backend -n shared  # yes
+
+# Verify access to other ConfigMaps is blocked
+kubectl auth can-i get configmap/other-config --as=system:serviceaccount:app:backend -n shared  # no
+
+# Verify list is blocked (resourceNames doesn't work with list)
+kubectl auth can-i list configmaps --as=system:serviceaccount:app:backend -n shared  # no
+```
 
 ### Exercise 4: Troubleshoot RBAC
 
@@ -711,7 +1010,31 @@ Given a broken RBAC configuration where a Pod can't access required resources:
 3. Fix the configuration
 4. Verify the Pod now works
 
-**TODO**: Create broken scenario and solution in `specs/ckad/exercises/ex4-troubleshoot/`
+**Exercise Files**:
+- [Broken Configuration](specs/ckad/exercises/ex4-troubleshoot/broken.yaml)
+- [Fixed Solution](specs/ckad/exercises/ex4-troubleshoot/solution.yaml)
+
+```bash
+# Deploy the broken configuration
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex4-troubleshoot/broken.yaml
+
+# Test and identify issues
+kubectl auth can-i get configmaps --as=system:serviceaccount:default:app-reader
+# Should be "yes" but returns "no"
+
+# Debug the issue
+kubectl describe role configmap-reader
+# Notice wrong API group
+
+kubectl describe rolebinding app-reader-binding
+# Notice missing namespace in subject
+
+# Apply the fix
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex4-troubleshoot/solution.yaml
+
+# Verify fixed
+kubectl auth can-i get configmaps --as=system:serviceaccount:default:app-reader  # yes
+```
 
 ### Exercise 5: Secure Application Deployment
 
@@ -722,7 +1045,35 @@ Deploy a complete application with production-grade RBAC:
 - Use namespaces for isolation
 - Verify with `kubectl auth can-i` commands
 
-**TODO**: Create comprehensive exercise in `specs/ckad/exercises/ex5-production/`
+**Exercise Files**:
+- [Exercise Requirements](specs/ckad/exercises/ex5-production/exercise.yaml)
+- [Complete Solution](specs/ckad/exercises/ex5-production/solution.yaml)
+
+```bash
+# Review the exercise requirements
+cat labs/rbac/specs/ckad/exercises/ex5-production/exercise.yaml
+
+# Deploy the complete production solution
+kubectl apply -f labs/rbac/specs/ckad/exercises/ex5-production/solution.yaml
+
+# Verify frontend permissions (minimal, no token)
+kubectl auth can-i get configmap/frontend-config --as=system:serviceaccount:production:frontend-app -n production  # yes
+kubectl auth can-i get configmap/backend-config --as=system:serviceaccount:production:frontend-app -n production  # no
+kubectl auth can-i list services --as=system:serviceaccount:production:frontend-app -n production  # no
+
+# Verify backend permissions (service discovery enabled)
+kubectl auth can-i get configmap/backend-config --as=system:serviceaccount:production:backend-api -n production  # yes
+kubectl auth can-i list services --as=system:serviceaccount:production:backend-api -n production  # yes
+kubectl auth can-i list pods --as=system:serviceaccount:production:backend-api -n production  # yes
+kubectl auth can-i get secret/frontend-secrets --as=system:serviceaccount:production:backend-api -n production  # no
+
+# Check token mounting
+kubectl get deployment frontend -n production -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'  # false
+kubectl get deployment backend -n production -o jsonpath='{.spec.template.spec.automountServiceAccountToken}'  # true
+
+# View the complete architecture
+kubectl get all,sa,role,rolebinding -n production
+```
 
 ## Common CKAD Exam Scenarios
 

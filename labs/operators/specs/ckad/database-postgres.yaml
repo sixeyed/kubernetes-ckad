@@ -1,0 +1,16 @@
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: production-postgres
+  namespace: default
+  labels:
+    environment: production
+    team: backend
+spec:
+  engine: postgres
+  version: "14.5"
+  storageSize: 50Gi
+  replicas: 3
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"

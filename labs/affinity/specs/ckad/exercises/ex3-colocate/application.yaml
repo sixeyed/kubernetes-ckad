@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: colocate-demo
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: colocate-demo
+  template:
+    metadata:
+      labels:
+        app: colocate-demo
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        podAffinity:
+          # MUST run on same node as cache pods
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: cache
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

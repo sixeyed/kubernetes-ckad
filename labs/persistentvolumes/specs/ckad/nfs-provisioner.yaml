@@ -1,0 +1,310 @@
+# NFS Server Deployment for testing ReadWriteMany
+# This is a simple NFS server for development/testing only
+# For production, use managed NFS solutions (AWS EFS, Azure Files, GCP Filestore)
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs-provisioner
+---
+# NFS Server using hostPath (for single-node clusters like Docker Desktop)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-server-pv
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /tmp/nfs-server-data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-server-pvc
+  namespace: nfs-provisioner
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+---
+# NFS Server Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  namespace: nfs-provisioner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfs-server
+  template:
+    metadata:
+      labels:
+        app: nfs-server
+    spec:
+      containers:
+      - name: nfs-server
+        image: k8s.gcr.io/volume-nfs:0.8
+        ports:
+        - name: nfs
+          containerPort: 2049
+        - name: mountd
+          containerPort: 20048
+        - name: rpcbind
+          containerPort: 111
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: storage
+          mountPath: /exports
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: nfs-server-pvc
+---
+# NFS Server Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-server
+  namespace: nfs-provisioner
+spec:
+  ports:
+  - name: nfs
+    port: 2049
+  - name: mountd
+    port: 20048
+  - name: rpcbind
+    port: 111
+  selector:
+    app: nfs-server
+  clusterIP: 10.96.0.200  # Use a fixed IP for easier PV configuration
+---
+# PersistentVolume using the NFS server
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv-rwx
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteMany  # NFS supports ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: nfs-server.nfs-provisioner.svc.cluster.local
+    path: "/"
+---
+# PVC using ReadWriteMany
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-nfs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  # No storageClassName - manually bound to PV above
+---
+# Example 1: Multiple Pods sharing NFS volume (ReadWriteMany)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-writer
+spec:
+  replicas: 2  # Multiple replicas can write simultaneously
+  selector:
+    matchLabels:
+      app: nfs-writer
+  template:
+    metadata:
+      labels:
+        app: nfs-writer
+    spec:
+      containers:
+      - name: writer
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            while true; do
+              echo "$(date) - Written by $(hostname)" >> /data/shared.log
+              sleep 5
+            done
+        volumeMounts:
+        - name: shared
+          mountPath: /data
+      volumes:
+      - name: shared
+        persistentVolumeClaim:
+          claimName: shared-nfs-pvc
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-reader
+spec:
+  replicas: 3  # Multiple readers can also access simultaneously
+  selector:
+    matchLabels:
+      app: nfs-reader
+  template:
+    metadata:
+      labels:
+        app: nfs-reader
+    spec:
+      containers:
+      - name: reader
+        image: busybox
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            while true; do
+              echo "=== Latest entries from $(hostname) ==="
+              tail -5 /data/shared.log
+              sleep 10
+            done
+        volumeMounts:
+        - name: shared
+          mountPath: /data
+      volumes:
+      - name: shared
+        persistentVolumeClaim:
+          claimName: shared-nfs-pvc
+---
+# Example 2: HostPath with ReadWriteMany (single-node clusters only)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hostpath-rwx-pv
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany  # Only works on single-node clusters!
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hostpath-rwx
+  hostPath:
+    path: /tmp/shared-data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hostpath-rwx-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: hostpath-rwx
+  resources:
+    requests:
+      storage: 2Gi
+---
+# ConfigMap with RWX troubleshooting guide
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rwx-troubleshooting-guide
+data:
+  troubleshooting.md: |
+    # ReadWriteMany (RWX) Troubleshooting Guide
+
+    ## Common Issues by Cluster Type
+
+    ### Docker Desktop / Minikube (Single Node)
+    **Symptom**: PVC stuck in Pending
+    **Cause**: Default StorageClass doesn't support RWX
+    **Solution**: Use hostPath PV with RWX (works on single-node only)
+
+    ### AWS EKS
+    **Symptom**: PVC with RWX stays Pending
+    **Cause**: EBS volumes only support ReadWriteOnce
+    **Solutions**:
+    - Use AWS EFS (Elastic File System) with EFS CSI driver
+    - Install EFS CSI driver:
+      kubectl apply -k "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.5"
+    - Create EFS filesystem in AWS console
+    - Create StorageClass pointing to EFS
+
+    ### Azure AKS
+    **Symptom**: PVC with RWX on Azure Disk fails
+    **Cause**: Azure Disks only support ReadWriteOnce
+    **Solutions**:
+    - Use Azure Files with azurefile StorageClass
+    - Built-in support in AKS with azurefile StorageClass
+    - Example: storageClassName: azurefile
+
+    ### GCP GKE
+    **Symptom**: PVC with RWX on GCP Persistent Disk fails
+    **Cause**: GCP PD only supports ReadWriteOnce
+    **Solutions**:
+    - Use Google Filestore with Filestore CSI driver
+    - Install Filestore CSI driver
+    - Create Filestore instance
+    - Use storageClassName pointing to Filestore
+
+    ### On-Premises / Bare Metal
+    **Solutions**:
+    - Deploy NFS server (as shown in nfs-provisioner.yaml)
+    - Use Rook-Ceph for distributed storage
+    - Use GlusterFS
+    - Use Longhorn
+
+    ## Verification Commands
+
+    # Check if StorageClass supports RWX
+    kubectl get sc -o custom-columns=NAME:.metadata.name,PROVISIONER:.provisioner
+
+    # Test RWX by creating multiple Pods
+    kubectl get pods -o wide  # Check if Pods are on different nodes
+
+    # Check mount status in Pod
+    kubectl exec <pod-name> -- mount | grep <mount-path>
+
+    # Check for NFS mounts specifically
+    kubectl exec <pod-name> -- mount -t nfs
+
+    # View PVC access mode
+    kubectl get pvc <pvc-name> -o jsonpath='{.status.accessModes}'
+
+    ## Cloud Provider Managed Solutions
+
+    AWS:
+    - EFS (Elastic File System) - Managed NFS
+    - FSx for Lustre - High-performance file system
+
+    Azure:
+    - Azure Files - SMB/NFS file shares
+    - Azure NetApp Files - Enterprise-grade NFS
+
+    GCP:
+    - Filestore - Managed NFS
+    - Cloud Storage FUSE - Object storage as filesystem
+
+    ## Testing RWX Setup
+
+    # Deploy test writers on different nodes
+    kubectl apply -f nfs-provisioner.yaml
+
+    # Wait for all Pods to be running
+    kubectl wait --for=condition=Ready pod -l app=nfs-writer --timeout=60s
+
+    # Check that Pods are on different nodes (if multi-node cluster)
+    kubectl get pods -l app=nfs-writer -o wide
+
+    # Verify shared writes
+    kubectl exec -it deployment/nfs-reader -- cat /data/shared.log
+
+    # Should see entries from multiple writer Pods

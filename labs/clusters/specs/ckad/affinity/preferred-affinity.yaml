@@ -1,0 +1,287 @@
+# Preferred Node Affinity - CKAD Practice
+#
+# Soft constraint - scheduler tries to honor but not required
+# Uses preferredDuringSchedulingIgnoredDuringExecution
+
+---
+# Example 1: Basic preferred affinity
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prefer-ssd
+  labels:
+    app: flexible-app
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 2: Multiple preferences with weights
+apiVersion: v1
+kind: Pod
+metadata:
+  name: weighted-preferences
+  labels:
+    app: smart-scheduling
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: network
+            operator: In
+            values:
+            - 10gbit
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 3: High weight preference (strongly preferred)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: strongly-prefer-gpu
+  labels:
+    app: ml-optional
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: gpu
+            operator: Exists
+  containers:
+  - name: training
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'Prefer GPU but can run without'; sleep 3600"]
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+---
+# Example 4: Prefer specific zones
+apiVersion: v1
+kind: Pod
+metadata:
+  name: zone-preference
+  labels:
+    app: regional-app
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - us-east-1a
+      - weight: 30
+        preference:
+          matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - us-east-1b
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 5: Prefer but avoid
+apiVersion: v1
+kind: Pod
+metadata:
+  name: complex-preference
+  labels:
+    app: optimized
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: workload
+            operator: In
+            values:
+            - compute-intensive
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: NotIn
+            values:
+            - hdd
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo 'Optimized placement'; sleep 3600"]
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+
+---
+# Example 6: Deployment with preferred affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flexible-deployment
+  labels:
+    app: flexible
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: flexible
+  template:
+    metadata:
+      labels:
+        app: flexible
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 70
+            preference:
+              matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+          - weight: 30
+            preference:
+              matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 7: Prefer nodes with multiple characteristics
+apiVersion: v1
+kind: Pod
+metadata:
+  name: optimal-placement
+  labels:
+    app: premium-service
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 40
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - nvme
+      - weight: 30
+        preference:
+          matchExpressions:
+          - key: memory
+            operator: In
+            values:
+            - high
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: network
+            operator: In
+            values:
+            - 10gbit
+      - weight: 10
+        preference:
+          matchExpressions:
+          - key: cpu
+            operator: In
+            values:
+            - high-frequency
+  containers:
+  - name: service
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 8: Avoid spot instances (preferred)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stable-preferred
+  labels:
+    app: stable
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: stable
+  template:
+    metadata:
+      labels:
+        app: stable
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: node.kubernetes.io/instance-lifecycle
+                operator: DoesNotExist
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"

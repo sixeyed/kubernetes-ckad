@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: latency-sensitive-app
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: workload-type
+            operator: In
+            values:
+            - batch
+            - ml-training
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"

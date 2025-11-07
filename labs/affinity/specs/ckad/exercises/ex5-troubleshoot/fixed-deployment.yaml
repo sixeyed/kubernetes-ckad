@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: troubleshoot-demo
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: troubleshoot-demo
+  template:
+    metadata:
+      labels:
+        app: troubleshoot-demo
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        nodeAffinity:
+          # Changed to use standard kubernetes.io/os label that exists
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+          # Moved the disktype requirement to preferred (soft)
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: disktype
+                operator: In
+                values:
+                - ultra-fast
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

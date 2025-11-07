@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-init
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami-init
+  template:
+    metadata:
+      labels:
+        app: whoami-init
+        version: v1
+    spec:
+      # INIT CONTAINERS: Run before main containers, must complete successfully
+      # Run in order, one at a time
+      # Use cases: setup, dependency checks, data population
+      initContainers:
+
+      # Init container 1: Wait for a service to be available
+      - name: wait-for-service
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo Waiting for service... && sleep 5']
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "50m"
+          limits:
+            memory: "32Mi"
+            cpu: "100m"
+
+      # Init container 2: Setup configuration
+      - name: setup-config
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Setting up configuration..."
+          echo "App initialized at $(date)" > /work-dir/init-info.txt
+          echo "Setup complete!"
+        volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "50m"
+          limits:
+            memory: "32Mi"
+            cpu: "100m"
+
+      # MAIN CONTAINER: Starts only after all init containers succeed
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        # Can access files created by init containers
+        volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 2
+          periodSeconds: 5
+
+      # Shared volume between init and main containers
+      volumes:
+      - name: workdir
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-init
+  labels:
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  selector:
+    app: whoami-init
+  ports:
+  - port: 80
+    targetPort: http

@@ -1,0 +1,84 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: databasebackups.backup.example.com
+spec:
+  group: backup.example.com
+  names:
+    plural: databasebackups
+    singular: databasebackup
+    kind: DatabaseBackup
+    shortNames:
+    - dbbkp
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Database
+      type: string
+      jsonPath: .spec.databaseRef.name
+    - name: Type
+      type: string
+      jsonPath: .spec.backupType
+    - name: Status
+      type: string
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              databaseRef:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+              backupType:
+                type: string
+                enum: ["full", "incremental", "snapshot"]
+              destination:
+                type: object
+                properties:
+                  s3:
+                    type: object
+                    properties:
+                      bucket:
+                        type: string
+                      prefix:
+                        type: string
+                      region:
+                        type: string
+              retention:
+                type: integer
+                minimum: 1
+                maximum: 90
+            required:
+            - databaseRef
+            - backupType
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Running", "Completed", "Failed"]
+              startTime:
+                type: string
+                format: date-time
+              completionTime:
+                type: string
+                format: date-time
+              backupSize:
+                type: string
+              message:
+                type: string

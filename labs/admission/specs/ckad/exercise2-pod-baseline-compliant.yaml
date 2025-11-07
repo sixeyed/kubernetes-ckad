@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-baseline
+  namespace: secure-app
+  labels:
+    app: nginx
+spec:
+  # No hostNetwork, hostPID, hostIPC, or privileged containers
+  # Meets baseline requirements
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"

@@ -1,0 +1,54 @@
+# Broken operator - missing RBAC permissions
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: broken-operator
+  namespace: default
+---
+# ClusterRole with insufficient permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: broken-operator
+rules:
+# Only has read permissions, cannot create resources
+- apiGroups: ["apps.example.com"]
+  resources: ["webapps"]
+  verbs: ["get", "list", "watch"]
+# Missing permissions for deployments, services, etc.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: broken-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: broken-operator
+subjects:
+- kind: ServiceAccount
+  name: broken-operator
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broken-operator
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: broken-operator
+  template:
+    metadata:
+      labels:
+        app: broken-operator
+    spec:
+      serviceAccountName: broken-operator
+      containers:
+      - name: operator
+        image: kiamol/ch10-image-gallery-operator:latest
+        env:
+        - name: WATCH_NAMESPACE
+          value: ""

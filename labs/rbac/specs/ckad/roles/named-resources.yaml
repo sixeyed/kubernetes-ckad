@@ -1,0 +1,75 @@
+# Role with resource-specific permissions using resourceNames
+# Demonstrates: Restricting access to specific named resources
+# NOTE: resourceNames works with get, delete, update, patch but NOT with list or watch
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-password
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  password: "super-secret-db-pass"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: api-key
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  key: "api-key-12345"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: other-secret
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  data: "not accessible"
+---
+# Role that only allows reading specific secrets by name
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: specific-secret-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["db-password", "api-key"]  # Only these specific secrets
+  verbs: ["get"]  # Works with get (not list/watch)
+---
+# ServiceAccount for testing
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: secret-reader-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: secret-reader-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: specific-secret-reader
+subjects:
+- kind: ServiceAccount
+  name: secret-reader-sa
+  namespace: default

@@ -1,0 +1,192 @@
+# Least privilege principle examples
+# Demonstrates good vs bad RBAC practices
+# BAD EXAMPLE 1: Overly permissive wildcard permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bad-wildcard-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: bad
+rules:
+- apiGroups: ["*"]  # BAD: All API groups
+  resources: ["*"]  # BAD: All resources
+  verbs: ["*"]      # BAD: All verbs (full access)
+---
+# GOOD EXAMPLE 1: Minimal specific permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: good-minimal-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["app-config"]  # GOOD: Specific resource only
+  verbs: ["get"]                 # GOOD: Only what's needed
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["app-secrets"]
+  verbs: ["get"]
+---
+# BAD EXAMPLE 2: Unnecessary create/delete permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bad-excessive-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: bad
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # BAD: App only needs to read ConfigMaps/Secrets, not create/delete
+---
+# GOOD EXAMPLE 2: Read-only where appropriate
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: good-readonly-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]  # GOOD: Read-only access
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]  # GOOD: Can monitor pods
+---
+# BAD EXAMPLE 3: Accessing secrets unnecessarily
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: bad-secret-access
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: bad
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]  # BAD: App doesn't need runtime secret access
+---
+# GOOD EXAMPLE 3: No secret access (secrets mounted via Pod spec)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: good-no-secret-access
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]  # GOOD: No secret access at all
+# Secrets are mounted directly via Pod spec, not accessed via API
+---
+# BAD EXAMPLE 4: Cluster-wide permissions for namespace-scoped app
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: bad-clusterwide-role
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: bad
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+  # BAD: ClusterRole when app only needs access in one namespace
+---
+# GOOD EXAMPLE 4: Namespace-scoped Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: good-namespaced-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services"]
+  verbs: ["get", "list", "watch"]
+  # GOOD: Role scoped to specific namespace
+---
+# BAD EXAMPLE 5: Sharing default ServiceAccount
+# Multiple pods using 'default' ServiceAccount with elevated permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: bad-default-sa-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: bad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit  # BAD: Giving 'edit' to default SA affects all pods
+subjects:
+- kind: ServiceAccount
+  name: default  # BAD: Don't grant permissions to default SA
+  namespace: default
+---
+# GOOD EXAMPLE 5: Dedicated ServiceAccount per application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: frontend-app
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend-api
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: frontend-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+rules:
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list"]  # Frontend only needs to discover services
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: frontend-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+    example: good
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: frontend-role
+subjects:
+- kind: ServiceAccount
+  name: frontend-app  # GOOD: Dedicated SA with minimal permissions
+  namespace: default

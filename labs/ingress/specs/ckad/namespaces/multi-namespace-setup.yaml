@@ -1,0 +1,149 @@
+# Demonstrates services in different namespaces
+# Key point: Ingress can only reference Services in the SAME namespace
+
+# Namespace 1: Frontend
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "frontend"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: web-app
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# Namespace 2: API Backend
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: api
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+  namespace: api
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-service
+  template:
+    metadata:
+      labels:
+        app: api-service
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "api-backend"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-svc
+  namespace: api
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: api-service
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+# Namespace 3: Admin
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: admin
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-portal
+  namespace: admin
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: admin-portal
+  template:
+    metadata:
+      labels:
+        app: admin-portal
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "admin-portal"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-svc
+  namespace: admin
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: admin-portal
+  ports:
+  - port: 80
+    targetPort: 80

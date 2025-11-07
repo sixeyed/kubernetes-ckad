@@ -1,0 +1,56 @@
+# Demonstrates Resource Quota enforcement in a namespace
+# First, create a namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quota-demo
+---
+# Apply resource quota to the namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: quota-demo
+spec:
+  hard:
+    requests.cpu: "2"        # Total CPU requests cannot exceed 2 cores
+    requests.memory: "2Gi"   # Total memory requests cannot exceed 2Gi
+    limits.cpu: "4"          # Total CPU limits cannot exceed 4 cores
+    limits.memory: "4Gi"     # Total memory limits cannot exceed 4Gi
+    pods: "10"               # Maximum 10 pods
+---
+# This pod will succeed (within quota)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: within-quota
+  namespace: quota-demo
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+---
+# This pod will fail if it exceeds remaining quota
+apiVersion: v1
+kind: Pod
+metadata:
+  name: exceeds-quota
+  namespace: quota-demo
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "2"       # Will fail if combined with other pods exceeds quota
+        memory: "2Gi"
+      limits:
+        cpu: "3"
+        memory: "3Gi"

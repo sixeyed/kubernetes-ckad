@@ -1,0 +1,75 @@
+# Demonstrates LimitRange applying defaults and enforcing constraints
+# First, create a namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: limitrange-demo
+---
+# Apply LimitRange to the namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: resource-limits
+  namespace: limitrange-demo
+spec:
+  limits:
+  - max:
+      cpu: "2"         # Container cannot request more than 2 cores
+      memory: "2Gi"    # Container cannot request more than 2Gi
+    min:
+      cpu: "100m"      # Container must request at least 100m
+      memory: "128Mi"  # Container must request at least 128Mi
+    default:
+      cpu: "500m"      # Default limit if not specified
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "250m"      # Default request if not specified
+      memory: "256Mi"
+    type: Container
+---
+# Pod with no resources specified - will get defaults from LimitRange
+apiVersion: v1
+kind: Pod
+metadata:
+  name: default-resources
+  namespace: limitrange-demo
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    # No resources specified - will get:
+    # requests: cpu=250m, memory=256Mi
+    # limits: cpu=500m, memory=512Mi
+---
+# Pod within limits - will succeed
+apiVersion: v1
+kind: Pod
+metadata:
+  name: within-limits
+  namespace: limitrange-demo
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "1"
+        memory: "1Gi"
+---
+# Pod exceeding max - will be rejected
+apiVersion: v1
+kind: Pod
+metadata:
+  name: exceeds-max
+  namespace: limitrange-demo
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "3"       # Exceeds max of 2 cores - will be rejected
+        memory: "3Gi"  # Exceeds max of 2Gi - will be rejected

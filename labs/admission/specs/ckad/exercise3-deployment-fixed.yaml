@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: quota-demo
+  labels:
+    app: web-app
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "256Mi"  # 5 pods * 256Mi = 1.25Gi (well within quota)
+            cpu: "200m"      # 5 pods * 200m = 1 core (within quota of 2 cores)
+          limits:
+            memory: "512Mi"  # 5 pods * 512Mi = 2.5Gi (within quota of 8Gi)
+            cpu: "500m"      # 5 pods * 500m = 2.5 cores (within quota of 4 cores)

@@ -1,0 +1,9 @@
+# This will fail validation - invalid storage format
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: invalid-storage
+spec:
+  engine: mysql
+  version: "8.0"
+  storageSize: 100GB  # Should be 100Gi or 100Mi

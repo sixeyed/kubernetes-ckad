@@ -850,13 +850,467 @@ podSelector:
 
 ## Advanced Topics
 
-TODO: Add sections on:
-- Named ports in NetworkPolicy
-- Combining multiple NetworkPolicies (order and precedence)
-- NetworkPolicy for StatefulSets with stable network identities
-- Using endPort for port ranges (1.22+)
-- NetworkPolicy best practices for microservices
-- Performance considerations with many policies
+### Named Ports in NetworkPolicy
+
+NetworkPolicy can reference ports by name (as defined in Pod spec) instead of numbers:
+
+```yaml
+# Pod with named port
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+  labels:
+    app: web
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    ports:
+    - name: http
+      containerPort: 80
+    - name: https
+      containerPort: 443
+---
+# NetworkPolicy using named ports
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-allow-http
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: http  # References the named port
+```
+
+**Benefits:**
+- More maintainable - change port number in one place
+- Self-documenting - port names describe purpose
+- Flexibility - different pods can use different port numbers for same service
+
+**Important:** Named port must exist in the target Pod's container spec.
+
+### Combining Multiple NetworkPolicies
+
+NetworkPolicies are **additive** - multiple policies combine with OR logic:
+
+```yaml
+# Policy 1: Allow from frontend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+---
+# Policy 2: Allow from monitoring
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus
+```
+
+**Result:** `app=api` pods accept traffic from **both** `app=frontend` AND `app=prometheus`.
+
+**Key Points:**
+- No precedence or priority - all matching policies apply
+- Union of all rules - any policy allowing traffic permits it
+- Cannot use one policy to deny what another allows
+- Order doesn't matter - policies are evaluated together
+
+**Pattern: Incremental Access**
+```yaml
+# 1. Start with deny-all
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+---
+# 2. Add access as needed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-to-api
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web
+```
+
+### NetworkPolicy for StatefulSets
+
+StatefulSets have stable network identities - use this for precise control:
+
+```yaml
+# StatefulSet (stable pod names: db-0, db-1, db-2)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+spec:
+  serviceName: db
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:13
+        ports:
+        - containerPort: 5432
+---
+# Headless Service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+spec:
+  clusterIP: None
+  selector:
+    app: database
+  ports:
+  - port: 5432
+---
+# NetworkPolicy for StatefulSet
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from application pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow inter-pod communication for replication
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: 5432
+```
+
+**StatefulSet Considerations:**
+- Pods need to communicate with each other (replication, clustering)
+- Egress rules must allow pod-to-pod within the StatefulSet
+- Each pod has stable DNS: `db-0.db.namespace.svc.cluster.local`
+- NetworkPolicy applies to all replicas (uses same labels)
+
+### Using endPort for Port Ranges (1.22+)
+
+Kubernetes 1.22+ supports port ranges with `endPort`:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-range
+spec:
+  podSelector:
+    matchLabels:
+      app: media-server
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    # Allow RTP media ports 10000-20000
+    - protocol: UDP
+      port: 10000
+      endPort: 20000
+    # Single port can still be specified
+    - protocol: TCP
+      port: 8080
+```
+
+**Use Cases:**
+- Media streaming (RTP/RTCP dynamic ports)
+- FTP passive mode (dynamic data ports)
+- Database clusters with port ranges
+- Legacy applications with configurable port ranges
+
+**Important:**
+- Requires Kubernetes 1.22+ and CNI plugin support
+- `port` is the start of range (inclusive)
+- `endPort` is the end of range (inclusive)
+- Both port and endPort must be specified
+
+### NetworkPolicy Best Practices for Microservices
+
+**1. Defense in Depth**
+```yaml
+# Start with deny-all
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+```
+
+**2. Service-Specific Policies**
+```yaml
+# One policy per service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: user-service-policy
+spec:
+  podSelector:
+    matchLabels:
+      service: user-api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          service: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          service: user-database
+    ports:
+    - protocol: TCP
+      port: 5432
+```
+
+**3. Always Allow DNS**
+```yaml
+# Include in every egress policy
+egress:
+- to:
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+  ports:
+  - protocol: UDP
+    port: 53
+  - protocol: TCP
+    port: 53
+```
+
+**4. Monitoring and Observability**
+```yaml
+# Allow Prometheus scraping
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus
+spec:
+  podSelector:
+    matchLabels:
+      prometheus: scrape
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+      podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 9090
+```
+
+**5. Namespace Isolation**
+```yaml
+# Isolate production from development
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: namespace-isolation
+  namespace: production
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector: {}  # Same namespace only
+  egress:
+  - to:
+    - podSelector: {}  # Same namespace only
+  - to:  # Allow DNS
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+```
+
+**6. Use Labels Consistently**
+```yaml
+# Standard label structure
+metadata:
+  labels:
+    app: user-service        # Application name
+    tier: backend           # Architecture tier
+    version: v2             # Version (for canary)
+    team: platform          # Owning team
+```
+
+### Performance Considerations
+
+**Scale Challenges:**
+- Each NetworkPolicy is processed by every node's CNI plugin
+- Many policies increase CPU/memory on nodes
+- Complex selectors are more expensive to evaluate
+
+**Optimization Strategies:**
+
+**1. Consolidate Policies**
+```yaml
+# Instead of multiple policies per pod
+# BAD: 5 separate policies for same podSelector
+---
+# GOOD: One policy with all rules
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-all-rules
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: web
+    - podSelector:
+        matchLabels:
+          app: mobile
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # All egress rules here
+```
+
+**2. Use Namespace-Level Policies**
+```yaml
+# One policy for entire namespace instead of per-service
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: namespace-policy
+spec:
+  podSelector: {}  # All pods in namespace
+  # Common rules for all services
+```
+
+**3. Avoid Overly Complex Selectors**
+```yaml
+# SLOW: Complex matchExpressions
+podSelector:
+  matchExpressions:
+  - key: app
+    operator: In
+    values: [web, api, frontend, backend]
+  - key: version
+    operator: NotIn
+    values: [v1, v2]
+
+# FAST: Simple matchLabels
+podSelector:
+  matchLabels:
+    tier: frontend
+```
+
+**4. Monitor NetworkPolicy Performance**
+```bash
+# Check node CPU/memory with many policies
+kubectl top nodes
+
+# Count policies per namespace
+kubectl get netpol --all-namespaces | wc -l
+
+# Review policy complexity
+kubectl get netpol -o yaml | grep -E "podSelector|namespaceSelector"
+```
+
+**Performance Guidelines:**
+- **< 100 policies**: No issues
+- **100-500 policies**: Monitor node resources
+- **> 500 policies**: Consider policy consolidation
+- **Per-pod policies**: Consolidate where possible
+- **Complex selectors**: Simplify if performance degrades
+
+**Testing Impact:**
+```bash
+# Measure pod startup time before/after policies
+time kubectl run test --image=nginx
+
+# Check CNI plugin logs for errors
+kubectl logs -n kube-system -l k8s-app=calico-node
+```
 
 ## Common CKAD Pitfalls
 
@@ -976,7 +1430,160 @@ Deploy a three-tier application (web, api, database) with:
 - Database accepts traffic from API only
 - All pods can access DNS
 
-TODO: Add detailed solution with YAML
+<details>
+  <summary>Solution</summary>
+
+**Step 1: Create the namespace and deploy the complete application**
+
+```bash
+# Apply the complete three-tier application with NetworkPolicies
+kubectl apply -f labs/networkpolicy/specs/ckad/exercise1-three-tier.yaml
+
+# Wait for all pods to be ready
+kubectl wait --for=condition=ready pod -l tier=web -n three-tier --timeout=60s
+kubectl wait --for=condition=ready pod -l tier=api -n three-tier --timeout=60s
+kubectl wait --for=condition=ready pod -l tier=database -n three-tier --timeout=60s
+```
+
+**Step 2: Verify the deployment**
+
+```bash
+# Check all resources are created
+kubectl get all -n three-tier
+
+# View all NetworkPolicies
+kubectl get networkpolicies -n three-tier
+
+# Check that we have:
+# - default-deny-all (blocks everything)
+# - web-ingress and web-egress
+# - api-ingress and api-egress
+# - database-ingress and database-egress
+```
+
+**Step 3: Test network connectivity**
+
+```bash
+# Get pod names
+WEB_POD=$(kubectl get pod -n three-tier -l tier=web -o jsonpath='{.items[0].metadata.name}')
+API_POD=$(kubectl get pod -n three-tier -l tier=api -o jsonpath='{.items[0].metadata.name}')
+DB_POD=$(kubectl get pod -n three-tier -l tier=database -o jsonpath='{.items[0].metadata.name}')
+
+echo "Web Pod: $WEB_POD"
+echo "API Pod: $API_POD"
+echo "DB Pod: $DB_POD"
+
+# Test 1: Web can reach API (should work)
+kubectl exec -n three-tier $WEB_POD -- wget -O- --timeout=2 http://api:8080 2>/dev/null | head -5
+# Expected: Response from API service
+
+# Test 2: API can reach Database (should work)
+kubectl exec -n three-tier $API_POD -- nc -zv database 5432 2>&1
+# Expected: database (10.x.x.x:5432) open
+
+# Test 3: Web cannot reach Database directly (should fail)
+kubectl exec -n three-tier $WEB_POD -- nc -zv database 5432 2>&1
+# Expected: timeout or connection refused
+
+# Test 4: Verify DNS works from all tiers
+kubectl exec -n three-tier $WEB_POD -- nslookup api
+kubectl exec -n three-tier $API_POD -- nslookup database
+kubectl exec -n three-tier $DB_POD -- nslookup kubernetes.default
+# All should resolve successfully
+```
+
+**Step 4: Examine NetworkPolicy details**
+
+```bash
+# View default deny policy
+kubectl describe networkpolicy default-deny-all -n three-tier
+
+# View web tier policies
+kubectl describe networkpolicy web-ingress -n three-tier
+kubectl describe networkpolicy web-egress -n three-tier
+
+# View API tier policies
+kubectl describe networkpolicy api-ingress -n three-tier
+kubectl describe networkpolicy api-egress -n three-tier
+
+# View database tier policies
+kubectl describe networkpolicy database-ingress -n three-tier
+kubectl describe networkpolicy database-egress -n three-tier
+```
+
+**Step 5: Test security boundaries**
+
+```bash
+# Create a test pod outside the three-tier namespace
+kubectl run test-external --image=busybox --command -- sleep 3600
+
+# Try to access services from external pod (should all fail)
+kubectl exec test-external -- wget -O- --timeout=2 http://web.three-tier 2>&1
+kubectl exec test-external -- nc -zv api.three-tier 8080 2>&1
+kubectl exec test-external -- nc -zv database.three-tier 5432 2>&1
+# All should timeout - default deny policy blocks external access
+
+# Clean up test pod
+kubectl delete pod test-external
+```
+
+**Understanding the Architecture:**
+
+This exercise demonstrates **defense in depth** with NetworkPolicy:
+
+1. **Default Deny**: Start with zero trust - all traffic blocked
+2. **Least Privilege**: Each tier only allows necessary communication
+3. **Layer Isolation**: Web → API → Database (no bypass)
+4. **DNS Required**: All egress policies include DNS for service discovery
+
+**Key NetworkPolicy Patterns Used:**
+
+```yaml
+# Pattern 1: Default Deny All
+spec:
+  podSelector: {}  # Applies to all pods
+  policyTypes:
+  - Ingress
+  - Egress
+  # No rules = deny all
+
+# Pattern 2: Selective Ingress
+spec:
+  podSelector:
+    matchLabels:
+      tier: api
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: web  # Only web tier can connect
+
+# Pattern 3: DNS + Specific Egress
+egress:
+- to:  # DNS
+  - namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: kube-system
+  ports:
+  - protocol: UDP
+    port: 53
+- to:  # Specific service
+  - podSelector:
+      matchLabels:
+        tier: database
+  ports:
+  - protocol: TCP
+    port: 5432
+```
+
+**Cleanup:**
+
+```bash
+# Delete the entire namespace and all resources
+kubectl delete namespace three-tier
+```
+
+</details><br />
 
 ### Exercise 2: Cross-Namespace Communication
 
@@ -986,7 +1593,215 @@ TODO: Add detailed solution with YAML
 - Create NetworkPolicy allowing frontend app to access backend api
 - Verify communication works cross-namespace
 
-TODO: Add step-by-step solution
+<details>
+  <summary>Solution</summary>
+
+**Step 1: Deploy the complete cross-namespace application**
+
+```bash
+# Apply all resources (namespaces, deployments, services, and policies)
+kubectl apply -f labs/networkpolicy/specs/ckad/exercise2-cross-namespace.yaml
+
+# Wait for pods to be ready in both namespaces
+kubectl wait --for=condition=ready pod -l app=webapp -n frontend --timeout=60s
+kubectl wait --for=condition=ready pod -l app=api -n backend --timeout=60s
+```
+
+**Step 2: Verify the namespaces and labels**
+
+```bash
+# Check namespaces were created with correct labels
+kubectl get namespaces frontend backend --show-labels
+
+# Expected output should show:
+# frontend   tier=frontend,env=demo
+# backend    tier=backend,env=demo
+
+# View resources in frontend namespace
+kubectl get all -n frontend
+
+# View resources in backend namespace
+kubectl get all -n backend
+```
+
+**Step 3: Examine the NetworkPolicies**
+
+```bash
+# View NetworkPolicy in backend namespace
+kubectl get networkpolicies -n backend
+kubectl describe networkpolicy api-allow-from-frontend-ns -n backend
+
+# This policy allows ingress to app=api from any pod in namespaces labeled tier=frontend
+
+# View NetworkPolicy in frontend namespace
+kubectl get networkpolicies -n frontend
+kubectl describe networkpolicy webapp-egress-to-backend -n frontend
+
+# This policy allows egress from app=webapp to app=api in namespaces labeled tier=backend
+```
+
+**Step 4: Test cross-namespace communication**
+
+```bash
+# Get pod names
+FRONTEND_POD=$(kubectl get pod -n frontend -l app=webapp -o jsonpath='{.items[0].metadata.name}')
+BACKEND_POD=$(kubectl get pod -n backend -l app=api -o jsonpath='{.items[0].metadata.name}')
+
+echo "Frontend Pod: $FRONTEND_POD"
+echo "Backend Pod: $BACKEND_POD"
+
+# Test 1: Frontend can reach backend API (should work)
+kubectl exec -n frontend $FRONTEND_POD -- wget -O- --timeout=2 http://api.backend:8080 2>/dev/null | head -5
+# Expected: Response from API service
+
+# Test 2: Frontend can resolve backend service DNS (should work)
+kubectl exec -n frontend $FRONTEND_POD -- nslookup api.backend
+# Expected: Successful DNS resolution
+
+# Test 3: Verify the API pod is accessible
+kubectl exec -n backend $BACKEND_POD -- wget -O- http://localhost:8080 2>/dev/null | head -5
+# Expected: Response from local API
+```
+
+**Step 5: Test namespace isolation**
+
+```bash
+# Create a test namespace without the required label
+kubectl create namespace test-ns
+
+# Deploy a test pod in the unlabeled namespace
+kubectl run test-pod -n test-ns --image=busybox --command -- sleep 3600
+
+# Try to access backend API from unlabeled namespace (should fail)
+kubectl exec -n test-ns test-pod -- wget -O- --timeout=2 http://api.backend:8080 2>&1
+# Expected: timeout - no NetworkPolicy allows this traffic
+
+# Label the test namespace
+kubectl label namespace test-ns tier=frontend
+
+# Now try again (should work because namespace has tier=frontend label)
+kubectl exec -n test-ns test-pod -- wget -O- --timeout=2 http://api.backend:8080 2>/dev/null | head -5
+# Expected: Success - namespace selector now matches
+
+# Clean up test resources
+kubectl delete pod test-pod -n test-ns
+kubectl delete namespace test-ns
+```
+
+**Step 6: Understanding namespace selectors**
+
+```bash
+# View the alternative policy that uses both namespace and pod selectors
+kubectl get networkpolicy api-allow-from-frontend-app -n backend -o yaml
+
+# This shows the AND condition:
+# - namespaceSelector matches tier=frontend
+# - podSelector matches app=webapp
+# Both must be true for traffic to be allowed
+```
+
+**Understanding Cross-Namespace NetworkPolicy:**
+
+This exercise demonstrates **namespace-based access control**:
+
+1. **Namespace Labels**: Namespaces must be labeled for selection
+2. **Namespace Selector**: Allows traffic from matching namespaces
+3. **Combined Selectors**: AND vs OR logic for precise control
+4. **DNS Service Discovery**: Cross-namespace service names (`service.namespace`)
+
+**Key Patterns:**
+
+```yaml
+# Pattern 1: Allow from any pod in labeled namespace (OR)
+ingress:
+- from:
+  - namespaceSelector:
+      matchLabels:
+        tier: frontend  # Any pod in tier=frontend namespaces
+
+# Pattern 2: Allow from specific pods in labeled namespace (AND)
+ingress:
+- from:
+  - namespaceSelector:
+      matchLabels:
+        tier: frontend
+    podSelector:  # Same list item = AND
+      matchLabels:
+        app: webapp  # Must be webapp pod AND in tier=frontend namespace
+
+# Pattern 3: Egress to specific namespace
+egress:
+- to:
+  - namespaceSelector:
+      matchLabels:
+        tier: backend
+    podSelector:
+      matchLabels:
+        app: api
+```
+
+**Common Pitfalls:**
+
+1. **Forgetting to label namespaces**: `namespaceSelector` requires namespace labels
+2. **AND vs OR confusion**: Same list item = AND, separate items = OR
+3. **DNS requirements**: Egress policies must allow DNS for service discovery
+4. **Service naming**: Cross-namespace: `service.namespace.svc.cluster.local`
+
+**Step 7: Experiment with different configurations**
+
+```bash
+# Remove the namespace label and test
+kubectl label namespace frontend tier-
+# Communication should fail now
+
+# Re-add the label
+kubectl label namespace frontend tier=frontend
+# Communication should work again
+
+# Try the more restrictive policy
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-from-frontend-app
+  namespace: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          tier: frontend
+      podSelector:
+        matchLabels:
+          app: webapp
+    ports:
+    - protocol: TCP
+      port: 8080
+EOF
+
+# This is more restrictive - only webapp pods (not all pods) in frontend namespace
+```
+
+**Cleanup:**
+
+```bash
+# Delete both namespaces and all resources
+kubectl delete namespace frontend backend
+```
+
+**Real-World Use Cases:**
+
+1. **Multi-tenant clusters**: Isolate different teams/environments
+2. **Microservices**: Frontend tier accessing backend services
+3. **Shared services**: Allow specific namespaces to access shared databases
+4. **Platform services**: Monitoring namespace accessing application namespaces
+
+</details><br />
 
 ### Exercise 3: Egress Restriction
 
@@ -996,7 +1811,255 @@ Create a policy that:
 - Blocks all external traffic
 - Allows DNS
 
-TODO: Add detailed solution
+<details>
+  <summary>Solution</summary>
+
+**Step 1: Deploy the egress restriction demo**
+
+```bash
+# Apply all resources (namespace, pods, services, and policies)
+kubectl apply -f labs/networkpolicy/specs/ckad/exercise3-egress-restriction.yaml
+
+# Wait for pods to be ready
+kubectl wait --for=condition=ready pod -l app=internal-api -n restricted-egress --timeout=60s
+kubectl wait --for=condition=ready pod -l app=restricted -n restricted-egress --timeout=60s
+kubectl wait --for=condition=ready pod unrestricted-pod -n restricted-egress --timeout=30s
+```
+
+**Step 2: Verify the deployment**
+
+```bash
+# Check all resources in the namespace
+kubectl get all -n restricted-egress
+
+# View the NetworkPolicies
+kubectl get networkpolicies -n restricted-egress
+
+# Describe the main egress policy
+kubectl describe networkpolicy restricted-egress-policy -n restricted-egress
+```
+
+**Step 3: Test internal service access (should work)**
+
+```bash
+# Get pod names
+RESTRICTED_POD=$(kubectl get pod -n restricted-egress -l app=restricted -o jsonpath='{.items[0].metadata.name}')
+UNRESTRICTED_POD=unrestricted-pod
+
+echo "Restricted Pod: $RESTRICTED_POD"
+echo "Unrestricted Pod: $UNRESTRICTED_POD"
+
+# Test 1: Restricted pod can access internal service (should work)
+kubectl exec -n restricted-egress $RESTRICTED_POD -- curl -m 2 http://internal-api:8080 2>/dev/null | head -5
+# Expected: Success - internal service is in 10.0.0.0/8 range
+
+# Test 2: Restricted pod can resolve DNS (should work)
+kubectl exec -n restricted-egress $RESTRICTED_POD -- nslookup internal-api
+# Expected: Successful DNS resolution
+
+# Test 3: Restricted pod can resolve kubernetes service
+kubectl exec -n restricted-egress $RESTRICTED_POD -- nslookup kubernetes.default
+# Expected: Success - DNS is allowed
+```
+
+**Step 4: Test external access is blocked (should fail)**
+
+```bash
+# Test 1: Restricted pod cannot access external sites (should timeout)
+kubectl exec -n restricted-egress $RESTRICTED_POD -- curl -m 2 https://www.google.com 2>&1
+# Expected: timeout - external traffic blocked
+
+# Test 2: Restricted pod cannot access external IP
+kubectl exec -n restricted-egress $RESTRICTED_POD -- curl -m 2 http://8.8.8.8 2>&1
+# Expected: timeout - not in 10.0.0.0/8 range
+
+# Test 3: Compare with unrestricted pod (should work)
+kubectl exec -n restricted-egress $UNRESTRICTED_POD -- curl -m 2 https://www.google.com 2>/dev/null | head -10
+# Expected: Success - unrestricted pod has no egress policy
+```
+
+**Step 5: Understand the CIDR-based egress rules**
+
+```bash
+# View the NetworkPolicy YAML
+kubectl get networkpolicy restricted-egress-policy -n restricted-egress -o yaml
+
+# Key sections to observe:
+# 1. DNS egress rule (to kube-system namespace)
+# 2. CIDR-based egress rule (10.0.0.0/8)
+# 3. No rule for external traffic (0.0.0.0/0)
+```
+
+**Step 6: Test with cluster IP ranges**
+
+```bash
+# Get the service cluster IP
+INTERNAL_API_IP=$(kubectl get service internal-api -n restricted-egress -o jsonpath='{.spec.clusterIP}')
+echo "Internal API Service IP: $INTERNAL_API_IP"
+
+# Verify it's in the 10.0.0.0/8 range
+# Kubernetes typically uses 10.x.x.x for service IPs
+
+# Test direct IP access
+kubectl exec -n restricted-egress $RESTRICTED_POD -- curl -m 2 http://$INTERNAL_API_IP:8080 2>/dev/null | head -5
+# Expected: Success - IP is in allowed CIDR range
+
+# Get pod IP
+INTERNAL_API_POD_IP=$(kubectl get pod -n restricted-egress -l app=internal-api -o jsonpath='{.items[0].status.podIP}')
+echo "Internal API Pod IP: $INTERNAL_API_POD_IP"
+
+# Test pod IP access
+kubectl exec -n restricted-egress $RESTRICTED_POD -- curl -m 2 http://$INTERNAL_API_POD_IP:8080 2>/dev/null | head -5
+# Expected: Success if pod IP is in 10.0.0.0/8
+```
+
+**Step 7: Examine alternative configurations**
+
+```bash
+# View the multi-CIDR policy
+kubectl get networkpolicy restricted-egress-multi-cidr -n restricted-egress -o yaml
+
+# This shows how to allow multiple internal networks:
+# - 10.0.0.0/8
+# - 172.16.0.0/12
+# - 192.168.0.0/16
+
+# View the service-only policy
+kubectl get networkpolicy restricted-egress-services-only -n restricted-egress -o yaml
+
+# This is the most restrictive - only allows specific labeled services
+```
+
+**Step 8: Test the service-only approach**
+
+```bash
+# Create a test pod with the v3 label
+kubectl run test-restricted-v3 -n restricted-egress --image=curlimages/curl:latest \
+  --labels=app=restricted-v3 --command -- sleep 3600
+
+# Wait for it to be ready
+kubectl wait --for=condition=ready pod test-restricted-v3 -n restricted-egress --timeout=30s
+
+# Test: Can access labeled internal service (should work)
+kubectl exec -n restricted-egress test-restricted-v3 -- curl -m 2 http://internal-api:8080 2>/dev/null | head -5
+# Expected: Success - policy allows to app=internal-api
+
+# Test: Cannot access external (should fail)
+kubectl exec -n restricted-egress test-restricted-v3 -- curl -m 2 https://www.google.com 2>&1
+# Expected: timeout
+
+# Clean up test pod
+kubectl delete pod test-restricted-v3 -n restricted-egress
+```
+
+**Understanding Egress Restrictions:**
+
+This exercise demonstrates **outbound traffic control**:
+
+1. **Default Deny**: Without egress rules, pods can access anything
+2. **CIDR Restrictions**: Limit to specific IP ranges (internal networks)
+3. **DNS Requirement**: Always include DNS or services won't resolve
+4. **Selector-Based**: More maintainable than IP-based rules
+
+**Key NetworkPolicy Patterns:**
+
+```yaml
+# Pattern 1: CIDR-based egress (allows IP ranges)
+egress:
+- to:
+  - ipBlock:
+      cidr: 10.0.0.0/8  # Internal cluster network
+      except:
+      - 10.0.0.1/32     # Block specific IPs (e.g., metadata service)
+
+# Pattern 2: Multiple internal networks
+egress:
+- to:
+  - ipBlock:
+      cidr: 10.0.0.0/8
+- to:
+  - ipBlock:
+      cidr: 172.16.0.0/12
+- to:
+  - ipBlock:
+      cidr: 192.168.0.0/16
+
+# Pattern 3: Service-based (most maintainable)
+egress:
+- to:
+  - podSelector:
+      matchLabels:
+        app: database
+    ports:
+    - protocol: TCP
+      port: 5432
+```
+
+**Common Use Cases:**
+
+1. **Security Compliance**: Prevent data exfiltration to external services
+2. **Cost Control**: Block unnecessary external API calls
+3. **Air-Gapped Networks**: Completely isolated environments
+4. **Regulated Industries**: Restrict to approved internal services
+
+**Troubleshooting Egress Issues:**
+
+```bash
+# Check if DNS is working
+kubectl exec -n restricted-egress $RESTRICTED_POD -- nslookup kubernetes.default
+# If this fails, DNS egress rule is missing or incorrect
+
+# Check cluster IP ranges
+kubectl cluster-info dump | grep -m 1 service-cluster-ip-range
+# Ensure your CIDR blocks match cluster configuration
+
+# Check pod network CIDR
+kubectl cluster-info dump | grep -m 1 cluster-cidr
+# Pod IPs must be in allowed CIDR for pod-to-pod communication
+
+# Test with netcat to specific IPs
+kubectl exec -n restricted-egress $RESTRICTED_POD -- nc -zv 10.96.0.1 443
+# Test connectivity to specific IPs in allowed range
+```
+
+**Best Practices for Egress Policies:**
+
+1. **Start Restrictive**: Begin with deny-all, add what's needed
+2. **Use Selectors**: Prefer pod/namespace selectors over CIDR
+3. **Always Allow DNS**: Include DNS in every egress policy
+4. **Document CIDR Ranges**: Clearly document why each range is allowed
+5. **Test Thoroughly**: Verify both allowed and blocked traffic
+6. **Monitor**: Watch for failed connections indicating missing rules
+
+**Advanced: Blocking Cloud Metadata Services**
+
+```yaml
+# Common pattern to block cloud provider metadata APIs
+egress:
+- to:
+  - ipBlock:
+      cidr: 0.0.0.0/0
+      except:
+      - 169.254.169.254/32  # AWS/GCP metadata
+      - 169.254.169.253/32  # Azure metadata
+```
+
+**Cleanup:**
+
+```bash
+# Delete the namespace and all resources
+kubectl delete namespace restricted-egress
+```
+
+**CKAD Exam Tips for Egress:**
+
+1. **CIDR Notation**: Know common ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+2. **DNS is Critical**: Without DNS, service names won't resolve
+3. **ipBlock vs Selectors**: Use ipBlock for external IPs, selectors for pods
+4. **Testing**: Always verify both allowed and denied traffic
+5. **Multiple Rules**: Each egress item is OR'd together
+
+</details><br />
 
 ## Cleanup
 

@@ -1,0 +1,91 @@
+# Exercise 3: HPA with Load Testing
+# Deployment that scales based on CPU utilization
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scalable-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: scalable-app
+  template:
+    metadata:
+      labels:
+        app: scalable-app
+    spec:
+      containers:
+      - name: php-apache
+        image: registry.k8s.io/hpa-example
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: scalable-app
+spec:
+  selector:
+    app: scalable-app
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+# HPA configuration
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: scalable-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: scalable-app
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+---
+# Load generator pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: load-generator
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: load
+    image: busybox
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        wget -q -O- http://scalable-app
+      done

@@ -1,0 +1,67 @@
+# Scenario 5: Security Context Preventing Startup
+# PROBLEM: Pod won't start due to security context restrictions
+
+# Broken version - security context prevents startup
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-broken
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+  containers:
+  - name: nginx
+    image: nginx:alpine  # nginx image runs as root by default!
+    securityContext:
+      readOnlyRootFilesystem: true  # nginx needs writable directories!
+    # PROBLEMS:
+    # 1. nginx image runs as root (uid 0) but securityContext requires non-root
+    # 2. readOnlyRootFilesystem prevents nginx from writing to required directories
+---
+# Fixed version - use non-root image and provide writable volumes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+  - name: nginx
+    # SOLUTION 1: Use an image that supports non-root
+    # Or configure nginx to run as non-root user
+    image: nginxinc/nginx-unprivileged:alpine
+    ports:
+    - containerPort: 8080  # Unprivileged port
+
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+
+    # SOLUTION 2: Provide writable volumes for required directories
+    volumeMounts:
+    - name: cache
+      mountPath: /var/cache/nginx
+    - name: run
+      mountPath: /var/run
+    - name: tmp
+      mountPath: /tmp
+
+  volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}

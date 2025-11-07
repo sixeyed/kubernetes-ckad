@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anti-affinity-demo
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: anti-affinity-demo
+  template:
+    metadata:
+      labels:
+        app: anti-affinity-demo
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        podAntiAffinity:
+          # MUST run on different nodes
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: anti-affinity-demo
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

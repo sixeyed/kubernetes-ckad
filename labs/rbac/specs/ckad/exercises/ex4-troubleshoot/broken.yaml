@@ -1,0 +1,84 @@
+# Exercise 4: Troubleshoot RBAC
+# This configuration has multiple issues preventing the Pod from accessing required resources
+# Your task:
+# 1. Identify the permission issues
+# 2. Determine what Role/RoleBinding is missing or misconfigured
+# 3. Fix the configuration
+# 4. Verify the Pod now works
+
+# Application Pod that needs to read ConfigMaps
+apiVersion: v1
+kind: Pod
+metadata:
+  name: broken-app
+  namespace: default
+  labels:
+    app: broken-app
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: app-reader
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never
+---
+# ConfigMap the app needs to read
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.url: "postgresql://db:5432/app"
+  api.endpoint: "https://api.example.com"
+---
+# ServiceAccount (but has issues)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Role with WRONG API group
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: configmap-reader
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: ["apps"]  # WRONG: ConfigMaps are in core API group [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+# RoleBinding with MISSING namespace in subject
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-reader-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: configmap-reader
+subjects:
+- kind: ServiceAccount
+  name: app-reader
+  # MISSING: namespace field required for ServiceAccount subjects
+
+# Expected errors when trying to access ConfigMaps:
+# kubectl auth can-i get configmaps --as=system:serviceaccount:default:app-reader
+# Should return "no" but needs to return "yes"
+
+# Debug commands:
+# kubectl describe rolebinding app-reader-binding
+# kubectl describe role configmap-reader
+# kubectl get pod broken-app -o yaml | grep serviceAccountName

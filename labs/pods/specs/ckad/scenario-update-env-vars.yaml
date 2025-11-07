@@ -1,0 +1,339 @@
+# Scenario 2: Update Environment Variables in a Running Pod
+#
+# This scenario demonstrates how to update Pod environment variables
+# Note: You CANNOT update env vars in a running Pod - must recreate it
+
+# Step 1: Initial Pod with environment variables
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-env
+  labels:
+    app: myapp
+    version: v1
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    env:
+    - name: ENVIRONMENT
+      value: "development"
+    - name: LOG_LEVEL
+      value: "debug"
+    - name: FEATURE_FLAG_NEW_UI
+      value: "false"
+    - name: MAX_CONNECTIONS
+      value: "100"
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Current Environment Variables ==="
+      echo "ENVIRONMENT: $ENVIRONMENT"
+      echo "LOG_LEVEL: $LOG_LEVEL"
+      echo "FEATURE_FLAG_NEW_UI: $FEATURE_FLAG_NEW_UI"
+      echo "MAX_CONNECTIONS: $MAX_CONNECTIONS"
+      echo ""
+      echo "Application running with these settings..."
+      sleep 3600
+---
+# Step 2: Updated Pod with new environment variables
+# To update: kubectl delete pod app-with-env && kubectl apply -f this-file.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-env-updated
+  labels:
+    app: myapp
+    version: v2
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    env:
+    - name: ENVIRONMENT
+      value: "production"  # Changed
+    - name: LOG_LEVEL
+      value: "info"  # Changed
+    - name: FEATURE_FLAG_NEW_UI
+      value: "true"  # Changed
+    - name: MAX_CONNECTIONS
+      value: "500"  # Changed
+    - name: NEW_SETTING
+      value: "enabled"  # Added
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Updated Environment Variables ==="
+      echo "ENVIRONMENT: $ENVIRONMENT"
+      echo "LOG_LEVEL: $LOG_LEVEL"
+      echo "FEATURE_FLAG_NEW_UI: $FEATURE_FLAG_NEW_UI"
+      echo "MAX_CONNECTIONS: $MAX_CONNECTIONS"
+      echo "NEW_SETTING: $NEW_SETTING"
+      echo ""
+      echo "Application running with updated settings..."
+      sleep 3600
+---
+# Better approach: Use ConfigMap for environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  ENVIRONMENT: "development"
+  LOG_LEVEL: "debug"
+  FEATURE_FLAG_NEW_UI: "false"
+  MAX_CONNECTIONS: "100"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-configmap
+  labels:
+    app: myapp
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    envFrom:
+    - configMapRef:
+        name: app-config
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Environment from ConfigMap ==="
+      echo "ENVIRONMENT: $ENVIRONMENT"
+      echo "LOG_LEVEL: $LOG_LEVEL"
+      echo "FEATURE_FLAG_NEW_UI: $FEATURE_FLAG_NEW_UI"
+      echo "MAX_CONNECTIONS: $MAX_CONNECTIONS"
+      echo ""
+      echo "To update: edit ConfigMap and restart Pod"
+      sleep 3600
+---
+# Updated ConfigMap (edit in place)
+# kubectl edit configmap app-config
+# Then restart pod: kubectl delete pod app-with-configmap && kubectl apply -f <file>
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-updated
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "info"
+  FEATURE_FLAG_NEW_UI: "true"
+  MAX_CONNECTIONS: "500"
+  NEW_SETTING: "enabled"
+---
+# Best approach: Use Deployment for rolling updates
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-deployment
+  labels:
+    kubernetes.courselabs.co: pods
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+        scenario: update-env
+    spec:
+      containers:
+      - name: app
+        image: busybox:latest
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: ENVIRONMENT
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: LOG_LEVEL
+        command:
+        - sh
+        - -c
+        - |
+          echo "Environment: $ENVIRONMENT"
+          echo "Log Level: $LOG_LEVEL"
+          echo "Pod running..."
+          sleep 3600
+---
+# Example: Hot-reload configuration without restart (advanced)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: reloadable-config
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  config.json: |
+    {
+      "environment": "development",
+      "logLevel": "debug",
+      "features": {
+        "newUI": false
+      }
+    }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-hot-reload
+  labels:
+    app: myapp
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Hot-Reload Configuration Demo ==="
+      echo "Application watches /config/config.json for changes"
+      echo ""
+
+      while true; do
+        echo "Reading config at $(date):"
+        cat /config/config.json
+        echo ""
+        echo "---"
+        sleep 10
+      done
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: reloadable-config
+# Note: Changes to ConfigMap will be reflected in the mounted file
+# after a short delay (kubelet sync period, typically 60s)
+# App must watch file and reload config when it changes
+---
+# Workflow example for updating environment variables
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-update-workflow
+  labels:
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: helper
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== How to Update Pod Environment Variables ==="
+      echo ""
+      echo "Method 1: Direct Pod Update (Requires Recreation)"
+      echo "  1. kubectl get pod <pod-name> -o yaml > pod.yaml"
+      echo "  2. Edit pod.yaml - modify env values"
+      echo "  3. kubectl delete pod <pod-name>"
+      echo "  4. kubectl apply -f pod.yaml"
+      echo "  Note: Pod will have downtime!"
+      echo ""
+      echo "Method 2: Using ConfigMap (Better)"
+      echo "  1. kubectl edit configmap <configmap-name>"
+      echo "  2. Update values"
+      echo "  3. kubectl rollout restart deployment <deployment-name>"
+      echo "  Note: If using deployment, rolling restart with no downtime"
+      echo ""
+      echo "Method 3: ConfigMap with Volume Mount (Hot Reload)"
+      echo "  1. kubectl edit configmap <configmap-name>"
+      echo "  2. Changes appear in mounted files automatically"
+      echo "  3. Application must watch and reload config"
+      echo "  Note: No pod restart needed if app supports hot reload"
+      echo ""
+      echo "Method 4: Using kubectl set env (Deployment only)"
+      echo "  kubectl set env deployment/<name> ENV_VAR=new_value"
+      echo "  Note: Triggers automatic rolling update"
+      echo ""
+      echo "=== Verification Commands ==="
+      echo "  # Check current env vars"
+      echo "  kubectl exec <pod-name> -- env"
+      echo "  kubectl exec <pod-name> -- printenv ENV_VAR_NAME"
+      echo ""
+      echo "  # Check ConfigMap"
+      echo "  kubectl get configmap <name> -o yaml"
+      echo "  kubectl describe configmap <name>"
+      echo ""
+      echo "  # Watch rollout (Deployment)"
+      echo "  kubectl rollout status deployment/<name>"
+      echo "  kubectl rollout history deployment/<name>"
+      echo ""
+      sleep 3600
+---
+# Example with Secret environment variables
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  labels:
+    kubernetes.courselabs.co: pods
+type: Opaque
+stringData:
+  DATABASE_PASSWORD: "initial-password"
+  API_KEY: "old-key-12345"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-secrets
+  labels:
+    scenario: update-env
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    env:
+    - name: DATABASE_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: DATABASE_PASSWORD
+    - name: API_KEY
+      valueFrom:
+        secretKeyRef:
+          name: app-secrets
+          key: API_KEY
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Secret Environment Variables ==="
+      echo "DATABASE_PASSWORD is set: $(test -n "$DATABASE_PASSWORD" && echo YES || echo NO)"
+      echo "API_KEY is set: $(test -n "$API_KEY" && echo YES || echo NO)"
+      echo ""
+      echo "To update secrets:"
+      echo "1. kubectl delete secret app-secrets"
+      echo "2. kubectl create secret generic app-secrets --from-literal=DATABASE_PASSWORD=new-pass"
+      echo "3. kubectl delete pod app-with-secrets"
+      echo "4. kubectl apply -f <file>"
+      echo ""
+      sleep 3600

@@ -1,0 +1,342 @@
+# Combined Required and Preferred Affinity - CKAD Practice
+#
+# Uses both required (hard) and preferred (soft) constraints
+
+---
+# Example 1: Basic combined affinity
+apiVersion: v1
+kind: Pod
+metadata:
+  name: combined-basic
+  labels:
+    app: smart-app
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+            - amd64
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 1
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 2: Production database with optimal placement
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-optimized
+  labels:
+    app: postgres
+    tier: database
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - production
+          - key: disk
+            operator: In
+            values:
+            - ssd
+            - nvme
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - nvme
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: memory
+            operator: In
+            values:
+            - high
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+      limits:
+        memory: "2Gi"
+        cpu: "2"
+
+---
+# Example 3: Multi-tier preferences with hard requirement
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-server
+  labels:
+    app: api
+    tier: backend
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/os
+            operator: In
+            values:
+            - linux
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: workload
+            operator: In
+            values:
+            - compute-intensive
+      - weight: 30
+        preference:
+          matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: network
+            operator: In
+            values:
+            - 10gbit
+  containers:
+  - name: api
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 4: Deployment with combined affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app-combined
+  labels:
+    app: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+                - staging
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+      containers:
+      - name: web
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 5: Regional requirement with zone preference
+apiVersion: v1
+kind: Pod
+metadata:
+  name: geo-aware-app
+  labels:
+    app: regional-service
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - us-east-1
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - us-east-1a
+      - weight: 50
+        preference:
+          matchExpressions:
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - us-east-1b
+  containers:
+  - name: service
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 6: Avoid spot, prefer high-performance
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: critical-service
+  labels:
+    app: critical
+    tier: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: critical
+  template:
+    metadata:
+      labels:
+        app: critical
+        tier: production
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: node.kubernetes.io/instance-lifecycle
+                operator: DoesNotExist
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - nvme
+                - ssd
+          - weight: 80
+            preference:
+              matchExpressions:
+              - key: cpu
+                operator: In
+                values:
+                - high-frequency
+      containers:
+      - name: service
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+
+---
+# Example 7: StatefulSet with combined affinity
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cluster
+  labels:
+    app: redis
+spec:
+  serviceName: redis
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: workload
+                operator: In
+                values:
+                - memory-intensive
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: memory
+                operator: In
+                values:
+                - high
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: disk
+                operator: In
+                values:
+                - ssd
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"

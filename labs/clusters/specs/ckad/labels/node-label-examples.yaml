@@ -1,0 +1,174 @@
+# Node Label Examples - CKAD Practice
+#
+# This file demonstrates various node labeling patterns and their usage
+# Note: These are commands/examples, not actual resources to apply
+
+---
+# Example 1: Basic Label Operations
+# kubectl label node <node-name> environment=production
+# kubectl label node <node-name> disk=ssd storage=high-performance
+# kubectl label node <node-name> environment=staging --overwrite
+# kubectl label node <node-name> environment-
+
+---
+# Example 2: Pod using standard node labels
+apiVersion: v1
+kind: Pod
+metadata:
+  name: linux-amd64-pod
+  labels:
+    app: standard-labels
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+    kubernetes.io/arch: amd64
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 3: Pod requiring specific environment
+apiVersion: v1
+kind: Pod
+metadata:
+  name: production-pod
+  labels:
+    app: prod-app
+    environment: production
+spec:
+  nodeSelector:
+    environment: production
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 4: Pod requiring SSD storage
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-pod
+  labels:
+    app: database
+    storage: high-performance
+spec:
+  nodeSelector:
+    disk: ssd
+  containers:
+  - name: db
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 5: Deployment with multiple node selectors
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: compute-workload
+  labels:
+    app: compute-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: compute-app
+  template:
+    metadata:
+      labels:
+        app: compute-app
+    spec:
+      nodeSelector:
+        workload: compute-intensive
+        disk: ssd
+      containers:
+      - name: compute
+        image: busybox
+        command: ["sh", "-c", "while true; do echo Computing...; sleep 5; done"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "500m"
+
+---
+# Example 6: Pod for GPU workload
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  labels:
+    app: ml-training
+    workload: gpu
+spec:
+  nodeSelector:
+    gpu: nvidia-t4
+    environment: production
+  containers:
+  - name: ml-app
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'GPU workload running'; sleep 3600"]
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "1"
+
+---
+# Example 7: Pod targeting specific region/zone
+apiVersion: v1
+kind: Pod
+metadata:
+  name: regional-app
+  labels:
+    app: regional-service
+spec:
+  nodeSelector:
+    topology.kubernetes.io/region: us-east-1
+    topology.kubernetes.io/zone: us-east-1a
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 8: Job requiring specific node characteristics
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-processing
+  labels:
+    app: batch-job
+spec:
+  template:
+    metadata:
+      labels:
+        app: batch-job
+    spec:
+      nodeSelector:
+        workload: memory-intensive
+        disk: hdd
+      containers:
+      - name: processor
+        image: busybox
+        command: ["sh", "-c", "echo 'Processing batch job'; sleep 30"]
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+      restartPolicy: Never
+  backoffLimit: 3

@@ -1,0 +1,156 @@
+# Exercise 5: Complete Production-Ready Application
+# This deployment demonstrates all best practices
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: production-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: production-app
+  template:
+    metadata:
+      labels:
+        app: production-app
+    spec:
+      # Security: Disable SA token auto-mount
+      automountServiceAccountToken: false
+
+      # Security: Pod-level security context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Termination: Graceful shutdown
+      terminationGracePeriodSeconds: 45
+
+      containers:
+      - name: app
+        image: httpd:alpine
+        ports:
+        - containerPort: 80
+
+        # Security: Container-level security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+        # Resources: Burstable QoS
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        # Health: Startup probe for initialization
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 6
+          initialDelaySeconds: 5
+
+        # Health: Readiness probe for traffic routing
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+          timeoutSeconds: 2
+
+        # Health: Liveness probe for health monitoring
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 3
+          timeoutSeconds: 3
+
+        # Lifecycle: Graceful shutdown hook
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - sh
+              - -c
+              - sleep 15
+
+        # Security: Required writable volumes
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: logs
+          mountPath: /usr/local/apache2/logs
+
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: logs
+        emptyDir: {}
+---
+# Service for the application
+apiVersion: v1
+kind: Service
+metadata:
+  name: production-app
+spec:
+  selector:
+    app: production-app
+  ports:
+  - port: 80
+    targetPort: 80
+  type: ClusterIP
+---
+# HPA for autoscaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: production-app-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: production-app
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+---
+# PodDisruptionBudget for availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: production-app-pdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: production-app

@@ -298,8 +298,6 @@ kubectl delete pods -l app
 
 **Time Target**: 2-3 minutes
 
-<!-- TODO: Add example of identifying resource-constrained pods and how to fix them -->
-
 Check resource usage to identify performance issues.
 
 ```bash
@@ -332,6 +330,157 @@ kubectl describe pod <name> | grep -A 5 "Requests\|Limits"
 - Verify resource requests/limits are appropriate
 - Debug OOMKilled issues
 - Check node capacity before deploying
+
+**Practice Example - Identifying and Fixing Resource-Constrained Pods**:
+
+```bash
+# Step 1: Deploy a pod with insufficient memory limits
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-constrained
+  labels:
+    app: demo
+spec:
+  containers:
+  - name: stress
+    image: polinux/stress
+    command: ["stress"]
+    args: ["--vm", "1", "--vm-bytes", "150M", "--vm-hang", "1"]
+    resources:
+      requests:
+        memory: "50Mi"
+        cpu: "100m"
+      limits:
+        memory: "100Mi"  # Too low - will cause OOMKilled
+        cpu: "200m"
+EOF
+
+# Step 2: Watch the pod - it will crash due to OOMKilled
+kubectl get pods -w
+# Press Ctrl+C after seeing CrashLoopBackOff
+
+# Step 3: Identify the issue using describe
+kubectl describe pod memory-constrained
+# Look for: "Reason: OOMKilled" in Last State section
+# Look for: "Exit Code: 137" (OOM kill signal)
+
+# Step 4: Check current resource usage (if pod runs briefly)
+kubectl top pod memory-constrained
+# May show high memory usage before crash
+
+# Step 5: View resource requests and limits
+kubectl describe pod memory-constrained | grep -A 5 "Limits\|Requests"
+
+# Step 6: Fix by increasing memory limits
+kubectl delete pod memory-constrained
+
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-constrained
+  labels:
+    app: demo
+spec:
+  containers:
+  - name: stress
+    image: polinux/stress
+    command: ["stress"]
+    args: ["--vm", "1", "--vm-bytes", "150M", "--vm-hang", "1"]
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+      limits:
+        memory: "256Mi"  # Fixed - now sufficient
+        cpu: "200m"
+EOF
+
+# Step 7: Verify the fix
+kubectl get pod memory-constrained
+# STATUS should be Running
+
+kubectl top pod memory-constrained
+# Should show stable memory usage around 150Mi
+
+# Step 8: Verify no crashes
+kubectl get pod memory-constrained -w
+# Let it run for 30 seconds - should stay Running
+
+# Clean up
+kubectl delete pod memory-constrained
+```
+
+**Common Resource Constraint Patterns**:
+
+```bash
+# Pattern 1: CPU Throttling (pod is slow but not crashing)
+# Symptom: Pod responds slowly, CPU at limit
+kubectl top pod <name>  # Shows CPU at 100% of limit
+kubectl describe pod <name> | grep -i "cpu"
+
+# Fix: Increase CPU limits
+kubectl set resources deployment <name> --limits=cpu=500m --requests=cpu=200m
+
+# Pattern 2: OOMKilled (memory exceeded)
+# Symptom: CrashLoopBackOff, Exit Code 137
+kubectl describe pod <name>  # Shows "Reason: OOMKilled"
+
+# Fix: Increase memory limits
+kubectl set resources deployment <name> --limits=memory=512Mi --requests=memory=256Mi
+
+# Pattern 3: Pending due to insufficient cluster resources
+# Symptom: Pod stuck in Pending state
+kubectl describe pod <name>
+# Events: "Insufficient cpu" or "Insufficient memory"
+
+# Check node capacity
+kubectl top nodes
+kubectl describe nodes
+
+# Fixes:
+# Option 1: Reduce resource requests
+kubectl set resources deployment <name> --requests=cpu=100m,memory=128Mi
+
+# Option 2: Scale down other workloads
+kubectl scale deployment <other> --replicas=1
+
+# Option 3: Add more nodes (if possible)
+
+# Pattern 4: No resources defined (risky in production)
+# Check if pod has resource limits
+kubectl get pod <name> -o jsonpath='{.spec.containers[*].resources}'
+
+# Add resources to existing deployment
+kubectl set resources deployment <name> \
+  --limits=cpu=500m,memory=512Mi \
+  --requests=cpu=200m,memory=256Mi
+```
+
+**Quick Diagnosis Checklist**:
+
+```bash
+# 1. Check pod status
+kubectl get pods
+# Look for: CrashLoopBackOff, OOMKilled, Pending
+
+# 2. View events and last state
+kubectl describe pod <name>
+# Look for: OOMKilled, Insufficient cpu/memory, exit codes
+
+# 3. Check resource usage
+kubectl top pod <name>
+# Compare actual usage vs limits
+
+# 4. Check resource definitions
+kubectl get pod <name> -o yaml | grep -A 10 resources
+
+# 5. Check node capacity
+kubectl top nodes
+kubectl describe node <node-name> | grep -A 5 "Allocated resources"
+```
 
 ### Scenario 6: Context and Namespace Management
 

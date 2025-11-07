@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crash-wrong-command-fixed
+  labels:
+    app: troubleshooting-demo
+    scenario: crashloop
+spec:
+  containers:
+  - name: web
+    image: nginx
+    # Removed incorrect command - use the image's default entrypoint
+    # Or specify a valid command:
+    # command: ["nginx", "-g", "daemon off;"]

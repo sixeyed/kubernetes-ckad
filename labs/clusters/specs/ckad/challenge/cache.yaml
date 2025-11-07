@@ -1,0 +1,75 @@
+# Cache Tier - Challenge
+# Requirements: High memory nodes, spread across zones, near database
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache
+  labels:
+    tier: cache
+    app: redis
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      tier: cache
+      app: redis
+  template:
+    metadata:
+      labels:
+        tier: cache
+        app: redis
+    spec:
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: memory
+                operator: In
+                values:
+                - high
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  tier: database
+              topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  tier: cache
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cache
+  labels:
+    tier: cache
+spec:
+  selector:
+    tier: cache
+  ports:
+  - port: 6379
+    targetPort: 6379

@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-resources
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami-resources
+  template:
+    metadata:
+      labels:
+        app: whoami-resources
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+          name: http
+        # Resource requests and limits are CRITICAL for CKAD
+        resources:
+          # REQUESTS: Minimum guaranteed resources for scheduling
+          # The scheduler uses this to find a node with enough capacity
+          requests:
+            memory: "64Mi"   # 64 megabytes guaranteed
+            cpu: "100m"      # 0.1 CPU core (100 millicores)
+
+          # LIMITS: Maximum resources the container can use
+          # Container will be throttled (CPU) or OOMKilled (memory) if exceeded
+          limits:
+            memory: "128Mi"  # Maximum 128 megabytes
+            cpu: "200m"      # Maximum 0.2 CPU core (200 millicores)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-resources
+  labels:
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  selector:
+    app: whoami-resources
+  ports:
+  - port: 80
+    targetPort: 80

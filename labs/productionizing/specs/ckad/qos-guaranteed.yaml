@@ -1,0 +1,19 @@
+# QoS Class: Guaranteed
+# Achieved when requests == limits for all resources in all containers
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-guaranteed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+      limits:
+        memory: "256Mi"  # Same as request
+        cpu: "500m"      # Same as request

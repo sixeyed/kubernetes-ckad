@@ -1,0 +1,59 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-liveness
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami-liveness
+  template:
+    metadata:
+      labels:
+        app: whoami-liveness
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        # LIVENESS PROBE: Determines when container needs to be restarted
+        # If probe fails, kubelet kills container and restarts it
+        # Use for: detecting deadlocks, hung processes, memory leaks
+        livenessProbe:
+          # HTTP GET check
+          httpGet:
+            path: /           # Health check endpoint
+            port: http
+            scheme: HTTP
+
+          initialDelaySeconds: 15   # Wait 15s after container starts
+          periodSeconds: 10         # Check every 10 seconds
+          timeoutSeconds: 5         # Wait 5s for response
+          successThreshold: 1       # 1 success = healthy (always 1 for liveness)
+          failureThreshold: 3       # 3 failures = restart container
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-liveness
+  labels:
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  selector:
+    app: whoami-liveness
+  ports:
+  - port: 80
+    targetPort: http

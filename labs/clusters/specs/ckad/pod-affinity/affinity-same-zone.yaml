@@ -1,0 +1,195 @@
+# Pod Affinity - Same Zone - CKAD Practice
+#
+# Schedule Pods in the same availability zone using topology key
+
+---
+# Step 1: Deploy database Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-primary
+  labels:
+    app: database
+    role: primary
+    tier: data
+spec:
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    ports:
+    - containerPort: 5432
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+---
+# Step 2: Deploy app Pods in same zone as database
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-same-zone-db
+  labels:
+    app: web-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - database
+            topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: web
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 3: Cache in same zone as database
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cache-cluster
+  labels:
+    app: cache
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cache
+  template:
+    metadata:
+      labels:
+        app: cache
+    spec:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                role: primary
+                tier: data
+            topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+
+---
+# Example 4: Preferred zone affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-pods
+  labels:
+    app: worker
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      affinity:
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - database
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: worker
+        image: busybox
+        command: ["sh", "-c", "while true; do echo Working...; sleep 30; done"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 5: Multi-tier application in same zone
+apiVersion: v1
+kind: Pod
+metadata:
+  name: api-gateway
+  labels:
+    app: api
+    tier: gateway
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: tier
+            operator: In
+            values:
+            - data
+        topologyKey: topology.kubernetes.io/zone
+  containers:
+  - name: gateway
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 6: Same region (broader topology)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: analytics-service
+  labels:
+    app: analytics
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: database
+        topologyKey: topology.kubernetes.io/region
+  containers:
+  - name: analytics
+    image: busybox
+    command: ["sh", "-c", "echo 'Analytics service'; sleep 3600"]
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"

@@ -1,0 +1,73 @@
+# Extending built-in view ClusterRole with custom permissions
+# Demonstrates: How to add custom permissions to built-in aggregated roles
+# The built-in 'view' ClusterRole uses aggregation with this label selector:
+# rbac.authorization.k8s.io/aggregate-to-view: "true"
+
+# Custom ClusterRole that extends 'view' with NetworkPolicy reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: view-networkpolicies
+  labels:
+    # This label causes aggregation into the built-in 'view' ClusterRole
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch"]
+---
+# Custom ClusterRole that extends 'view' with PersistentVolume reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: view-persistentvolumes
+  labels:
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["persistentvolumes", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+---
+# Custom ClusterRole for monitoring resources (extends edit and admin too)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: view-metrics
+  labels:
+    # Aggregate into view, edit, and admin
+    rbac.authorization.k8s.io/aggregate-to-view: "true"
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list", "watch"]
+---
+# Test ServiceAccount with extended view role
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: extended-viewer
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding using the extended 'view' ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: extended-viewer-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view  # Built-in view role now includes our custom extensions
+subjects:
+- kind: ServiceAccount
+  name: extended-viewer
+  namespace: default

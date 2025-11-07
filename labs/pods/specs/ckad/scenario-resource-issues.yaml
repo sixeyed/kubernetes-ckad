@@ -1,0 +1,485 @@
+# Scenario 3: Fix Resource Issues (OOMKilled and CPU Throttling)
+#
+# This scenario demonstrates common resource management problems and solutions
+
+# Problem 1: OOMKilled - Memory limit too low
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oomkilled-demo
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: memory-hog
+    image: progrium/stress
+    resources:
+      limits:
+        memory: "50Mi"  # Very low limit
+      requests:
+        memory: "50Mi"
+    args:
+    - --vm
+    - "1"
+    - --vm-bytes
+    - "100M"  # Tries to allocate 100M but limit is 50M
+    - --vm-hang
+    - "0"
+    # Issue: Container will be OOMKilled immediately
+---
+# Solution 1: Increase memory limit appropriately
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-memory-limit
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: memory-app
+    image: progrium/stress
+    resources:
+      limits:
+        memory: "150Mi"  # Adequate limit
+      requests:
+        memory: "100Mi"  # Request less than limit for burstable QoS
+    args:
+    - --vm
+    - "1"
+    - --vm-bytes
+    - "100M"
+    - --vm-hang
+    - "0"
+---
+# Problem 2: CPU Throttling - Limit too restrictive
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-throttled
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: cpu-intensive
+    image: progrium/stress
+    resources:
+      limits:
+        cpu: "100m"  # Very low limit
+        memory: "128Mi"
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+    args:
+    - --cpu
+    - "2"  # Tries to use 2 CPU cores but limited to 0.1
+    - --timeout
+    - "600s"
+    # Issue: Severe CPU throttling, application runs very slowly
+---
+# Solution 2: Increase CPU limit
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-cpu-limit
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: cpu-app
+    image: progrium/stress
+    resources:
+      limits:
+        cpu: "1000m"  # 1 full CPU
+        memory: "128Mi"
+      requests:
+        cpu: "500m"  # Request less for flexibility
+        memory: "128Mi"
+    args:
+    - --cpu
+    - "1"
+    - --timeout
+    - "600s"
+---
+# Problem 3: No resource limits causing node issues
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-limits
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: greedy-app
+    image: progrium/stress
+    # NO resource limits or requests!
+    args:
+    - --vm
+    - "1"
+    - --vm-bytes
+    - "2G"  # Could consume all node memory
+    - --timeout
+    - "300s"
+    # Issue: Can starve other pods on the node
+---
+# Solution 3: Always set limits and requests
+apiVersion: v1
+kind: Pod
+metadata:
+  name: with-proper-limits
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: well-behaved-app
+    image: progrium/stress
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+      requests:
+        cpu: "250m"
+        memory: "256Mi"
+    args:
+    - --vm
+    - "1"
+    - --vm-bytes
+    - "200M"
+    - --timeout
+    - "300s"
+---
+# Problem 4: Memory leak causing OOMKilled
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-leak-demo
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  restartPolicy: Always
+  containers:
+  - name: leaky-app
+    image: busybox:latest
+    resources:
+      limits:
+        memory: "128Mi"
+      requests:
+        memory: "64Mi"
+    command:
+    - sh
+    - -c
+    - |
+      echo "Simulating memory leak..."
+      # Create increasingly large file in memory filesystem
+      counter=0
+      while true; do
+        counter=$((counter + 1))
+        dd if=/dev/zero of=/tmp/file-$counter bs=1M count=10 2>/dev/null
+        echo "Allocated 10MB (total: $((counter * 10))MB)"
+        sleep 2
+      done
+    # Issue: Eventually hits memory limit and gets OOMKilled, then restarts
+---
+# Solution 4: Fix the application or increase limits
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-memory-management
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: controlled-app
+    image: busybox:latest
+    resources:
+      limits:
+        memory: "128Mi"
+      requests:
+        memory: "64Mi"
+    command:
+    - sh
+    - -c
+    - |
+      echo "Application with proper memory management"
+      # Allocate fixed amount and reuse
+      dd if=/dev/zero of=/tmp/buffer bs=1M count=50 2>/dev/null
+      echo "Allocated 50MB buffer"
+
+      # Do work with fixed memory
+      counter=0
+      while true; do
+        counter=$((counter + 1))
+        echo "Processing batch $counter (memory stable)"
+        # Reuse the same buffer
+        sleep 5
+      done
+---
+# Diagnostic Pod for Resource Issues
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-diagnostic
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: diagnostic
+    image: busybox:latest
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Diagnosing Resource Issues ==="
+      echo ""
+      echo "1. Check Pod Status for OOMKilled:"
+      echo "   kubectl get pods"
+      echo "   kubectl describe pod <pod-name>"
+      echo "   Look for: 'Last State: Terminated, Reason: OOMKilled'"
+      echo ""
+      echo "2. Check Pod Resource Usage:"
+      echo "   kubectl top pod <pod-name>"
+      echo "   kubectl top pods --all-namespaces"
+      echo ""
+      echo "3. Check Node Resources:"
+      echo "   kubectl top nodes"
+      echo "   kubectl describe node <node-name>"
+      echo ""
+      echo "4. Check Container Metrics:"
+      echo "   kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].resources}'"
+      echo ""
+      echo "5. Watch Resource Usage:"
+      echo "   watch kubectl top pod <pod-name>"
+      echo ""
+      echo "6. Check Events for Resource Issues:"
+      echo "   kubectl get events --sort-by='.lastTimestamp'"
+      echo "   kubectl describe pod <pod-name> | grep -A 10 Events"
+      echo ""
+      echo "7. Common Signs of Issues:"
+      echo "   - Restart count increasing: kubectl get pods"
+      echo "   - Status 'OOMKilled': Memory limit too low"
+      echo "   - Status 'Error' or 'CrashLoopBackOff': Check logs"
+      echo "   - Slow performance: Possible CPU throttling"
+      echo ""
+      echo "8. View Container Logs:"
+      echo "   kubectl logs <pod-name>"
+      echo "   kubectl logs <pod-name> --previous  # Before restart"
+      echo ""
+      echo "9. Stress test to observe limits:"
+      echo "   kubectl exec <pod-name> -- stress --vm 1 --vm-bytes 100M --timeout 10s"
+      echo ""
+      sleep 3600
+---
+# Multi-container pod with different resource profiles
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-container-resources
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  # Main application container
+  - name: app
+    image: nginx:alpine
+    resources:
+      limits:
+        cpu: "500m"
+        memory: "256Mi"
+      requests:
+        cpu: "200m"
+        memory: "128Mi"
+    ports:
+    - containerPort: 80
+
+  # Sidecar with lower resources
+  - name: log-collector
+    image: busybox:latest
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "64Mi"
+      requests:
+        cpu: "50m"
+        memory: "32Mi"
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        echo "Collecting logs..."
+        sleep 10
+      done
+---
+# Example: Identifying CPU throttling
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-throttle-example
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: cpu-test
+    image: busybox:latest
+    resources:
+      limits:
+        cpu: "200m"  # Will throttle if needs more
+      requests:
+        cpu: "100m"
+    command:
+    - sh
+    - -c
+    - |
+      echo "Starting CPU-intensive task..."
+      echo "With limit of 200m CPU, this will be throttled"
+      echo ""
+
+      # CPU-intensive loop
+      while true; do
+        # This will run slowly due to throttling
+        for i in $(seq 1 10000); do
+          result=$((i * i))
+        done
+        echo "Completed iteration at $(date)"
+        sleep 1
+      done
+---
+# Fixed: Appropriate CPU allocation
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-no-throttle
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: cpu-test
+    image: busybox:latest
+    resources:
+      limits:
+        cpu: "1000m"  # Full CPU core
+      requests:
+        cpu: "500m"
+    command:
+    - sh
+    - -c
+    - |
+      echo "Starting CPU-intensive task..."
+      echo "With limit of 1000m CPU, should run smoothly"
+      echo ""
+
+      while true; do
+        for i in $(seq 1 10000); do
+          result=$((i * i))
+        done
+        echo "Completed iteration at $(date)"
+        sleep 1
+      done
+---
+# Best practices example
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-best-practices
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+  annotations:
+    description: "Example following resource management best practices"
+spec:
+  containers:
+  - name: web-app
+    image: nginx:alpine
+    resources:
+      # Set requests for scheduler to make good placement decisions
+      requests:
+        cpu: "250m"      # Guaranteed CPU
+        memory: "128Mi"  # Guaranteed memory
+
+      # Set limits to prevent resource starvation
+      limits:
+        cpu: "500m"      # Can burst to 0.5 CPU
+        memory: "256Mi"  # Hard limit at 256Mi
+
+    # Add probes to catch issues early
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 10
+      periodSeconds: 10
+
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+    ports:
+    - containerPort: 80
+---
+# Monitoring resource consumption over time
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-monitor
+  labels:
+    scenario: resource-issues
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: monitor
+    image: busybox:latest
+    resources:
+      limits:
+        cpu: "100m"
+        memory: "128Mi"
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Resource Monitoring Tips ==="
+      echo ""
+      echo "To monitor continuously:"
+      echo "  watch -n 2 'kubectl top pod <pod-name>'"
+      echo ""
+      echo "To see historical metrics (requires metrics-server):"
+      echo "  kubectl top pod --all-namespaces"
+      echo "  kubectl top nodes"
+      echo ""
+      echo "To analyze OOMKilled patterns:"
+      echo "  kubectl get events --field-selector involvedObject.name=<pod-name>"
+      echo ""
+      echo "To check resource quotas:"
+      echo "  kubectl describe resourcequota -n <namespace>"
+      echo "  kubectl describe limitrange -n <namespace>"
+      echo ""
+      echo "Signs of problems:"
+      echo "  - Memory usage approaching limit → increase limit or fix leak"
+      echo "  - CPU at 100% of limit → possible throttling"
+      echo "  - Frequent OOMKilled → memory limit too low"
+      echo "  - High restart count → resource or application issue"
+      echo ""
+      sleep 3600

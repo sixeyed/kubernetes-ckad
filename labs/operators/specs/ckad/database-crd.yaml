@@ -1,0 +1,73 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: databases.db.example.com
+spec:
+  group: db.example.com
+  names:
+    plural: databases
+    singular: database
+    kind: Database
+    shortNames:
+    - db
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Engine
+      type: string
+      jsonPath: .spec.engine
+    - name: Version
+      type: string
+      jsonPath: .spec.version
+    - name: Storage
+      type: string
+      jsonPath: .spec.storageSize
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              engine:
+                type: string
+                enum:
+                - postgres
+                - mysql
+                - mongodb
+                - redis
+                description: Database engine type
+              version:
+                type: string
+                pattern: '^[0-9]+\.[0-9]+(\.[0-9]+)?$'
+                description: Database version (e.g., 14.5, 8.0)
+              storageSize:
+                type: string
+                pattern: '^[0-9]+[GM]i$'
+                description: Storage size with unit (e.g., 10Gi, 500Mi)
+              replicas:
+                type: integer
+                minimum: 1
+                maximum: 5
+                default: 1
+                description: Number of database replicas
+              backup:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                    default: false
+                  schedule:
+                    type: string
+                    pattern: '^(@(annually|yearly|monthly|weekly|daily|hourly|reboot))|(@every (\d+(ns|us|µs|ms|s|m|h))+)|((((\d+,)+\d+|(\d+(\/|-)\d+)|\d+|\*) ?){5,7})$'
+                    description: Cron schedule for backups
+            required:
+            - engine
+            - version
+            - storageSize

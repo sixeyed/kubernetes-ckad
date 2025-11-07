@@ -30,13 +30,38 @@ Deployments support two strategies for replacing old Pods with new ones:
 
 The RollingUpdate strategy gradually replaces old Pods with new ones, ensuring some Pods are always available during updates.
 
-**TODO**: Create example spec `specs/ckad/strategy-rolling.yaml` with explicit RollingUpdate configuration
+The spec includes explicit RollingUpdate configuration with `maxSurge` and `maxUnavailable` settings:
 
-```
+```bash
 # Deploy with RollingUpdate strategy
 kubectl apply -f labs/deployments/specs/ckad/strategy-rolling.yaml
 
 # Watch the rollout
+kubectl rollout status deployment/whoami-rolling
+
+# Check deployment details
+kubectl describe deployment whoami-rolling
+
+# View pods being created/terminated during updates
+kubectl get pods -l app=whoami --watch
+```
+
+The deployment creates 5 replicas with `maxSurge: 1` and `maxUnavailable: 0`, ensuring zero-downtime updates. During rollouts, Kubernetes:
+1. Creates 1 new pod (maxSurge)
+2. Waits for readiness probe to pass
+3. Terminates 1 old pod
+4. Repeats until all pods are updated
+
+Test the rolling update:
+
+```bash
+# Update to new version
+kubectl set image deployment/whoami-rolling app=sixeyed/whoami:21.04.01
+
+# Watch the gradual rollout
+kubectl get pods -l app=whoami -w
+
+# Verify rollout succeeded
 kubectl rollout status deployment/whoami-rolling
 ```
 
@@ -44,15 +69,29 @@ kubectl rollout status deployment/whoami-rolling
 
 The Recreate strategy terminates all existing Pods before creating new ones. This causes downtime but ensures old and new versions never run simultaneously.
 
-**TODO**: Create example spec `specs/ckad/strategy-recreate.yaml`
-
-```
+```bash
 # Deploy with Recreate strategy
 kubectl apply -f labs/deployments/specs/ckad/strategy-recreate.yaml
 
-# Watch all pods terminate before new ones start
-kubectl get pods --watch
+# Verify deployment is running
+kubectl get deployment whoami-recreate
+kubectl get pods -l app=whoami-recreate
+
+# Trigger an update to see Recreate behavior
+kubectl set image deployment/whoami-recreate app=sixeyed/whoami:21.04.01
+
+# Watch all pods terminate before new ones start (observe downtime)
+kubectl get pods -l app=whoami-recreate --watch
+
+# Check rollout status
+kubectl rollout status deployment/whoami-recreate
 ```
+
+During a Recreate update, you'll observe:
+1. All existing pods terminate simultaneously
+2. Brief period with **zero running pods** (downtime)
+3. All new pods start together
+4. Service unavailable until new pods are ready
 
 📋 **CKAD Tip**: Know when to use each strategy. Recreate is useful when:
 - Your app can't handle multiple versions running simultaneously
@@ -65,7 +104,20 @@ Control how rolling updates behave with `maxSurge` and `maxUnavailable`:
 
 ### MaxSurge and MaxUnavailable
 
-**TODO**: Create example spec `specs/ckad/rolling-update-config.yaml` demonstrating both parameters
+Deploy the example with custom rolling update configuration:
+
+```bash
+# Deploy with explicit rolling update settings
+kubectl apply -f labs/deployments/specs/ckad/rolling-update-config.yaml
+
+# Check deployment strategy
+kubectl describe deployment whoami-rolling-config | grep -A 5 Strategy
+
+# Access the service
+kubectl get service whoami-rolling-config
+```
+
+The spec demonstrates key configuration:
 
 ```yaml
 spec:
@@ -75,6 +127,8 @@ spec:
       maxSurge: 1        # Max pods above desired count (number or %)
       maxUnavailable: 0  # Max pods unavailable during update (number or %)
 ```
+
+Test different configurations:
 
 - **maxSurge**: Maximum number (or %) of Pods created above the desired replica count during an update
 - **maxUnavailable**: Maximum number (or %) of Pods that can be unavailable during an update
@@ -111,7 +165,31 @@ kubectl annotate deployment/whoami kubernetes.io/change-cause="Updated to versio
 kubectl rollout history deployment/whoami
 ```
 
-**TODO**: Create example showing proper annotation usage for change tracking
+Best practice example for change tracking:
+
+```bash
+# Deploy initial version with annotation
+kubectl apply -f labs/deployments/specs/ckad/rolling-update-config.yaml
+
+# Update image and set change-cause annotation
+kubectl set image deployment/whoami-rolling-config app=sixeyed/whoami:21.04.01
+kubectl annotate deployment/whoami-rolling-config kubernetes.io/change-cause="Updated to version 21.04.01 for security patches"
+
+# Make another update
+kubectl set image deployment/whoami-rolling-config app=sixeyed/whoami:21.04.02
+kubectl annotate deployment/whoami-rolling-config kubernetes.io/change-cause="Updated to version 21.04.02 with bug fixes" --overwrite
+
+# View history with change causes
+kubectl rollout history deployment/whoami-rolling-config
+
+# Output shows your annotations:
+# REVISION  CHANGE-CAUSE
+# 1         Initial deployment with custom rolling update config
+# 2         Updated to version 21.04.01 for security patches
+# 3         Updated to version 21.04.02 with bug fixes
+```
+
+📋 **CKAD Exam Tip**: The `--record` flag is deprecated but may still appear on the exam. Prefer using `kubernetes.io/change-cause` annotation for production use.
 
 ### Rollout Status and History
 
@@ -165,13 +243,67 @@ kubectl rollout status deployment/whoami
 kubectl rollout history deployment/whoami
 ```
 
-**TODO**: Create exercise with broken deployment requiring rollback
+Practice rollback with a broken deployment:
+
+```bash
+# Deploy working version
+kubectl apply -f labs/deployments/specs/ckad/broken-deployment.yaml
+
+# Verify it's working
+kubectl get deployment whoami-broken
+kubectl get pods -l app=whoami-broken
+
+# Update to broken image (wrong tag)
+kubectl set image deployment/whoami-broken app=sixeyed/whoami:broken-tag-999
+kubectl annotate deployment/whoami-broken kubernetes.io/change-cause="Updated to broken version"
+
+# Check rollout status - it will hang with ImagePullBackOff
+kubectl rollout status deployment/whoami-broken --timeout=30s
+
+# Inspect the failure
+kubectl get pods -l app=whoami-broken
+kubectl describe pod -l app=whoami-broken | grep -A 5 Events
+
+# View rollout history
+kubectl rollout history deployment/whoami-broken
+
+# Rollback to previous working version
+kubectl rollout undo deployment/whoami-broken
+
+# Verify rollback succeeded
+kubectl rollout status deployment/whoami-broken
+kubectl get pods -l app=whoami-broken
+
+# Check history - rollback creates new revision
+kubectl rollout history deployment/whoami-broken
+
+# Rollback to specific revision if needed
+# kubectl rollout undo deployment/whoami-broken --to-revision=1
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/broken-deployment.yaml
+```
+
+📋 **CKAD Pattern**: In the exam, you might need to quickly identify a failed rollout and rollback. Practice the sequence: `rollout status` → `describe pod` → `rollout undo` → `rollout status`.
 
 ## Resource Management
 
 Deployments should specify resource requests and limits for production readiness:
 
-**TODO**: Create example spec `specs/ckad/resources.yaml` with requests and limits
+Deploy example with resource requests and limits:
+
+```bash
+# Deploy with resources configured
+kubectl apply -f labs/deployments/specs/ckad/resources.yaml
+
+# Check resource settings
+kubectl describe deployment whoami-resources | grep -A 10 "Limits\|Requests"
+
+# View pod resource usage (requires metrics-server)
+kubectl top pods -l app=whoami-resources
+```
+
+The spec includes both requests and limits:
 
 ```yaml
 spec:
@@ -182,11 +314,11 @@ spec:
         image: sixeyed/whoami:21.04
         resources:
           requests:
-            memory: "64Mi"
-            cpu: "100m"
+            memory: "64Mi"    # Guaranteed minimum
+            cpu: "100m"       # 0.1 CPU cores
           limits:
-            memory: "128Mi"
-            cpu: "200m"
+            memory: "128Mi"   # Maximum allowed
+            cpu: "200m"       # 0.2 CPU cores
 ```
 
 Update resources imperatively (useful in exam for speed):
@@ -212,7 +344,25 @@ Production deployments need health checks to ensure reliable updates:
 
 Readiness probes determine when a Pod is ready to accept traffic:
 
-**TODO**: Create example spec `specs/ckad/readiness-probe.yaml`
+```bash
+# Deploy with readiness probe
+kubectl apply -f labs/deployments/specs/ckad/readiness-probe.yaml
+
+# Watch pods become ready
+kubectl get pods -l app=whoami-readiness --watch
+
+# Check probe configuration
+kubectl describe deployment whoami-readiness | grep -A 10 Readiness
+
+# Test readiness: temporarily make pod unready by killing the app
+kubectl exec -it <pod-name> -- killall whoami
+# Pod becomes NotReady, removed from service endpoints
+
+# Verify service only routes to ready pods
+kubectl get endpoints whoami-readiness
+```
+
+Readiness probe configuration:
 
 ```yaml
 spec:
@@ -223,17 +373,37 @@ spec:
         image: sixeyed/whoami:21.04
         readinessProbe:
           httpGet:
-            path: /health
+            path: /
             port: 80
-          initialDelaySeconds: 5
-          periodSeconds: 5
+          initialDelaySeconds: 5   # Wait before first probe
+          periodSeconds: 5         # Check every 5 seconds
+          failureThreshold: 3      # Mark unready after 3 failures
 ```
+
+📋 **CKAD Key Concept**: Readiness probe failure removes Pod from Service endpoints but does NOT restart the container. This is different from liveness probes.
 
 ### Liveness Probes
 
 Liveness probes determine when a container needs to be restarted:
 
-**TODO**: Create example spec `specs/ckad/liveness-probe.yaml`
+```bash
+# Deploy with liveness probe
+kubectl apply -f labs/deployments/specs/ckad/liveness-probe.yaml
+
+# Check probe configuration
+kubectl describe deployment whoami-liveness | grep -A 10 Liveness
+
+# Watch for restarts
+kubectl get pods -l app=whoami-liveness -w
+
+# Check restart count (should be 0 for healthy app)
+kubectl get pods -l app=whoami-liveness
+
+# View pod events showing liveness checks
+kubectl describe pod <pod-name> | grep -A 10 Events
+```
+
+Liveness probe configuration:
 
 ```yaml
 spec:
@@ -244,18 +414,34 @@ spec:
         image: sixeyed/whoami:21.04
         livenessProbe:
           httpGet:
-            path: /health
+            path: /
             port: 80
-          initialDelaySeconds: 15
-          periodSeconds: 10
-          failureThreshold: 3
+          initialDelaySeconds: 15   # Wait 15s after container starts
+          periodSeconds: 10         # Check every 10 seconds
+          failureThreshold: 3       # Restart after 3 failures
 ```
+
+📋 **CKAD Key Concept**: Liveness probe failure triggers container restart. Set `initialDelaySeconds` longer than app startup time to avoid restart loops.
 
 ### Startup Probes
 
 Startup probes handle slow-starting containers:
 
-**TODO**: Create example spec `specs/ckad/startup-probe.yaml`
+```bash
+# Deploy with startup probe
+kubectl apply -f labs/deployments/specs/ckad/startup-probe.yaml
+
+# Watch startup process
+kubectl get pods -l app=whoami-startup --watch
+
+# Check probe configuration
+kubectl describe deployment whoami-startup | grep -A 10 "Startup\|Liveness"
+
+# View pod events during startup
+kubectl describe pod <pod-name> | grep -A 15 Events
+```
+
+Startup probe configuration:
 
 ```yaml
 spec:
@@ -266,11 +452,14 @@ spec:
         image: sixeyed/whoami:21.04
         startupProbe:
           httpGet:
-            path: /health
+            path: /
             port: 80
-          failureThreshold: 30
-          periodSeconds: 10
+          failureThreshold: 30   # 30 attempts
+          periodSeconds: 10      # Every 10 seconds
+          # = 300 seconds (5 minutes) maximum startup time
 ```
+
+📋 **CKAD Key Concept**: Startup probes disable liveness and readiness checks until first success. Use for apps with long initialization (databases, legacy applications).
 
 ### Probe Types
 
@@ -303,7 +492,40 @@ exec:
 - `successThreshold`: Consecutive successes to mark healthy
 - `failureThreshold`: Consecutive failures to mark unhealthy
 
-**TODO**: Create comprehensive exercise combining all probe types
+### Combining All Probe Types
+
+Deploy an example with all three probe types working together:
+
+```bash
+# Deploy with all probe types
+kubectl apply -f labs/deployments/specs/ckad/all-probes.yaml
+
+# Watch the startup sequence
+kubectl get pods -l app=whoami-all-probes --watch
+
+# Check all probe configurations
+kubectl describe deployment whoami-all-probes | grep -A 5 "Startup\|Readiness\|Liveness"
+
+# Test the service
+kubectl get service whoami-all-probes
+curl localhost:30023
+
+# View probe execution in pod events
+kubectl describe pod <pod-name> | grep -A 20 Events
+```
+
+Execution order:
+1. **Startup probe** runs first, other probes disabled
+2. Once startup succeeds (or no startup probe defined):
+3. **Readiness probe** determines traffic eligibility
+4. **Liveness probe** monitors container health
+
+```bash
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/all-probes.yaml
+```
+
+📋 **CKAD Exam Tip**: You may need to add probes to an existing deployment. Use `kubectl edit` or `kubectl set` commands, or export YAML, modify, and reapply.
 
 ## Multi-Container Patterns
 
@@ -311,19 +533,52 @@ exec:
 
 Init containers run before app containers and must complete successfully:
 
-**TODO**: Create example spec `specs/ckad/init-containers.yaml`
+```bash
+# Deploy with init containers
+kubectl apply -f labs/deployments/specs/ckad/init-containers.yaml
+
+# Watch init containers run (Status: Init:0/2, Init:1/2, then Running)
+kubectl get pods -l app=whoami-init --watch
+
+# Check init container status
+kubectl describe pod <pod-name> | grep -A 20 "Init Containers"
+
+# View init container logs
+kubectl logs <pod-name> -c wait-for-service
+kubectl logs <pod-name> -c setup-config
+
+# Verify main container can access init container output
+kubectl exec <pod-name> -- cat /work-dir/init-info.txt
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/init-containers.yaml
+```
+
+Init container configuration:
 
 ```yaml
 spec:
   template:
     spec:
       initContainers:
-      - name: init-service-check
-        image: busybox:1.35
-        command: ['sh', '-c', 'until nslookup myservice; do echo waiting for myservice; sleep 2; done']
+      - name: wait-for-service
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo Waiting... && sleep 5']
+      - name: setup-config
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo "Config data" > /work-dir/config.txt']
+        volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
       containers:
       - name: app
         image: sixeyed/whoami:21.04
+        volumeMounts:
+        - name: workdir
+          mountPath: /work-dir
+      volumes:
+      - name: workdir
+        emptyDir: {}
 ```
 
 Common init container use cases:
@@ -336,7 +591,28 @@ Common init container use cases:
 
 Sidecars run alongside the main container throughout the Pod lifecycle:
 
-**TODO**: Create example spec `specs/ckad/sidecar.yaml` with logging sidecar
+```bash
+# Deploy with sidecar container
+kubectl apply -f labs/deployments/specs/ckad/sidecar.yaml
+
+# Check both containers are running
+kubectl get pods -l app=whoami-sidecar
+
+# View logs from main container
+kubectl logs <pod-name> -c app
+
+# View logs from sidecar container
+kubectl logs <pod-name> -c log-shipper
+kubectl logs <pod-name> -c log-shipper -f  # Follow logs
+
+# Exec into sidecar to verify shared volume
+kubectl exec <pod-name> -c log-shipper -- ls -la /logs
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/sidecar.yaml
+```
+
+Sidecar pattern configuration:
 
 ```yaml
 spec:
@@ -345,10 +621,21 @@ spec:
       containers:
       - name: app
         image: sixeyed/whoami:21.04
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
       - name: log-shipper
-        image: fluent/fluentd:v1.14
-        # Sidecar configuration
+        image: busybox:1.36
+        command: ['sh', '-c', 'tail -f /logs/*.log']
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+      volumes:
+      - name: logs
+        emptyDir: {}
 ```
+
+📋 **CKAD Pattern**: All containers in a Pod share the same network namespace (can communicate via localhost) and can share volumes.
 
 Common sidecar patterns:
 - Log shipping and aggregation
@@ -356,9 +643,48 @@ Common sidecar patterns:
 - Service mesh proxies
 - Configuration synchronization
 
-**TODO**: Create exercise requiring init container + sidecar pattern
+### Combining Init Containers and Sidecars
 
-📋 **CKAD Pattern**: You may need to add a sidecar to an existing deployment for logging/monitoring.
+Real-world pattern combining both multi-container types:
+
+```bash
+# Deploy complex multi-container setup
+kubectl apply -f labs/deployments/specs/ckad/init-sidecar-combined.yaml
+
+# Watch init containers complete first
+kubectl get pods -l app=whoami-multi --watch
+
+# Check init container logs
+kubectl logs <pod-name> -c check-dependencies
+kubectl logs <pod-name> -c setup-data
+
+# Check all running containers (main + sidecars)
+kubectl get pods <pod-name> -o jsonpath='{.spec.containers[*].name}'
+
+# View logs from each container
+kubectl logs <pod-name> -c app
+kubectl logs <pod-name> -c monitor
+kubectl logs <pod-name> -c log-aggregator
+
+# Verify shared data from init container
+kubectl exec <pod-name> -c app -- cat /shared-data/startup.txt
+
+# Describe pod to see full multi-container architecture
+kubectl describe pod <pod-name>
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/init-sidecar-combined.yaml
+```
+
+This pattern demonstrates:
+- **2 init containers** that run sequentially before app starts
+- **3 main containers** that run concurrently:
+  - Main application
+  - Monitoring sidecar
+  - Log aggregation sidecar
+- **Shared volume** for communication between all containers
+
+📋 **CKAD Pattern**: You may need to add a sidecar to an existing deployment for logging/monitoring. Use `kubectl edit` or export, modify, and reapply the YAML.
 
 ## Advanced Deployment Patterns
 
@@ -366,69 +692,114 @@ Common sidecar patterns:
 
 Canary deployments run a small percentage of traffic on the new version:
 
-**TODO**: Create complete canary example in `specs/ckad/canary/`
-
-Strategy:
-1. Deploy main version with most replicas
-2. Deploy canary version with few replicas
-3. Both use same Service labels
-4. Monitor canary performance
-5. Scale up canary, scale down main version
-
-```
+```bash
 # Deploy main version with 3 replicas
 kubectl apply -f labs/deployments/specs/ckad/canary/whoami-main.yaml
 
-# Deploy canary with 1 replica (25% traffic)
+# Deploy canary with 1 replica (25% traffic split)
 kubectl apply -f labs/deployments/specs/ckad/canary/whoami-canary.yaml
 
-# Both deployments use app=whoami-canary label
-# Service selects both: selector: app: whoami-canary
+# Deploy service that routes to both
+kubectl apply -f labs/deployments/specs/ckad/canary/service.yaml
 
-# Monitor canary
-kubectl logs -l version=canary --tail=50
+# Verify both deployments running
+kubectl get deployments -l app=whoami-canary
+kubectl get pods -l app=whoami-canary --show-labels
 
-# If successful, scale canary up and main down
+# Test traffic distribution (run multiple times)
+for i in {1..10}; do curl -s localhost:30024 | grep -i version; done
+
+# Monitor canary logs specifically
+kubectl logs -l version=canary --tail=20 -f
+
+# Monitor main logs
+kubectl logs -l version=main --tail=20 -f
+
+# Check service endpoints (should include all 4 pods)
+kubectl get endpoints whoami-canary
+
+# If canary is healthy, gradually increase canary traffic
+kubectl scale deployment/whoami-canary --replicas=2  # Now 40% canary
+kubectl scale deployment/whoami-canary --replicas=3  # Now 50% canary
+
+# Complete cutover: scale main to 0, canary to desired count
 kubectl scale deployment/whoami-main --replicas=0
 kubectl scale deployment/whoami-canary --replicas=4
+
+# Rollback if issues detected
+kubectl scale deployment/whoami-main --replicas=3
+kubectl scale deployment/whoami-canary --replicas=0
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/canary/
 ```
+
+Canary strategy:
+1. Deploy main version with most replicas (75%)
+2. Deploy canary version with few replicas (25%)
+3. Both use same Service selector label
+4. Traffic splits proportionally by replica count
+5. Monitor canary metrics/logs/errors
+6. Gradually scale up canary, scale down main
+7. Rollback by reversing the scaling
+
+📋 **CKAD Tip**: Canary deployments require careful label management. The Service selector must match both deployments, but each deployment needs unique labels for individual targeting.
 
 ### Blue-Green Deployments (Advanced)
 
-Production-grade blue-green with full cutover:
+Production-grade blue-green deployment with instant cutover:
 
-**TODO**: Enhance blue-green example from basic lab with:
-- Resource requests/limits
-- Health checks
-- Multiple replicas for HA
-- Proper annotations
-
-The basic pattern (from main lab):
-1. Run two separate Deployments (blue and green)
-2. Service targets one environment via labels
-3. Switch traffic by updating Service selector
-4. Keep old version running for quick rollback
-
-```
-# Deploy both versions
+```bash
+# Deploy blue environment (current production)
 kubectl apply -f labs/deployments/specs/ckad/blue-green/whoami-blue.yaml
+
+# Deploy green environment (new version)
 kubectl apply -f labs/deployments/specs/ckad/blue-green/whoami-green.yaml
 
-# Service points to blue initially
+# Verify both environments are ready
+kubectl get deployments -l app=whoami-bg
+kubectl get pods -l app=whoami-bg --show-labels
+
+# Service initially points to blue
 kubectl apply -f labs/deployments/specs/ckad/blue-green/service-blue.yaml
 
 # Test blue version
-curl localhost:8020
+curl localhost:30025
+# Should see ENVIRONMENT=BLUE, VERSION=1.0
 
-# Switch to green
+# Verify only blue pods in service endpoints
+kubectl get endpoints whoami-bg
+kubectl describe service whoami-bg
+
+# Switch to green (instant cutover)
 kubectl apply -f labs/deployments/specs/ckad/blue-green/service-green.yaml
 
-# Test green version
-curl localhost:8020
+# Test green version immediately
+curl localhost:30025
+# Should see ENVIRONMENT=GREEN, VERSION=2.0
 
-# Rollback by reapplying blue service
+# Verify only green pods in service endpoints
+kubectl get endpoints whoami-bg
+
+# Quick rollback to blue if issues detected
 kubectl apply -f labs/deployments/specs/ckad/blue-green/service-blue.yaml
+curl localhost:30025  # Back to blue
+
+# After green is validated, can delete blue deployment
+kubectl delete deployment whoami-blue
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/blue-green/
 ```
+
+Blue-green strategy:
+1. Run two complete environments (blue and green)
+2. Both have production-grade configs (replicas, health checks, resources)
+3. Service selector determines active environment
+4. Instant cutover by changing Service selector
+5. Zero downtime (both environments always ready)
+6. Instant rollback capability
+7. Higher resource cost (running duplicate environments)
 
 📋 **CKAD Tip**: Blue-green requires careful label management. Practice changing Service selectors quickly.
 
@@ -436,59 +807,77 @@ kubectl apply -f labs/deployments/specs/ckad/blue-green/service-blue.yaml
 
 ### Complete Production-Ready Deployment
 
-**TODO**: Create comprehensive production example `specs/ckad/production-ready.yaml` with:
+Deploy a fully production-ready application with all best practices:
+
+```bash
+# Deploy production-ready application
+kubectl apply -f labs/deployments/specs/ckad/production-ready.yaml
+
+# Verify deployment in production-demo namespace
+kubectl get all -n production-demo
+
+# Check deployment has all production features
+kubectl describe deployment webapp -n production-demo
+
+# Test the service
+kubectl get service webapp -n production-demo
+curl localhost:30021
+
+# Verify resource limits are set
+kubectl describe pod -n production-demo -l app=webapp | grep -A 5 "Limits\|Requests"
+
+# Check all three probe types configured
+kubectl describe pod -n production-demo -l app=webapp | grep -A 3 "Startup\|Readiness\|Liveness"
+
+# Test rolling update
+kubectl set image deployment/webapp -n production-demo webapp=sixeyed/whoami:latest
+kubectl annotate deployment/webapp -n production-demo kubernetes.io/change-cause="Updated to latest version" --overwrite
+
+# Watch zero-downtime rollout
+kubectl rollout status deployment/webapp -n production-demo
+kubectl get pods -n production-demo -w
+
+# View rollout history
+kubectl rollout history deployment/webapp -n production-demo
+
+# Cleanup
+kubectl delete namespace production-demo
+```
+
+The production-ready spec includes:
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: whoami-production
-  labels:
-    app: whoami
-    tier: frontend
+  name: webapp
+  namespace: production-demo
   annotations:
-    kubernetes.io/change-cause: "Initial production deployment"
+    kubernetes.io/change-cause: "Initial production deployment v1.0.0"
 spec:
-  replicas: 3
+  replicas: 3                    # HA with multiple replicas
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
-  selector:
-    matchLabels:
-      app: whoami
+      maxSurge: 1                # Zero-downtime updates
+      maxUnavailable: 1
   template:
-    metadata:
-      labels:
-        app: whoami
-        version: v1
     spec:
       containers:
-      - name: app
-        image: sixeyed/whoami:21.04
-        ports:
-        - containerPort: 80
-          name: http
+      - name: webapp
+        image: sixeyed/whoami:latest
         resources:
-          requests:
-            memory: "64Mi"
-            cpu: "100m"
-          limits:
-            memory: "128Mi"
-            cpu: "200m"
-        readinessProbe:
-          httpGet:
-            path: /
-            port: http
-          initialDelaySeconds: 5
-          periodSeconds: 5
-        livenessProbe:
-          httpGet:
-            path: /
-            port: http
-          initialDelaySeconds: 15
-          periodSeconds: 10
+          requests:                # Guaranteed resources
+            cpu: 100m
+            memory: 128Mi
+          limits:                  # Resource boundaries
+            cpu: 500m
+            memory: 256Mi
+        startupProbe:              # Handles slow startup
+        readinessProbe:            # Controls traffic routing
+        livenessProbe:             # Detects failures
+        securityContext:           # Security hardening
+          runAsNonRoot: true
 ```
 
 ### Deployment Checklist for CKAD
@@ -510,54 +899,272 @@ Ensure your deployments include:
 
 ### Exercise 1: Zero-Downtime Deployment
 
-Create a deployment that:
-- Runs 3 replicas
-- Has zero downtime during updates (maxUnavailable: 0)
-- Uses a readiness probe
-- Updates from whoami:21.04 to whoami:21.04.01
+Create a deployment that guarantees zero downtime during updates.
 
-**TODO**: Create exercise spec and solution
+```bash
+# Deploy starting configuration
+kubectl apply -f labs/deployments/specs/ckad/exercises/zero-downtime-start.yaml
+
+# Verify deployment is running with 3 replicas
+kubectl get deployment webapp-zero-downtime
+kubectl get pods -l app=webapp-zero-downtime
+
+# Check the service
+kubectl get service webapp-zero-downtime
+
+# Update to new version with zero downtime
+kubectl set image deployment/webapp-zero-downtime app=sixeyed/whoami:21.04.01
+
+# In another terminal, continuously test availability (no errors should occur)
+while true; do curl -s http://localhost:8080 > /dev/null && echo "OK" || echo "FAILED"; sleep 0.5; done
+
+# Watch the rolling update (maxUnavailable: 0 ensures all pods stay available)
+kubectl get pods -l app=webapp-zero-downtime --watch
+
+# Verify rollout succeeded
+kubectl rollout status deployment/webapp-zero-downtime
+
+# Check that readiness probe prevented traffic to non-ready pods
+kubectl describe deployment webapp-zero-downtime
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/exercises/zero-downtime-start.yaml
+```
+
+Key configuration for zero downtime:
+- `maxSurge: 1` - Create new pod before terminating old ones
+- `maxUnavailable: 0` - Never allow pods to be unavailable
+- `readinessProbe` - Only route traffic to ready pods
 
 ### Exercise 2: Failed Deployment Recovery
 
-Deploy a broken application (wrong image name) and practice:
-- Identifying the failure
-- Checking rollout status
-- Rolling back to previous version
-- Verifying recovery
+Practice identifying and recovering from failed deployments.
 
-**TODO**: Create broken deployment spec for practice
+This exercise uses the broken-deployment.yaml created earlier in the rollback section. Follow the complete walkthrough:
+
+```bash
+# Deploy working version
+kubectl apply -f labs/deployments/specs/ckad/broken-deployment.yaml
+
+# Verify initial deployment works
+kubectl get pods -l app=whoami-broken
+kubectl rollout status deployment/whoami-broken
+
+# Simulate production issue: update to non-existent image
+kubectl set image deployment/whoami-broken app=sixeyed/whoami:non-existent-tag
+
+# Observe the failure
+kubectl rollout status deployment/whoami-broken --timeout=30s
+
+# Identify the problem
+kubectl get pods -l app=whoami-broken
+# You'll see: ImagePullBackOff or ErrImagePull
+
+kubectl describe pod -l app=whoami-broken | tail -20
+# Events show: Failed to pull image
+
+# Check deployment status
+kubectl get deployment whoami-broken
+# READY shows 3/3 old pods still running (RollingUpdate protected us!)
+
+# View rollout history
+kubectl rollout history deployment/whoami-broken
+
+# Perform rollback
+kubectl rollout undo deployment/whoami-broken
+
+# Verify recovery
+kubectl rollout status deployment/whoami-broken
+kubectl get pods -l app=whoami-broken
+# All pods should be Running again
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/broken-deployment.yaml
+```
+
+📋 **CKAD Exam Skill**: Practice identifying failure types quickly:
+- **ImagePullBackOff**: Wrong image name/tag or registry auth issue
+- **CrashLoopBackOff**: Container starts but exits immediately
+- **Pending**: Resource constraints or scheduling issues
+- **Not Ready**: Failing readiness probes
 
 ### Exercise 3: Canary Release
 
-Implement a canary deployment:
-- Main deployment: 3 replicas (v1)
-- Canary deployment: 1 replica (v2)
-- Single service routing to both
-- Monitor and complete cutover
+Implement and manage a complete canary deployment.
 
-**TODO**: Create complete canary exercise with monitoring steps
+This exercise uses the canary specs created earlier. Follow the complete workflow:
+
+```bash
+# Deploy both environments
+kubectl apply -f labs/deployments/specs/ckad/canary/
+
+# Verify both deployments
+kubectl get deployments -l app=whoami-canary
+# whoami-main: 3/3 replicas
+# whoami-canary: 1/1 replicas
+
+kubectl get pods -l app=whoami-canary --show-labels
+# Should see 4 total pods with different version labels
+
+# Test traffic distribution (approximately 75% main, 25% canary)
+for i in {1..20}; do
+  curl -s localhost:30024 | grep DEPLOYMENT
+done | sort | uniq -c
+
+# Monitor canary specifically
+kubectl logs -l version=canary -f &
+
+# If canary looks good, increase its traffic share
+kubectl scale deployment/whoami-canary --replicas=2  # Now 40% canary (2/5)
+
+# Test again
+for i in {1..20}; do
+  curl -s localhost:30024 | grep DEPLOYMENT
+done | sort | uniq -c
+
+# Continue gradual rollout
+kubectl scale deployment/whoami-canary --replicas=3  # 50% canary
+kubectl scale deployment/whoami-main --replicas=2    # 50% main
+
+# Complete cutover
+kubectl scale deployment/whoami-main --replicas=0
+kubectl scale deployment/whoami-canary --replicas=4
+
+# Verify only canary running
+kubectl get pods -l app=whoami-canary
+
+# Simulate problem detection and rollback
+kubectl scale deployment/whoami-main --replicas=3
+kubectl scale deployment/whoami-canary --replicas=1
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/canary/
+```
+
+📋 **CKAD Canary Pattern**: Remember the formula for traffic percentage:
+- Canary %=  (canary replicas) / (total replicas) × 100
 
 ### Exercise 4: Multi-Container Pattern
 
-Create a deployment with:
-- Init container that waits for a dependency
-- Main application container
-- Sidecar for log collection
-- All with proper resource limits
+Create and manage a complex multi-container deployment.
 
-**TODO**: Create multi-container exercise spec
+This exercise uses the init-sidecar-combined.yaml spec:
+
+```bash
+# Deploy multi-container pattern
+kubectl apply -f labs/deployments/specs/ckad/init-sidecar-combined.yaml
+
+# Watch init containers run before main containers
+kubectl get pods -l app=whoami-multi --watch
+# Status progresses: Init:0/2 → Init:1/2 → Running
+
+# Once running, check all containers
+POD=$(kubectl get pod -l app=whoami-multi -o jsonpath='{.items[0].metadata.name}')
+
+# View init container logs
+kubectl logs $POD -c check-dependencies
+kubectl logs $POD -c setup-data
+
+# View main container logs
+kubectl logs $POD -c app
+kubectl logs $POD -c monitor -f
+kubectl logs $POD -c log-aggregator
+
+# Verify shared data from init container
+kubectl exec $POD -c app -- cat /shared-data/startup.txt
+kubectl exec $POD -c app -- cat /shared-data/status.txt
+
+# Check resource usage across all containers
+kubectl top pod $POD --containers
+
+# Describe to see full architecture
+kubectl describe pod $POD
+
+# Test the application
+kubectl get service whoami-multi
+curl http://localhost:8080  # If service is LoadBalancer/NodePort
+
+# Cleanup
+kubectl delete -f labs/deployments/specs/ckad/init-sidecar-combined.yaml
+```
+
+Key multi-container concepts:
+- **Init containers**: Run sequentially, must complete successfully
+- **Main containers**: Run concurrently, share network and volumes
+- **Container lifecycle**: Init → Main containers → Termination
+- **Shared volumes**: Use `emptyDir` for inter-container communication
+
+📋 **CKAD Exam Tip**: Know how to view logs and exec into specific containers using `-c <container-name>`.
 
 ### Exercise 5: Production Deployment
 
-Build a production-ready deployment from scratch with all best practices:
-- HA configuration (3 replicas)
-- Resource management
-- Health checks (readiness, liveness, startup)
-- RollingUpdate with proper configuration
-- Meaningful labels and annotations
+Build a production-ready deployment imperatively using CKAD exam techniques.
 
-**TODO**: Create from-scratch production exercise (no template)
+```bash
+# Create deployment using imperative command (fast for exams)
+kubectl create deployment prod-app \
+  --image=sixeyed/whoami:21.04 \
+  --replicas=3 \
+  --dry-run=client -o yaml > prod-app.yaml
+
+# Edit the generated YAML to add production features
+# Open with: kubectl create deployment ... --dry-run=client -o yaml | kubectl apply -f -
+# Or: export KUBE_EDITOR=nano; kubectl edit deployment prod-app
+
+# Add resource limits (imperative)
+kubectl set resources deployment/prod-app \
+  --limits=cpu=200m,memory=256Mi \
+  --requests=cpu=100m,memory=128Mi
+
+# Configure rolling update strategy
+kubectl patch deployment prod-app -p '{
+  "spec": {
+    "strategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "maxSurge": 1,
+        "maxUnavailable": 0
+      }
+    }
+  }
+}'
+
+# For probes, you'll need to edit the deployment
+kubectl edit deployment prod-app
+# Add under containers:
+#   readinessProbe:
+#     httpGet:
+#       path: /
+#       port: 80
+#     initialDelaySeconds: 5
+#     periodSeconds: 5
+#   livenessProbe:
+#     httpGet:
+#       path: /
+#       port: 80
+#     initialDelaySeconds: 15
+#     periodSeconds: 10
+
+# Add annotations
+kubectl annotate deployment prod-app \
+  kubernetes.io/change-cause="Production deployment v1.0"
+
+# Expose with service
+kubectl expose deployment prod-app --port=80 --type=LoadBalancer
+
+# Verify all production requirements
+kubectl describe deployment prod-app
+
+# Test rolling update
+kubectl set image deployment/prod-app whoami=sixeyed/whoami:21.04.01
+kubectl rollout status deployment/prod-app
+
+# Cleanup
+kubectl delete deployment prod-app
+kubectl delete service prod-app
+```
+
+📋 **CKAD Exam Strategy**: Start with imperative commands for speed, then use `kubectl edit` or `kubectl patch` to add complex configurations like probes.
 
 ## Quick Command Reference for CKAD
 
@@ -637,7 +1244,74 @@ kubectl set resources deployment/backend -c=backend --limits=cpu=200m,memory=512
 kubectl patch deployment app -p '{"spec":{"strategy":{"rollingUpdate":{"maxSurge":1,"maxUnavailable":0}}}}'
 ```
 
-**TODO**: Create complete scenario-based exercises matching exam format
+### Scenario 6: Add Probes to Existing Deployment
+"Add readiness and liveness probes to the existing deployment 'webapp'"
+
+```bash
+# Method 1: Edit in place (fastest in exam)
+kubectl edit deployment webapp
+# Add probes under containers section
+
+# Method 2: Patch with JSON
+kubectl patch deployment webapp --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/readinessProbe",
+    "value": {
+      "httpGet": {"path": "/", "port": 80},
+      "initialDelaySeconds": 5,
+      "periodSeconds": 5
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/livenessProbe",
+    "value": {
+      "httpGet": {"path": "/", "port": 80},
+      "initialDelaySeconds": 15,
+      "periodSeconds": 10
+    }
+  }
+]'
+```
+
+### Scenario 7: Change Deployment Strategy
+"Update deployment 'api' to use Recreate strategy instead of RollingUpdate"
+
+```bash
+kubectl patch deployment api -p '{"spec":{"strategy":{"type":"Recreate"}}}'
+# Verify
+kubectl describe deployment api | grep Strategy
+```
+
+### Scenario 8: Update Multiple Configurations
+"For deployment 'backend': set 5 replicas, update image to v2.0, add resource limits"
+
+```bash
+# Can do all at once with kubectl edit, or separately:
+kubectl scale deployment backend --replicas=5
+kubectl set image deployment/backend backend=backend:v2.0
+kubectl set resources deployment/backend -c=backend --limits=cpu=500m,memory=512Mi
+```
+
+### Scenario 9: Pause and Resume Deployment
+"Pause deployment 'frontend', update image and resources, then resume"
+
+```bash
+kubectl rollout pause deployment/frontend
+kubectl set image deployment/frontend app=newimage:v2
+kubectl set resources deployment/frontend -c=app --requests=cpu=200m
+kubectl rollout resume deployment/frontend
+```
+
+### Scenario 10: Check Deployment Progress
+"Monitor deployment 'app' rollout and show revision history"
+
+```bash
+kubectl rollout status deployment/app
+kubectl rollout history deployment/app
+kubectl rollout history deployment/app --revision=3
+```
 
 ## Troubleshooting Deployments
 
@@ -668,7 +1342,89 @@ kubectl rollout history deployment/<name>
 kubectl rollout restart deployment/<name>
 ```
 
-**TODO**: Create troubleshooting exercise with common failure scenarios
+### Troubleshooting Exercise
+
+Practice diagnosing common deployment failures:
+
+```bash
+# Scenario 1: CrashLoopBackOff
+kubectl apply -f labs/deployments/specs/ckad/exercises/troubleshooting-crashloop.yaml
+
+# Diagnose the problem
+kubectl get pods -l app=troubleshoot-crashloop
+# STATUS: CrashLoopBackOff
+
+kubectl logs <pod-name>
+# Shows container exit logs
+
+kubectl describe pod <pod-name>
+# Events show: Back-off restarting failed container
+
+# The container exits with error code 1 immediately
+# Fix: Update command to run properly
+kubectl delete -f labs/deployments/specs/ckad/exercises/troubleshooting-crashloop.yaml
+
+# Scenario 2: ImagePullBackOff
+kubectl apply -f labs/deployments/specs/ckad/exercises/troubleshooting-imagepull.yaml
+
+# Diagnose
+kubectl get pods -l app=troubleshoot-imagepull
+# STATUS: ImagePullBackOff or ErrImagePull
+
+kubectl describe pod <pod-name> | grep -A 5 Events
+# Events show: Failed to pull image "sixeyed/whoami:does-not-exist-999"
+# Error: manifest unknown or image not found
+
+# Fix: Correct the image tag
+kubectl set image deployment/troubleshoot-imagepull app=sixeyed/whoami:21.04
+kubectl rollout status deployment/troubleshoot-imagepull
+
+kubectl delete -f labs/deployments/specs/ckad/exercises/troubleshooting-imagepull.yaml
+
+# Scenario 3: Failing Readiness Probe
+kubectl apply -f labs/deployments/specs/ckad/exercises/troubleshooting-readiness.yaml
+
+# Diagnose
+kubectl get pods -l app=troubleshoot-readiness
+# STATUS: Running but NOT READY (0/1)
+
+kubectl describe pod <pod-name> | grep -A 10 "Readiness\|Events"
+# Readiness probe failed: connection refused on port 8080
+# App runs on port 80, probe checks 8080
+
+# Fix: Update probe to correct port
+kubectl edit deployment troubleshoot-readiness
+# Change readinessProbe port from 8080 to 80
+
+kubectl get pods -l app=troubleshoot-readiness
+# Now shows READY (1/1)
+
+kubectl delete -f labs/deployments/specs/ckad/exercises/troubleshooting-readiness.yaml
+```
+
+Common troubleshooting commands:
+
+```bash
+# Pod status
+kubectl get pods
+kubectl describe pod <pod-name>
+kubectl logs <pod-name>
+kubectl logs <pod-name> --previous  # Previous container instance
+
+# Deployment status
+kubectl get deployment <name>
+kubectl describe deployment <name>
+kubectl rollout status deployment/<name>
+
+# Events
+kubectl get events --sort-by=.metadata.creationTimestamp
+kubectl get events --field-selector involvedObject.name=<pod-name>
+
+# Resource issues
+kubectl top nodes
+kubectl top pods
+kubectl describe nodes
+```
 
 ## Study Tips for CKAD
 

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: init-container-failing
+  labels:
+    app: troubleshooting-demo
+    scenario: init-container
+spec:
+  initContainers:
+  - name: init-check
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "Running initialization checks..."
+      echo "Checking critical requirement..."
+      exit 1  # Init container always fails
+  containers:
+  - name: app
+    image: nginx
+    ports:
+    - containerPort: 80

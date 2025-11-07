@@ -1,0 +1,289 @@
+# Scenario 1: Debug a Failing Pod with Misconfigured Probes
+#
+# This scenario demonstrates common probe configuration issues
+# and how to debug and fix them
+
+# Problem 1: Liveness probe that's too aggressive
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aggressive-liveness
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: slow-start-app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 1  # TOO SHORT - nginx not ready yet!
+      periodSeconds: 2
+      failureThreshold: 1  # TOO AGGRESSIVE - kills after 1 failure
+    # Issue: Pod keeps restarting because probe checks before app is ready
+---
+# Solution 1: Fixed with proper timing
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-liveness
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: slow-start-app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 10  # Give time to start
+      periodSeconds: 5
+      failureThreshold: 3  # Allow 3 failures before restart
+      timeoutSeconds: 3
+---
+# Problem 2: Wrong port in probe
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-port-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 8080  # WRONG PORT - nginx runs on 80!
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    # Issue: Readiness probe always fails, Pod never becomes Ready
+---
+# Solution 2: Fixed with correct port
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-port-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80  # Correct port
+      initialDelaySeconds: 5
+      periodSeconds: 5
+---
+# Problem 3: Wrong path in probe
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-path-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    livenessProbe:
+      httpGet:
+        path: /healthz  # Path doesn't exist in default nginx
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+    # Issue: Returns 404, causing restarts
+---
+# Solution 3: Use root path or create health endpoint
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-path-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    livenessProbe:
+      httpGet:
+        path: /  # Use root which exists
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 10
+---
+# Problem 4: Startup probe missing for slow-starting app
+apiVersion: v1
+kind: Pod
+metadata:
+  name: slow-start-no-startup
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Starting slow application..."
+      sleep 45  # Takes 45 seconds to start
+      echo "Ready!" > /tmp/ready
+      sleep 3600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/ready
+      initialDelaySeconds: 10  # Not enough time!
+      periodSeconds: 5
+      failureThreshold: 3
+    # Issue: App takes 45s to start but liveness probe starts checking at 10s
+    # After 3 failures (15s total), pod gets restarted - never becomes ready!
+---
+# Solution 4: Use startup probe for slow-starting apps
+apiVersion: v1
+kind: Pod
+metadata:
+  name: slow-start-with-startup
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Starting slow application..."
+      sleep 45
+      echo "Ready!" > /tmp/ready
+      echo "Application is running"
+      sleep 3600
+    startupProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/ready
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 15  # 15 * 5 = 75 seconds max startup time
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/ready
+      periodSeconds: 10
+      failureThreshold: 3
+    # Liveness probe doesn't start until startup probe succeeds
+---
+# Problem 5: Exec probe with wrong command
+apiVersion: v1
+kind: Pod
+metadata:
+  name: wrong-command-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'sleep 3600']
+    livenessProbe:
+      exec:
+        command:
+        - /bin/check-health.sh  # Script doesn't exist!
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    # Issue: Command fails, causing constant restarts
+---
+# Solution 5: Use correct command that exists
+apiVersion: v1
+kind: Pod
+metadata:
+  name: fixed-command-probe
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "healthy" > /tmp/health
+      sleep 3600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/health
+      initialDelaySeconds: 5
+      periodSeconds: 10
+---
+# Debugging Tips Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probe-debug-helper
+  labels:
+    scenario: debug-probes
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: helper
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Probe Debugging Commands ==="
+      echo ""
+      echo "1. Check pod status and restarts:"
+      echo "   kubectl get pods"
+      echo "   kubectl describe pod <pod-name>"
+      echo ""
+      echo "2. Look for probe failure events:"
+      echo "   kubectl describe pod <pod-name> | grep -A 5 Events"
+      echo ""
+      echo "3. Check probe configuration:"
+      echo "   kubectl get pod <pod-name> -o yaml | grep -A 20 Probe"
+      echo ""
+      echo "4. Test probe manually:"
+      echo "   kubectl exec <pod-name> -- curl localhost:<port><path>"
+      echo "   kubectl exec <pod-name> -- cat /path/to/file"
+      echo ""
+      echo "5. Check container logs:"
+      echo "   kubectl logs <pod-name>"
+      echo "   kubectl logs <pod-name> --previous  # Previous instance"
+      echo ""
+      echo "6. Watch pod restart behavior:"
+      echo "   kubectl get pod <pod-name> -w"
+      echo ""
+      sleep 3600

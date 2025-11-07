@@ -1,0 +1,44 @@
+# ServiceAccount and Pod with token automounting disabled
+# Security best practice: Disable token mounting for apps that don't need Kubernetes API access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: secure-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+automountServiceAccountToken: false  # Disable at ServiceAccount level (recommended)
+---
+# Pod using ServiceAccount with no token mounted
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-token-pod
+  namespace: default
+  labels:
+    app: secure-app
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: secure-sa
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never
+---
+# Alternative: Disable at Pod level only
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-level-no-token
+  namespace: default
+  labels:
+    app: secure-app-2
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  automountServiceAccountToken: false  # Disable at Pod level
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never

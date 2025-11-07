@@ -1,0 +1,13 @@
+# QoS Class: BestEffort
+# Achieved when no resources are specified
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-besteffort
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    # No resources specified = BestEffort

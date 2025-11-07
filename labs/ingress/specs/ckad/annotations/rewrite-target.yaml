@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: rewrite-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-api
+  namespace: rewrite-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend-api
+  template:
+    metadata:
+      labels:
+        app: backend-api
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: rewrite-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: backend-api
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+# Rewrite-target annotation strips the /backend prefix
+# Request: /backend/api/users -> Backend receives: /api/users
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rewrite-ingress
+  namespace: rewrite-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    # Capture group $2 contains everything after /backend/
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: rewrite.example.com
+    http:
+      paths:
+      # Regex: /backend/ followed by anything (captured in $2)
+      - path: /backend(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-svc
+            port:
+              number: 8080
+---
+# Alternative: Simple rewrite to root
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rewrite-simple
+  namespace: rewrite-demo
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    # All requests rewritten to /
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: simple-rewrite.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: backend-svc
+            port:
+              number: 8080
