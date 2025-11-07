@@ -1,0 +1,126 @@
+# Node Affinity - Required
+# Pod will ONLY be scheduled on nodes matching the criteria
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-required
+  labels:
+    app: affinity-demo
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+            - amd64
+            - arm64
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Node Affinity - Preferred
+# Pod prefers nodes matching criteria but can schedule elsewhere
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-preferred
+  labels:
+    app: affinity-demo
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+          - key: region
+            operator: In
+            values:
+            - us-west
+            - us-east
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: instance-type
+            operator: In
+            values:
+            - compute-optimized
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Node Affinity - Combined Required and Preferred
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-combined
+  labels:
+    app: affinity-demo
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    nodeAffinity:
+      # MUST have SSD
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+      # PREFERS us-west region
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: region
+            operator: In
+            values:
+            - us-west
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Node Affinity with different operators
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-operators
+  labels:
+    app: affinity-demo
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # Node must have label 'environment'
+          - key: environment
+            operator: Exists
+          # Node must NOT be in maintenance
+          - key: maintenance
+            operator: DoesNotExist
+          # Node GPU type must NOT be old models
+          - key: gpu-type
+            operator: NotIn
+            values:
+            - k80
+            - m60
+          # Node must have high memory (>= 16GB)
+          - key: memory
+            operator: Gt
+            values:
+            - "15"
+  containers:
+  - name: app
+    image: nginx:alpine

@@ -22,7 +22,7 @@ Pods can run multiple containers that work together. Common patterns include:
 
 The sidecar pattern runs a helper container alongside the main application container.
 
-> **TODO**: Add example spec for sidecar pattern (e.g., main app + logging sidecar)
+See complete example: [`specs/ckad/sidecar-pattern.yaml`](specs/ckad/sidecar-pattern.yaml)
 
 ```yaml
 # Example: web app with log processor sidecar
@@ -33,12 +33,19 @@ metadata:
 spec:
   containers:
   - name: web-app
-    image: nginx
-    # TODO: Add volume mount for logs
+    image: nginx:alpine
+    volumeMounts:
+    - name: shared-logs
+      mountPath: /var/log/nginx
   - name: log-processor
-    image: busybox
-    # TODO: Add volume mount and processing command
-  # TODO: Add shared volume definition
+    image: busybox:latest
+    command: ['sh', '-c', 'while true; do tail -n 100 /logs/access.log | wc -l; sleep 10; done']
+    volumeMounts:
+    - name: shared-logs
+      mountPath: /logs
+  volumes:
+  - name: shared-logs
+    emptyDir: {}
 ```
 
 📋 Create and deploy a multi-container Pod with a sidecar pattern.
@@ -47,19 +54,25 @@ spec:
 
 The ambassador pattern uses a proxy container to simplify connectivity for the main container.
 
-> **TODO**: Add example spec for ambassador pattern (e.g., app + proxy to external service)
+See complete example: [`specs/ckad/ambassador-pattern.yaml`](specs/ckad/ambassador-pattern.yaml)
+
+The ambassador acts as a proxy, allowing the main application to connect to `localhost` instead of knowing external service URLs.
 
 ### Adapter Pattern
 
 The adapter pattern transforms the output of the main container to match a standard format.
 
-> **TODO**: Add example spec for adapter pattern (e.g., app with custom logs + adapter to standard format)
+See complete example: [`specs/ckad/adapter-pattern.yaml`](specs/ckad/adapter-pattern.yaml)
+
+The adapter container reads logs from the main application and transforms them into a standardized format (e.g., converting custom logs to JSON).
 
 ## Init Containers
 
 Init containers run before the main application containers and are often used for setup tasks.
 
-> **TODO**: Add example spec showing init container use case (e.g., database migration, config setup)
+See complete examples:
+- Basic init containers: [`specs/ckad/init-container.yaml`](specs/ckad/init-container.yaml)
+- Waiting for services: [`specs/ckad/init-wait-for-service.yaml`](specs/ckad/init-wait-for-service.yaml)
 
 ```yaml
 apiVersion: v1
@@ -86,7 +99,21 @@ Key characteristics:
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution showing nslookup or wget check in init container
+See solution: [`specs/ckad/init-wait-for-service.yaml`](specs/ckad/init-wait-for-service.yaml)
+
+```yaml
+initContainers:
+- name: wait-for-database
+  image: busybox:latest
+  command:
+  - sh
+  - -c
+  - |
+    until nslookup database-service.default.svc.cluster.local; do
+      echo "Waiting for database..."
+      sleep 2
+    done
+```
 
 </details><br/>
 
@@ -114,7 +141,9 @@ spec:
         cpu: "500m"
 ```
 
-> **TODO**: Add example showing what happens when container exceeds memory limit (OOMKilled)
+See OOMKilled example: [`specs/ckad/resources-oomkilled.yaml`](specs/ckad/resources-oomkilled.yaml)
+
+When a container exceeds its memory limit, Kubernetes kills it with status `OOMKilled` (Out Of Memory). The Pod will restart according to its `restartPolicy`.
 
 📋 Create a Pod that requests 100m CPU and 128Mi memory, with limits of 200m CPU and 256Mi memory.
 
@@ -125,7 +154,9 @@ Kubernetes assigns QoS classes based on resource configuration:
 - **Burstable**: At least one container has requests or limits set
 - **BestEffort**: No requests or limits set
 
-> **TODO**: Add examples showing how to identify QoS class using `kubectl describe pod`
+See complete examples for all QoS classes: [`specs/ckad/qos-classes.yaml`](specs/ckad/qos-classes.yaml)
+
+To identify QoS class: `kubectl describe pod <pod-name>` and look for the `QoS Class:` field.
 
 ## Health Probes
 
@@ -152,7 +183,17 @@ spec:
       periodSeconds: 3
 ```
 
-> **TODO**: Add example showing liveness probe with exec command
+See exec command example: [`specs/ckad/probes-liveness-exec.yaml`](specs/ckad/probes-liveness-exec.yaml)
+
+```yaml
+livenessProbe:
+  exec:
+    command:
+    - cat
+    - /tmp/healthy
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
 
 ### Readiness Probe
 
@@ -179,14 +220,21 @@ spec:
 
 Allows slow-starting containers more time before liveness checks begin.
 
-> **TODO**: Add example spec showing startup probe use case
+See complete example: [`specs/ckad/probes-startup.yaml`](specs/ckad/probes-startup.yaml)
+
+Startup probes are useful for applications that take a long time to initialize. The liveness probe doesn't start checking until the startup probe succeeds.
 
 📋 Create a Pod with both liveness and readiness probes using different methods (httpGet, exec, tcpSocket).
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution showing all three probe types
+See complete solution with all probe types: [`specs/ckad/probes-all-types.yaml`](specs/ckad/probes-all-types.yaml)
+
+This example shows:
+- Startup probe with `exec` command
+- Liveness probe with `httpGet`
+- Readiness probe with `tcpSocket`
 
 </details><br/>
 
@@ -212,18 +260,28 @@ spec:
 
 ### Environment Variables from ConfigMaps
 
-> **TODO**: Add example showing envFrom and valueFrom with ConfigMap
+See complete examples: [`specs/ckad/env-configmap.yaml`](specs/ckad/env-configmap.yaml)
+
+Shows three approaches: individual keys with `valueFrom`, all keys with `envFrom`, and ConfigMap as volume mount.
 
 ### Environment Variables from Secrets
 
-> **TODO**: Add example showing env vars populated from Secrets
+See complete examples: [`specs/ckad/env-secret.yaml`](specs/ckad/env-secret.yaml)
+
+Similar to ConfigMaps but for sensitive data. Secrets are base64-encoded and can be mounted as volumes with specific permissions.
 
 📋 Create a Pod that uses environment variables from both ConfigMap and Secret.
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution with ConfigMap, Secret, and Pod consuming both
+See complete solution: [`specs/ckad/env-configmap-secret-combined.yaml`](specs/ckad/env-configmap-secret-yaml)
+
+This example demonstrates:
+- Creating ConfigMap and Secret
+- Using both in the same Pod
+- Combining individual keys and `envFrom`
+- Best practices for configuration management
 
 </details><br/>
 
@@ -471,35 +529,62 @@ Create a Pod with two containers:
 
 The containers should share a volume where the sidecar writes content and nginx serves it.
 
-> **TODO**: Add detailed requirements and solution
+**Solution**: [`specs/ckad/exercises/ex1-multi-container.yaml`](specs/ckad/exercises/ex1-multi-container.yaml)
+
+```bash
+kubectl apply -f labs/pods/specs/ckad/exercises/ex1-multi-container.yaml
+kubectl get pod content-server
+kubectl port-forward content-server 8080:80
+# Visit http://localhost:8080 to see fetched content
+```
 
 ### Exercise 2: Resource Management
 
 Create a Pod that demonstrates resource limits by:
-1. Setting memory limit to 64Mi
-2. Attempting to allocate more memory than the limit
+1. Setting memory limit to 100Mi
+2. Attempting to allocate 150M (exceeds limit)
 3. Observing the OOMKilled behavior
 
-> **TODO**: Add stress test example and solution
+**Solution**: [`specs/ckad/exercises/ex2-resource-limits.yaml`](specs/ckad/exercises/ex2-resource-limits.yaml)
+
+```bash
+kubectl apply -f labs/pods/specs/ckad/exercises/ex2-resource-limits.yaml
+kubectl get pod memory-demo -w
+kubectl describe pod memory-demo  # Look for OOMKilled status
+```
 
 ### Exercise 3: Health Checks
 
 Create a Pod with:
 - Startup probe with 30 second grace period
-- Liveness probe that checks HTTP endpoint
-- Readiness probe that checks a file exists
+- Liveness probe that checks for alive marker
+- Readiness probe that checks for ready marker
 
-> **TODO**: Add complete exercise with solution
+**Solution**: [`specs/ckad/exercises/ex3-health-probes.yaml`](specs/ckad/exercises/ex3-health-probes.yaml)
+
+```bash
+kubectl apply -f labs/pods/specs/ckad/exercises/ex3-health-probes.yaml
+kubectl get pod health-check-demo -w
+kubectl describe pod health-check-demo  # Check probe status
+```
 
 ### Exercise 4: Security Hardening
 
 Create a Pod that follows security best practices:
-- Runs as non-root user
+- Runs as non-root user (UID 1000)
 - Uses read-only root filesystem
-- Drops all capabilities except necessary ones
+- Drops all capabilities except NET_BIND_SERVICE
 - Uses a custom service account
+- Includes resource limits
 
-> **TODO**: Add complete exercise with solution
+**Solution**: [`specs/ckad/exercises/ex4-security-hardening.yaml`](specs/ckad/exercises/ex4-security-hardening.yaml)
+
+```bash
+kubectl apply -f labs/pods/specs/ckad/exercises/ex4-security-hardening.yaml
+kubectl get pod secure-web
+kubectl exec secure-web -- id  # Verify running as UID 1000
+kubectl describe pod secure-web  # Check security context
+```
 
 ### Exercise 5: Advanced Scheduling
 
@@ -508,7 +593,13 @@ Create Pods that demonstrate:
 2. Pod affinity (schedule with certain Pods)
 3. Pod anti-affinity (spread across nodes)
 
-> **TODO**: Add complete exercise with solution
+**Solution**: [`specs/ckad/exercises/ex5-advanced-scheduling.yaml`](specs/ckad/exercises/ex5-advanced-scheduling.yaml)
+
+```bash
+kubectl apply -f labs/pods/specs/ckad/exercises/ex5-advanced-scheduling.yaml
+kubectl get pods -o wide  # See which nodes pods are scheduled on
+kubectl describe pod node-affinity-app  # Check scheduling decisions
+```
 
 ## Common CKAD Scenarios
 

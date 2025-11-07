@@ -1,0 +1,45 @@
+# Exercise 2: Resource Management and OOMKilled
+#
+# Create a Pod that demonstrates what happens when a container
+# exceeds its memory limit.
+#
+# Requirements:
+# - Pod name: memory-demo
+# - Use image: polinux/stress
+# - Memory request: 50Mi
+# - Memory limit: 100Mi
+# - CPU request: 100m
+# - CPU limit: 200m
+# - Container should try to allocate 150M (exceeds limit)
+# - Observe OOMKilled behavior with: kubectl describe pod memory-demo
+# - Add labels: app=stress-test, kubernetes.courselabs.co=pods
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-demo
+  labels:
+    app: stress-test
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: stress
+    image: polinux/stress
+    resources:
+      requests:
+        memory: "50Mi"
+        cpu: "100m"
+      limits:
+        memory: "100Mi"
+        cpu: "200m"
+    command:
+    - stress
+    args:
+    - --vm
+    - "1"
+    - --vm-bytes
+    - "150M"  # Exceeds 100Mi limit - will be OOMKilled
+    - --vm-hang
+    - "0"
+
+  restartPolicy: OnFailure  # Pod will restart after being killed

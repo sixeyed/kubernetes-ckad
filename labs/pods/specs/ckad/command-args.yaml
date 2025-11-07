@@ -1,0 +1,270 @@
+# Understanding command and args in Kubernetes
+#
+# Dockerfile vs Kubernetes mapping:
+# - Dockerfile ENTRYPOINT -> Kubernetes command
+# - Dockerfile CMD -> Kubernetes args
+#
+# If you specify command, it overrides ENTRYPOINT
+# If you specify args, it overrides CMD
+
+# Example 1: Using default image command and args
+apiVersion: v1
+kind: Pod
+metadata:
+  name: default-command
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    # No command/args - uses image defaults
+    # busybox default is: /bin/sh
+---
+# Example 2: Override command only
+apiVersion: v1
+kind: Pod
+metadata:
+  name: override-command
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ["echo"]
+    # Uses our command but no args
+---
+# Example 3: Override args only
+apiVersion: v1
+kind: Pod
+metadata:
+  name: override-args
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ["echo"]
+    args: ["Hello, Kubernetes!"]
+---
+# Example 4: Multi-line command with shell
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multiline-command
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Starting application..."
+      echo "Current time: $(date)"
+      echo "Hostname: $(hostname)"
+      echo "Application running..."
+      sleep 3600
+---
+# Example 5: Command with arguments from variables
+apiVersion: v1
+kind: Pod
+metadata:
+  name: command-with-env
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    env:
+    - name: MESSAGE
+      value: "Hello from environment variable"
+    - name: SLEEP_TIME
+      value: "3600"
+    command:
+    - sh
+    - -c
+    - echo "$MESSAGE" && sleep "$SLEEP_TIME"
+---
+# Example 6: Different combinations
+apiVersion: v1
+kind: Pod
+metadata:
+  name: command-combinations
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  # Container 1: command as array
+  - name: array-style
+    image: busybox:latest
+    command: ["sh", "-c", "echo 'Array style' && sleep 300"]
+
+  # Container 2: command and args separately
+  - name: separate-args
+    image: busybox:latest
+    command: ["sh", "-c"]
+    args: ["echo 'Separate args' && sleep 300"]
+
+  # Container 3: complex script
+  - name: complex-script
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    args:
+    - |
+      counter=0
+      while [ $counter -lt 10 ]; do
+        echo "Count: $counter"
+        counter=$((counter + 1))
+        sleep 30
+      done
+      echo "Script complete"
+      sleep 300
+---
+# Example 7: Real-world application examples
+apiVersion: v1
+kind: Pod
+metadata:
+  name: real-world-commands
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  # Web server with custom config
+  - name: nginx-custom
+    image: nginx:alpine
+    command:
+    - nginx
+    args:
+    - -g
+    - daemon off;
+    - -c
+    - /custom/nginx.conf
+
+  # Python application
+  - name: python-app
+    image: python:3.9-alpine
+    command: ["python"]
+    args: ["-m", "http.server", "8080"]
+
+  # Database migration job
+  - name: db-migrate
+    image: alpine:latest
+    command:
+    - sh
+    - -c
+    args:
+    - |
+      echo "Running database migrations..."
+      # Simulate migration
+      sleep 5
+      echo "Migration 001: Create users table"
+      sleep 2
+      echo "Migration 002: Add email column"
+      sleep 2
+      echo "Migrations complete"
+      sleep 3600
+---
+# Example 8: Using ENTRYPOINT-style command
+apiVersion: v1
+kind: Pod
+metadata:
+  name: entrypoint-style
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    # This mimics: ENTRYPOINT ["sh", "-c"]
+    command: ["sh", "-c"]
+    # This mimics: CMD ["default command"]
+    args: ["echo 'Using entrypoint style' && sleep 3600"]
+---
+# Example 9: Command with ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-script
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  startup.sh: |
+    #!/bin/sh
+    echo "=== Application Startup Script ==="
+    echo "Checking dependencies..."
+    sleep 2
+    echo "Initializing database connection..."
+    sleep 2
+    echo "Loading configuration..."
+    sleep 2
+    echo "Application ready!"
+    # Keep running
+    tail -f /dev/null
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: command-from-configmap
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ["sh", "/scripts/startup.sh"]
+    volumeMounts:
+    - name: scripts
+      mountPath: /scripts
+  volumes:
+  - name: scripts
+    configMap:
+      name: app-script
+      defaultMode: 0755  # Make scripts executable
+---
+# Example 10: Debugging commands
+apiVersion: v1
+kind: Pod
+metadata:
+  name: debug-commands
+  labels:
+    example: command-args
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: debug
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Container Debug Info ==="
+      echo "Hostname: $(hostname)"
+      echo "IP Address: $(hostname -i)"
+      echo "Environment:"
+      env | sort
+      echo ""
+      echo "=== Filesystem ==="
+      df -h
+      echo ""
+      echo "=== Processes ==="
+      ps aux
+      echo ""
+      echo "Keeping container alive..."
+      sleep 3600

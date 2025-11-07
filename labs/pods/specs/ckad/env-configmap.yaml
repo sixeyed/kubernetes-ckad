@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  database_host: "db.example.com"
+  database_port: "5432"
+  log_level: "info"
+  feature_flags: "new-ui,dark-mode"
+  app.properties: |
+    server.port=8080
+    server.hostname=0.0.0.0
+    cache.enabled=true
+    cache.ttl=300
+---
+# Using individual env vars from ConfigMap
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-configmap-individual
+  labels:
+    app: config-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Environment Variables from ConfigMap ==="
+      echo "Database Host: $DB_HOST"
+      echo "Database Port: $DB_PORT"
+      echo "Log Level: $LOG_LEVEL"
+      sleep 3600
+    env:
+    - name: DB_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: database_host
+    - name: DB_PORT
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: database_port
+    - name: LOG_LEVEL
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: log_level
+---
+# Using envFrom to load all ConfigMap keys
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-configmap-all
+  labels:
+    app: config-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== All ConfigMap Keys as Environment Variables ==="
+      env | grep -E "(database_|log_level|feature_flags)" | sort
+      sleep 3600
+    envFrom:
+    - configMapRef:
+        name: app-config
+---
+# Using ConfigMap as volume mount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: env-configmap-volume
+  labels:
+    app: config-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== ConfigMap Mounted as Files ==="
+      ls -la /config/
+      echo ""
+      echo "app.properties content:"
+      cat /config/app.properties
+      sleep 3600
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-config

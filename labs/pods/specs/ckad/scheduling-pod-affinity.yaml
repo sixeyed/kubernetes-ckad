@@ -1,0 +1,181 @@
+# First, create some "anchor" pods that others will have affinity/anti-affinity to
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cache-pod
+  labels:
+    app: cache
+    tier: backend
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: redis
+    image: redis:alpine
+---
+# Pod Affinity - Schedule NEAR other pods
+# This pod wants to be on the same node as cache pods
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-pod-affinity
+  labels:
+    app: web
+    tier: frontend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - cache
+        topologyKey: kubernetes.io/hostname  # Same node
+  containers:
+  - name: web
+    image: nginx:alpine
+---
+# Pod Affinity - Preferred (not required)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-pod-affinity-preferred
+  labels:
+    app: api
+    tier: backend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cache
+          topologyKey: kubernetes.io/hostname
+  containers:
+  - name: api
+    image: nginx:alpine
+---
+# Pod Anti-Affinity - Schedule AWAY from other pods
+# Spread pods across different nodes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod-1
+  labels:
+    app: web
+    tier: frontend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - web
+        topologyKey: kubernetes.io/hostname  # Different nodes
+  containers:
+  - name: web
+    image: nginx:alpine
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod-2
+  labels:
+    app: web
+    tier: frontend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - web
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: web
+    image: nginx:alpine
+---
+# Combined Affinity and Anti-Affinity
+# Schedule near cache pods but away from other web pods
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod-smart
+  labels:
+    app: web
+    tier: frontend
+    version: v2
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    # Want to be near cache
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cache
+          topologyKey: topology.kubernetes.io/zone  # Same zone
+    # But not on same node as other web pods
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - web
+          - key: version
+            operator: In
+            values:
+            - v2
+        topologyKey: kubernetes.io/hostname  # Different nodes
+  containers:
+  - name: web
+    image: nginx:alpine
+---
+# Zone-based anti-affinity for high availability
+# Spread pods across availability zones
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ha-app-1
+  labels:
+    app: ha-app
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - ha-app
+          topologyKey: topology.kubernetes.io/zone  # Different zones
+  containers:
+  - name: app
+    image: nginx:alpine
