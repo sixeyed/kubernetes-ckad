@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multicontainer-sidecar-fail
+  labels:
+    app: troubleshooting-demo
+    scenario: multicontainer
+spec:
+  containers:
+  - name: app
+    image: nginx
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: shared-logs
+      mountPath: /var/log/nginx
+  - name: log-sidecar
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "Log sidecar starting..."
+      # Trying to read from wrong path - will fail
+      tail -f /logs/nonexistent.log
+    volumeMounts:
+    - name: shared-logs
+      mountPath: /app-logs  # Different mount path - won't find nginx logs
+  volumes:
+  - name: shared-logs
+    emptyDir: {}

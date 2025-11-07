@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-api
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  # No selector - endpoints will be managed manually
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

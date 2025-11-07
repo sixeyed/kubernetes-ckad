@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: init-failure-demo
+  labels:
+    app: init-failure-demo
+spec:
+  selector:
+    matchLabels:
+      app: init-failure-demo
+  template:
+    metadata:
+      labels:
+        app: init-failure-demo
+    spec:
+      initContainers:
+      # This init container will fail initially
+      - name: wait-for-service
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Waiting for required service..."
+          # This will retry until a service named 'required-service' exists
+          until nslookup required-service.default.svc.cluster.local; do
+            echo "Service not found, retrying in 5 seconds..."
+            sleep 5
+          done
+          echo "Service found! Continuing..."
+
+      # This init container runs only after the first succeeds
+      - name: verify-readiness
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Verifying system readiness..."
+          sleep 2
+          echo "System ready!"
+
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo "App started successfully" && sleep 3600']
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

@@ -1,0 +1,103 @@
+# Basic Node Selector Examples - CKAD Practice
+#
+# These examples demonstrate simple node selector usage
+
+---
+# Example 1: Single node selector
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ssd-pod
+  labels:
+    app: high-performance
+spec:
+  nodeSelector:
+    disk: ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 2: Node selector using standard Kubernetes labels
+apiVersion: v1
+kind: Pod
+metadata:
+  name: linux-only-pod
+  labels:
+    app: linux-app
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo 'Running on Linux'; uname -a; sleep 3600"]
+    resources:
+      requests:
+        memory: "32Mi"
+        cpu: "50m"
+
+---
+# Example 3: Architecture-specific pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: amd64-pod
+  labels:
+    app: arch-specific
+spec:
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 4: Environment-based selector
+apiVersion: v1
+kind: Pod
+metadata:
+  name: production-app
+  labels:
+    app: prod-service
+    environment: production
+spec:
+  nodeSelector:
+    environment: production
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 5: Workload type selector
+apiVersion: v1
+kind: Pod
+metadata:
+  name: compute-job
+  labels:
+    app: compute-task
+spec:
+  nodeSelector:
+    workload: compute-intensive
+  containers:
+  - name: compute
+    image: busybox
+    command: ["sh", "-c", "i=0; while [ $i -lt 100 ]; do echo Computing iteration $i; i=$((i+1)); sleep 1; done"]
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"

@@ -1,0 +1,54 @@
+# Exercise 2: Multi-Resource Role
+# Task: Create a Role named 'developer' in namespace 'dev' that allows:
+# - Full access to Pods (all verbs)
+# - Read-only access to Deployments and ReplicaSets
+# - Read-only access to ConfigMaps
+# - No access to Secrets
+# Bind this role to a ServiceAccount named 'dev-user'
+
+# Step 1: Create namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 2: Create ServiceAccount
+# TODO: Create ServiceAccount named 'dev-user' in namespace 'dev'
+
+# Step 3: Create Role
+# TODO: Create Role named 'developer' in namespace 'dev' with required permissions
+
+# Step 4: Create RoleBinding
+# TODO: Create RoleBinding named 'dev-user-binding' in namespace 'dev'
+
+# Step 5: Create test resources in dev namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  key: "value"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  password: "secret123"
+---
+# Verification commands:
+# kubectl auth can-i create pods --as=system:serviceaccount:dev:dev-user -n dev
+# kubectl auth can-i delete pods --as=system:serviceaccount:dev:dev-user -n dev
+# kubectl auth can-i get deployments --as=system:serviceaccount:dev:dev-user -n dev
+# kubectl auth can-i update deployments --as=system:serviceaccount:dev:dev-user -n dev
+# kubectl auth can-i get configmaps --as=system:serviceaccount:dev:dev-user -n dev
+# kubectl auth can-i get secrets --as=system:serviceaccount:dev:dev-user -n dev

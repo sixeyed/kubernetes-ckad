@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: logger-ondelete
+  labels:
+    app: logger
+    strategy: ondelete
+spec:
+  updateStrategy:
+    type: OnDelete
+  selector:
+    matchLabels:
+      app: logger
+      strategy: ondelete
+  template:
+    metadata:
+      labels:
+        app: logger
+        strategy: ondelete
+    spec:
+      containers:
+      - name: logger
+        image: busybox:1.36  # Updated version
+        command: ['sh', '-c', 'echo "Version 2.0 - OnDelete" && sleep 3600']
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

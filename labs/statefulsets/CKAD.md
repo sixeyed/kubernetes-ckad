@@ -223,52 +223,44 @@ exit
 
 **Time Target**: 4-5 minutes
 
-<!-- TODO: Add example showing when parallel is beneficial (e.g., web caching tier) -->
+**When to Use Parallel Pod Management:**
+- **Distributed caches** (Redis, Memcached) where instances are independent
+- **Web application tiers** where instances don't need ordered startup
+- **Stateless workers** that need stable identities but not sequential creation
+- **Performance optimization** when faster startup is more important than ordering
+
+**Real-World Example: Redis Cache Cluster**
 
 By default, StatefulSet Pods are created sequentially. For some apps, you want parallel creation.
 
 ```bash
-kubectl apply -f - <<EOF
-apiVersion: v1
-kind: Service
-metadata:
-  name: cache
-spec:
-  clusterIP: None
-  selector:
-    app: cache
-  ports:
-  - port: 80
----
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: cache
-spec:
-  serviceName: cache
-  replicas: 5
-  podManagementPolicy: Parallel  # Create all Pods at once
-  selector:
-    matchLabels:
-      app: cache
-  template:
-    metadata:
-      labels:
-        app: cache
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:alpine
-EOF
+# Deploy Redis cache cluster with parallel startup
+kubectl apply -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/parallel-cache.yaml
 
-# Watch all Pods start simultaneously
-kubectl get pods -l app=cache --watch
+# Watch all Pods start simultaneously (not sequentially)
+kubectl get pods -l app=redis-cache --watch
+
+# Verify all Pods started in parallel
+kubectl get pods -l app=redis-cache
+
+# Test connecting to specific cache instances
+kubectl run redis-test --image=redis:7-alpine --rm -it --restart=Never -- redis-cli -h redis-cache-0.redis-cache ping
+kubectl run redis-test --image=redis:7-alpine --rm -it --restart=Never -- redis-cli -h redis-cache-1.redis-cache ping
+
+# Cleanup
+kubectl delete -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/parallel-cache.yaml
 ```
 
 **Key Learning**:
 - `podManagementPolicy: Parallel` creates all Pods at once
 - Faster startup when Pods don't depend on each other
 - Still get stable names and network identities
+- Ideal for horizontally scalable stateful applications
+- Each Pod still gets its own PVC (if using volumeClaimTemplates)
+
+**Performance Comparison:**
+- **OrderedReady (default)**: 5 Pods might take 50+ seconds (10s each, sequential)
+- **Parallel**: All 5 Pods start within 10-15 seconds total
 
 ### Scenario 5: Scale StatefulSet
 
@@ -446,7 +438,20 @@ kubectl delete statefulset broken-sts
 
 ### OnDelete Update Strategy
 
-<!-- TODO: Add practical scenario where OnDelete is beneficial (e.g., manual DB migration coordination) -->
+**When to Use OnDelete:**
+- **Database clusters** requiring manual schema migration per instance
+- **Stateful services** where you need to verify each instance before proceeding
+- **Blue-green deployments** at the Pod level
+- **Manual coordination** with external systems or monitoring
+- **Zero-downtime requirements** with custom validation steps
+
+**Real-World Scenario: PostgreSQL Cluster with Schema Migration**
+
+Imagine updating a PostgreSQL cluster where you need to:
+1. Update the first replica
+2. Run and verify schema migration
+3. Check replication lag
+4. Only then proceed to the next instance
 
 Manually control when Pods are updated:
 
@@ -458,23 +463,83 @@ spec:
 
 **Use Case**: When you need to coordinate updates manually (e.g., performing database migrations).
 
+**Practical Example:**
+
 ```bash
-# Apply updated StatefulSet with OnDelete strategy
-# Nothing happens until you delete Pods manually
+# Deploy initial PostgreSQL cluster
+kubectl apply -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/ondelete-postgres.yaml
 
-kubectl delete pod web-2
-# Only web-2 updates, others remain on old version
+# Wait for all Pods to be ready
+kubectl wait --for=condition=Ready pod -l app=postgres --timeout=120s
 
-kubectl delete pod web-1
-# Now web-1 updates
+# Update the StatefulSet image (e.g., PostgreSQL 15 -> 16)
+kubectl set image statefulset/postgres-cluster postgres=postgres:16-alpine
 
-kubectl delete pod web-0
-# Finally web-0 updates
+# Notice: Nothing happens! Pods stay on old version
+kubectl get pods -l app=postgres -o wide
+
+# Manual update process with validation:
+
+# Step 1: Update replica (highest ordinal first - safest)
+echo "Updating postgres-cluster-2..."
+kubectl delete pod postgres-cluster-2
+kubectl wait --for=condition=Ready pod/postgres-cluster-2 --timeout=120s
+
+# Step 2: Verify the updated Pod
+kubectl exec postgres-cluster-2 -- psql -U appuser -d myapp -c "SELECT version();"
+
+# Step 3: Run schema migration if needed
+kubectl exec postgres-cluster-2 -- psql -U appuser -d myapp -c "
+  CREATE TABLE IF NOT EXISTS migrations (
+    id SERIAL PRIMARY KEY,
+    version VARCHAR(50),
+    applied_at TIMESTAMP DEFAULT NOW()
+  );
+  INSERT INTO migrations (version) VALUES ('v2.0.0');
+"
+
+# Step 4: Verify data integrity
+kubectl exec postgres-cluster-2 -- psql -U appuser -d myapp -c "SELECT * FROM migrations;"
+
+# Step 5: Once verified, update next Pod
+echo "Updating postgres-cluster-1..."
+kubectl delete pod postgres-cluster-1
+kubectl wait --for=condition=Ready pod/postgres-cluster-1 --timeout=120s
+
+# Step 6: Finally update the primary (postgres-cluster-0)
+echo "Updating postgres-cluster-0 (primary)..."
+kubectl delete pod postgres-cluster-0
+kubectl wait --for=condition=Ready pod/postgres-cluster-0 --timeout=120s
+
+# Verify all Pods updated
+kubectl get pods -l app=postgres -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
+
+# Cleanup
+kubectl delete -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/ondelete-postgres.yaml
+kubectl delete pvc -l app=postgres
 ```
+
+**Advantages of OnDelete:**
+- Full control over update timing
+- Validate each instance before proceeding
+- Coordinate with external processes (backups, monitoring)
+- Implement custom rollback logic
+- Zero automation surprises during critical updates
 
 ### Partition Updates
 
-<!-- TODO: Add example of canary deployment using partitions -->
+**When to Use Partitions:**
+- **Canary deployments** for stateful applications
+- **Gradual rollouts** with validation at each stage
+- **A/B testing** different versions in production
+- **Risk mitigation** by keeping critical Pods (primary/leader) on stable version
+- **Performance testing** new version with subset of traffic
+
+**Real-World Scenario: API Service Canary Deployment**
+
+You want to deploy a new API version but test it on 40% of instances before full rollout:
+- **Pods 0, 1, 2** (60%): Stay on v1 (stable, includes primary)
+- **Pods 3, 4** (40%): Update to v2 (canary)
 
 Update only some replicas (canary pattern):
 
@@ -483,62 +548,243 @@ spec:
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
-      partition: 2  # Only update Pods with ordinal >= 2
+      partition: 3  # Only update Pods with ordinal >= 3
 ```
 
 **Use Case**: Test new version on higher-ordinal Pods before updating all.
 
-```bash
-# With partition: 2 and replicas: 5
-# Pods 2, 3, 4 get updated
-# Pods 0, 1 stay on old version
+**Complete Canary Deployment Example:**
 
-# Once verified, remove partition to update all
-kubectl patch statefulset web -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":0}}}}'
+```bash
+# Step 1: Deploy initial version (v1)
+kubectl apply -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/partition-canary.yaml
+
+# Wait for all Pods
+kubectl wait --for=condition=Ready pod -l app=api --timeout=120s
+
+# Verify initial deployment (all on v1 - nginx:1.24-alpine)
+kubectl get pods -l app=api -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image,VERSION:.metadata.labels.version
+
+# Step 2: Update to v2 with partition (canary on Pods 3, 4)
+kubectl patch statefulset api-service -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":3}}}}'
+kubectl set image statefulset/api-service api=nginx:1.25-alpine
+kubectl patch statefulset api-service -p '{"spec":{"template":{"metadata":{"labels":{"version":"v2"}}}}}'
+
+# Watch only Pods 3 and 4 update
+kubectl get pods -l app=api --watch
+
+# Step 3: Verify canary deployment
+kubectl get pods -l app=api -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image
+
+# Should show:
+# api-service-0: nginx:1.24-alpine (v1)
+# api-service-1: nginx:1.24-alpine (v1)
+# api-service-2: nginx:1.24-alpine (v1)
+# api-service-3: nginx:1.25-alpine (v2) <- Canary
+# api-service-4: nginx:1.25-alpine (v2) <- Canary
+
+# Step 4: Test canary Pods
+kubectl exec api-service-3 -- nginx -v  # Should show 1.25
+kubectl exec api-service-4 -- nginx -v  # Should show 1.25
+kubectl exec api-service-0 -- nginx -v  # Should show 1.24 (unchanged)
+
+# Step 5: Monitor canary performance (simulate)
+echo "Monitor metrics, error rates, latency for Pods 3, 4..."
+echo "If canary looks good, proceed with full rollout"
+echo "If issues found, rollback canary by deleting and setting partition back"
+
+# Step 6: Expand canary to 60% (Pods 2, 3, 4)
+kubectl patch statefulset api-service -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":2}}}}'
+kubectl get pods -l app=api --watch
+
+# Step 7: Full rollout (update all remaining Pods)
+kubectl patch statefulset api-service -p '{"spec":{"updateStrategy":{"rollingUpdate":{"partition":0}}}}'
+kubectl get pods -l app=api --watch
+
+# All Pods now on v2
+kubectl get pods -l app=api -o custom-columns=NAME:.metadata.name,IMAGE:.spec.containers[0].image
+
+# Cleanup
+kubectl delete -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/partition-canary.yaml
+kubectl delete pvc -l app=api
 ```
+
+**Advanced Partition Strategy:**
+
+```bash
+# Rollout stages for 5-replica StatefulSet:
+# Stage 1: Canary (20%) - partition: 4 (only Pod 4 updates)
+# Stage 2: Small group (40%) - partition: 3 (Pods 3, 4 updated)
+# Stage 3: Majority (60%) - partition: 2 (Pods 2, 3, 4 updated)
+# Stage 4: Almost all (80%) - partition: 1 (Pods 1, 2, 3, 4 updated)
+# Stage 5: Complete (100%) - partition: 0 (all Pods updated)
+```
+
+**Rollback Strategy:**
+
+```bash
+# If canary shows problems, rollback canary Pods:
+# Delete canary Pods
+kubectl delete pod api-service-3 api-service-4
+
+# Reset to previous image
+kubectl set image statefulset/api-service api=nginx:1.24-alpine
+
+# Canary Pods will recreate with old version
+# Pods 0, 1, 2 were never affected
+```
+
+**Key Benefits:**
+- **Protect critical Pods**: Primary/leader (Pod 0) updates last
+- **Gradual validation**: Verify each stage before proceeding
+- **Easy rollback**: Only affected Pods need to rollback
+- **Production testing**: Test in real environment with real traffic
+- **Flexible stages**: Adjust partition to control rollout speed
 
 ### StatefulSet with Init Containers
 
 Common pattern for stateful apps requiring initialization:
 
-<!-- TODO: Add more real-world init container examples (DB schema initialization, config generation) -->
+**When to Use Init Containers with StatefulSets:**
+- **Database schema initialization** before app starts
+- **Permission fixes** on volumes (especially with UID/GID mismatches)
+- **Wait for dependencies** (primary instance, external services)
+- **Configuration generation** based on Pod ordinal or hostname
+- **Data migration** or seeding for new instances
+- **Network prerequisites** (DNS resolution, connectivity checks)
 
-```yaml
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: db-cluster
-spec:
-  serviceName: db-cluster
-  replicas: 3
-  selector:
-    matchLabels:
-      app: db
-  template:
-    metadata:
-      labels:
-        app: db
-    spec:
-      initContainers:
-      - name: wait-for-primary
-        image: busybox
-        command:
-        - sh
-        - -c
-        - |
-          if [ "$(hostname)" != "db-cluster-0" ]; then
-            until nslookup db-cluster-0.db-cluster; do
-              echo "Waiting for primary..."
-              sleep 2
-            done
-          fi
-      containers:
-      - name: db
-        image: postgres:13-alpine
-        # ...
+**Complete Examples:**
+
+**Example 1: MySQL with Schema Initialization**
+
+Deploy a MySQL StatefulSet that automatically initializes database schema:
+
+```bash
+# Deploy MySQL cluster with automatic schema initialization
+kubectl apply -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/init-containers.yaml
+
+# Watch Pods being created with init containers
+kubectl get pods -l app=mysql-init --watch
+
+# Check init container logs (see schema being initialized)
+kubectl logs mysql-init-0 -c fix-permissions
+kubectl logs mysql-init-0 -c wait-for-primary
+kubectl logs mysql-init-0 -c prepare-init-scripts
+
+# Verify main container started successfully
+kubectl logs mysql-init-0 -c mysql
+
+# Test database schema was initialized
+kubectl exec mysql-init-0 -c mysql -- mysql -uroot -prootpassword -e "SHOW DATABASES;"
+kubectl exec mysql-init-0 -c mysql -- mysql -uroot -prootpassword appdb -e "SHOW TABLES;"
+kubectl exec mysql-init-0 -c mysql -- mysql -uroot -prootpassword appdb -e "SELECT * FROM users;"
+
+# Test replica Pods (they waited for primary)
+kubectl exec mysql-init-1 -c mysql -- mysql -uroot -prootpassword appdb -e "SELECT * FROM users;"
+
+# Cleanup
+kubectl delete -f /home/user/kubernetes-ckad/labs/statefulsets/specs/ckad/init-containers.yaml
+kubectl delete pvc -l app=mysql-init
 ```
 
-**Key Learning**: Init containers can check Pod hostname to implement leader-follower logic.
+**Example 2: Dynamic Configuration Generation**
+
+Deploy an application where each Pod gets instance-specific configuration:
+
+```bash
+# Already deployed as part of init-containers.yaml
+# Watch the second StatefulSet
+kubectl get pods -l app=app-with-config --watch
+
+# Check generated configuration for each Pod
+kubectl exec app-with-config-0 -- cat /etc/app/app.conf
+# Should show: instance.role=primary
+
+kubectl exec app-with-config-1 -- cat /etc/app/app.conf
+# Should show: instance.role=replica, replication.master=app-with-config-0...
+
+kubectl exec app-with-config-2 -- cat /etc/app/app.conf
+# Should show: instance.role=replica
+
+# View configuration via HTTP (served by nginx)
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -s http://app-with-config-0.app-with-config.default.svc.cluster.local:8080/config.txt
+
+# Each Pod has different config based on its ordinal
+kubectl run curl-test --image=curlimages/curl --rm -it --restart=Never -- \
+  curl -s http://app-with-config-1.app-with-config.default.svc.cluster.local:8080/config.txt
+```
+
+**Common Init Container Patterns:**
+
+**Pattern 1: Leader-Follower Logic**
+```yaml
+initContainers:
+- name: wait-for-primary
+  image: busybox
+  command:
+  - sh
+  - -c
+  - |
+    if [ "$(hostname)" != "db-cluster-0" ]; then
+      until nslookup db-cluster-0.db-cluster; do
+        echo "Waiting for primary..."
+        sleep 2
+      done
+    fi
+```
+
+**Pattern 2: Permissions Fix**
+```yaml
+initContainers:
+- name: fix-permissions
+  image: busybox
+  command: ['sh', '-c', 'chown -R 999:999 /var/lib/mysql']
+  volumeMounts:
+  - name: data
+    mountPath: /var/lib/mysql
+```
+
+**Pattern 3: Configuration Based on Ordinal**
+```yaml
+initContainers:
+- name: generate-config
+  image: busybox
+  command:
+  - sh
+  - -c
+  - |
+    ORDINAL=$(echo $HOSTNAME | grep -o '[0-9]*$')
+    if [ "$ORDINAL" = "0" ]; then
+      echo "role=master" > /config/role.conf
+    else
+      echo "role=replica" > /config/role.conf
+    fi
+  volumeMounts:
+  - name: config
+    mountPath: /config
+```
+
+**Pattern 4: Data Seeding/Migration**
+```yaml
+initContainers:
+- name: seed-data
+  image: myapp-migration:v1
+  command: ['python', '/scripts/migrate.py', '--init']
+  env:
+  - name: DB_HOST
+    value: "localhost"
+  volumeMounts:
+  - name: data
+    mountPath: /data
+```
+
+**Key Learning**:
+- Init containers run in order (sequentially) before main container
+- They can check Pod hostname/ordinal to implement role-based logic
+- Perfect for stateful apps needing instance-specific initialization
+- Failed init containers prevent main container from starting
+- Each Pod in StatefulSet can have different init behavior based on ordinal
 
 ## CKAD Practice Exercises
 

@@ -1,0 +1,81 @@
+# Aggregated ClusterRole example
+# Demonstrates: Using label selectors to aggregate permissions from multiple ClusterRoles
+# Main aggregated ClusterRole (collects permissions from labeled ClusterRoles)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: monitoring-reader
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+aggregationRule:
+  clusterRoleSelectors:
+  - matchLabels:
+      rbac.example.com/aggregate-to-monitoring: "true"
+rules: []  # Rules automatically populated from matching ClusterRoles
+---
+# Component ClusterRole 1: Pod metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-metrics-reader
+  labels:
+    rbac.example.com/aggregate-to-monitoring: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+---
+# Component ClusterRole 2: Node metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-metrics-reader
+  labels:
+    rbac.example.com/aggregate-to-monitoring: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+---
+# Component ClusterRole 3: Service metrics
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: service-metrics-reader
+  labels:
+    rbac.example.com/aggregate-to-monitoring: "true"
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+---
+# ServiceAccount for monitoring
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: monitoring-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# ClusterRoleBinding to use the aggregated role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: monitoring-reader-binding
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: monitoring-reader
+subjects:
+- kind: ServiceAccount
+  name: monitoring-sa
+  namespace: default

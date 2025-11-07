@@ -1,0 +1,65 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: websites.web.example.com
+spec:
+  group: web.example.com
+  names:
+    plural: websites
+    singular: website
+    kind: Website
+    shortNames:
+    - ws
+    - site
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Domain
+      type: string
+      jsonPath: .spec.domain
+    - name: Replicas
+      type: integer
+      jsonPath: .spec.replicas
+    - name: SSL
+      type: boolean
+      jsonPath: .spec.sslEnabled
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              domain:
+                type: string
+                pattern: '^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$'
+                description: Valid domain name (lowercase, alphanumeric with hyphens)
+              replicas:
+                type: integer
+                minimum: 1
+                maximum: 10
+                default: 2
+                description: Number of website replicas (1-10)
+              sslEnabled:
+                type: boolean
+                default: false
+                description: Enable SSL/TLS for the website
+              image:
+                type: string
+                default: nginx:alpine
+                description: Container image for the website
+              port:
+                type: integer
+                minimum: 1
+                maximum: 65535
+                default: 80
+                description: Port number for the web server
+            required:
+            - domain
+            - replicas

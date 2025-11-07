@@ -1,0 +1,100 @@
+# Using ClusterRole with namespace-scoped RoleBinding
+# Demonstrates: Reusable ClusterRole applied to specific namespace via RoleBinding
+# Define a reusable ClusterRole for secret reading
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: secret-reader
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+---
+# Create dev namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# ServiceAccount in dev namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myapp
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding applies ClusterRole to specific namespace
+# This limits the ServiceAccount to only access secrets in 'dev' namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-secret-reader
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole  # References ClusterRole (not Role)
+  name: secret-reader
+subjects:
+- kind: ServiceAccount
+  name: myapp
+  namespace: dev
+---
+# Create another namespace to demonstrate scoping
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Same ClusterRole applied to different namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: staging-secret-reader
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: secret-reader
+subjects:
+- kind: ServiceAccount
+  name: myapp
+  namespace: dev
+---
+# Test secret in dev namespace
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-secret
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  key: "dev-value"
+---
+# Test secret in staging namespace
+apiVersion: v1
+kind: Secret
+metadata:
+  name: staging-secret
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  key: "staging-value"

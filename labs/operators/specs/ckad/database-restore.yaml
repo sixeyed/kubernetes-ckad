@@ -1,0 +1,13 @@
+apiVersion: backup.example.com/v1
+kind: DatabaseRestore
+metadata:
+  name: restore-production-db
+  namespace: default
+spec:
+  databaseRef:
+    name: production-db
+    namespace: default
+  backupRef:
+    name: production-db-backup
+    namespace: default
+  pointInTime: "2024-01-15T02:00:00Z"

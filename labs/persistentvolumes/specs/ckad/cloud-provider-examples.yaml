@@ -1,0 +1,164 @@
+# AWS EBS (Elastic Block Store) PVC Example
+# Requires: EBS CSI Driver installed in cluster
+# Common on EKS (Elastic Kubernetes Service)
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-ebs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # EBS supports only RWO
+  storageClassName: gp3  # AWS gp3 (General Purpose SSD)
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: aws-ebs-pod
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    volumeMounts:
+    - name: ebs-volume
+      mountPath: /data
+  volumes:
+  - name: ebs-volume
+    persistentVolumeClaim:
+      claimName: aws-ebs-pvc
+---
+# AWS EBS - Alternative storage classes
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-ebs-io2-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: io2  # AWS io2 (Provisioned IOPS SSD - high performance)
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Azure Disk PVC Example
+# Requires: Azure Disk CSI Driver
+# Common on AKS (Azure Kubernetes Service)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-disk-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # Azure Disk supports only RWO
+  storageClassName: managed-premium  # Azure Premium SSD
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: azure-disk-pod
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    volumeMounts:
+    - name: azure-volume
+      mountPath: /data
+  volumes:
+  - name: azure-volume
+    persistentVolumeClaim:
+      claimName: azure-disk-pvc
+---
+# Azure Disk - Standard SSD option
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-disk-standard-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed  # Azure Standard SSD (cost-effective)
+  resources:
+    requests:
+      storage: 50Gi
+---
+# GCP Persistent Disk PVC Example
+# Requires: GCE PD CSI Driver
+# Common on GKE (Google Kubernetes Engine)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcp-pd-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce  # GCP PD supports RWO
+  storageClassName: standard-rwo  # GCP Standard Persistent Disk
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gcp-pd-pod
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    volumeMounts:
+    - name: gcp-volume
+      mountPath: /data
+  volumes:
+  - name: gcp-volume
+    persistentVolumeClaim:
+      claimName: gcp-pd-pvc
+---
+# GCP - SSD Persistent Disk (higher performance)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcp-pd-ssd-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: premium-rwo  # GCP SSD Persistent Disk
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Multi-cloud comparison Pod using ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-storage-comparison
+data:
+  comparison.txt: |
+    Cloud Provider Storage Comparison:
+
+    AWS EBS:
+    - Storage Classes: gp3 (general purpose), io2 (high performance), st1 (throughput optimized)
+    - Access Modes: ReadWriteOnce only
+    - Volume Size: 1 GiB - 16 TiB
+    - Zone-specific (cannot be shared across AZs)
+
+    Azure Disk:
+    - Storage Classes: managed (Standard SSD), managed-premium (Premium SSD), azurefile (for RWX)
+    - Access Modes: ReadWriteOnce for Disk, ReadWriteMany for Azure Files
+    - Volume Size: 1 GiB - 32 TiB
+    - Zone-specific
+
+    GCP Persistent Disk:
+    - Storage Classes: standard-rwo (HDD), premium-rwo (SSD), balanced-rwo
+    - Access Modes: ReadWriteOnce (RWO) and ReadOnlyMany (ROX)
+    - Volume Size: 1 GiB - 64 TiB
+    - Regional disks available for multi-zone
+
+    For ReadWriteMany access, consider:
+    - AWS: EFS (Elastic File System)
+    - Azure: Azure Files
+    - GCP: Filestore

@@ -1,0 +1,63 @@
+# Exercise 3: Cross-Namespace Access
+# Setup scenario:
+# - ServiceAccount 'backend' in namespace 'app'
+# - Needs to read ConfigMap 'shared-config' in namespace 'shared'
+# - Should not have access to anything else in 'shared' namespace
+# Configure RBAC to enable this access pattern
+
+# Step 1: Create namespaces
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 2: Create ServiceAccount in 'app' namespace
+# TODO: Create ServiceAccount named 'backend' in namespace 'app'
+
+# Step 3: Create ConfigMap in 'shared' namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shared-config
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  cache.server: "redis.shared.svc:6379"
+  message.queue: "rabbitmq.shared.svc:5672"
+---
+# Create another ConfigMap that backend should NOT access
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: other-config
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  other: "data"
+---
+# Step 4: Create Role in 'shared' namespace
+# TODO: Create Role named 'shared-config-reader' in namespace 'shared'
+# with permission to get ConfigMap 'shared-config' only
+
+# Step 5: Create RoleBinding in 'shared' namespace
+# TODO: Create RoleBinding in namespace 'shared' that grants
+# ServiceAccount 'backend' from namespace 'app' access to the Role
+
+# Step 6: Create test Pod in 'app' namespace
+# TODO: Create Pod using ServiceAccount 'backend' in namespace 'app'
+
+# Verification commands:
+# kubectl auth can-i get configmap/shared-config --as=system:serviceaccount:app:backend -n shared
+# kubectl auth can-i get configmap/other-config --as=system:serviceaccount:app:backend -n shared
+# kubectl auth can-i list configmaps --as=system:serviceaccount:app:backend -n shared

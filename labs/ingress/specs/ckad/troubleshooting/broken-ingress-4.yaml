@@ -1,0 +1,160 @@
+# BROKEN: TLS secret missing or incorrect
+# Issue: Secret doesn't exist, wrong type, or wrong namespace
+# Fix: Create correct TLS secret in same namespace as Ingress
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: secure-app
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: secure-app
+  template:
+    metadata:
+      labels:
+        app: secure-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: secure-svc
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: secure-app
+  ports:
+  - port: 443
+    targetPort: 80
+---
+# BROKEN: TLS secret doesn't exist
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-tls-missing
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  tls:
+  - hosts:
+    - broken4.example.com
+    secretName: missing-tls-secret  # This secret doesn't exist!
+  rules:
+  - host: broken4.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: secure-svc
+            port:
+              number: 443
+---
+# BROKEN: Wrong secret type (generic instead of tls)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: wrong-type-secret
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+type: Opaque  # Wrong! Should be kubernetes.io/tls
+stringData:
+  cert: "fake-cert-data"
+  key: "fake-key-data"
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-tls-type
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  tls:
+  - hosts:
+    - wrongtype.example.com
+    secretName: wrong-type-secret  # Wrong secret type
+  rules:
+  - host: wrongtype.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: secure-svc
+            port:
+              number: 443
+---
+# SOLUTION: Correct TLS secret with proper type
+# In practice, create with: kubectl create secret tls app-tls --cert=tls.crt --key=tls.key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: correct-tls-secret
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+type: kubernetes.io/tls  # Correct type
+stringData:
+  tls.crt: |
+    -----BEGIN CERTIFICATE-----
+    MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKSzMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV
+    BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
+    aWRnaXRzIFB0eSBMdGQwHhcNMjEwODEwMDAwMDAwWhcNMjIwODEwMDAwMDAwWjBF
+    MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
+    ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIB
+    CgKCAQEAwU2Xn3+RhHvJ3VPUQkFRvMZKfH5cNQ==
+    -----END CERTIFICATE-----
+  tls.key: |
+    -----BEGIN PRIVATE KEY-----
+    MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDBTZeff5GEe8nd
+    U9RCQVGTxkp8flw1D4RrMZKfH5cNQ==
+    -----END PRIVATE KEY-----
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fixed-tls-ingress
+  namespace: troubleshoot-4
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  tls:
+  - hosts:
+    - fixed4.example.com
+    secretName: correct-tls-secret  # Correct TLS secret
+  rules:
+  - host: fixed4.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: secure-svc
+            port:
+              number: 443

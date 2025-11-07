@@ -1,0 +1,46 @@
+# This demonstrates errors when readOnlyRootFilesystem is used
+# without providing required writable volumes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readonly-error
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      readOnlyRootFilesystem: true
+    # This will fail because nginx needs to write to:
+    # - /var/cache/nginx
+    # - /var/run
+    # - /tmp
+---
+# This is the corrected version with required writable volumes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readonly-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      readOnlyRootFilesystem: true
+    volumeMounts:
+    - name: cache
+      mountPath: /var/cache/nginx
+    - name: run
+      mountPath: /var/run
+    - name: tmp
+      mountPath: /tmp
+  volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}

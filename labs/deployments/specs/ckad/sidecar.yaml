@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-sidecar
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami-sidecar
+  template:
+    metadata:
+      labels:
+        app: whoami-sidecar
+        version: v1
+    spec:
+      # SIDECAR PATTERN: Multiple containers in same Pod
+      # All containers start together and run for Pod lifetime
+      # Share: network namespace, volumes, lifecycle
+
+      containers:
+      # Main application container
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        # Application writes logs to shared volume
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+
+      # Sidecar container: Log shipper
+      - name: log-shipper
+        image: busybox:1.36
+        command:
+        - sh
+        - -c
+        - |
+          echo "Log shipper started"
+          # Continuously monitor and process logs
+          while true; do
+            if [ -f /logs/app.log ]; then
+              echo "Processing logs at $(date)"
+              # In real scenario: ship logs to centralized system
+              tail -n 5 /logs/app.log 2>/dev/null || true
+            fi
+            sleep 30
+          done
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"
+          limits:
+            memory: "32Mi"
+            cpu: "50m"
+        # Sidecar reads logs from shared volume
+        volumeMounts:
+        - name: logs
+          mountPath: /logs
+
+      # Shared volume between containers
+      volumes:
+      - name: logs
+        emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-sidecar
+  labels:
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  selector:
+    app: whoami-sidecar
+  ports:
+  - port: 80
+    targetPort: http

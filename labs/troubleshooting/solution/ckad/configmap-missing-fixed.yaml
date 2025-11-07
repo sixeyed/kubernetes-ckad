@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  config.json: |
+    {
+      "app": "myapp",
+      "version": "1.0",
+      "debug": true
+    }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-missing-fixed
+  labels:
+    app: troubleshooting-demo
+    scenario: configmap
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c", "echo Config: $APP_CONFIG; sleep 3600"]
+    env:
+    - name: APP_CONFIG
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: config.json

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crash-failed-liveness
+  labels:
+    app: troubleshooting-demo
+    scenario: crashloop
+spec:
+  containers:
+  - name: web
+    image: nginx
+    ports:
+    - containerPort: 80
+    livenessProbe:
+      httpGet:
+        path: /nonexistent-health-check  # This endpoint doesn't exist
+        port: 80
+      initialDelaySeconds: 3
+      periodSeconds: 5
+      failureThreshold: 2  # Will restart after 2 failed checks

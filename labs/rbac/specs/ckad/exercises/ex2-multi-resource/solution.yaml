@@ -1,0 +1,105 @@
+# Exercise 2 Solution: Multi-Resource Role
+# Step 1: Create namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 2: Create ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dev-user
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 3: Create Role with multi-resource permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Full access to Pods (all verbs)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Read-only access to Deployments
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
+# Read-only access to ReplicaSets
+- apiGroups: ["apps"]
+  resources: ["replicasets"]
+  verbs: ["get", "list", "watch"]
+# Read-only access to ConfigMaps
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+# NO access to Secrets (not included in rules)
+---
+# Step 4: Create RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-user-binding
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+subjects:
+- kind: ServiceAccount
+  name: dev-user
+  namespace: dev
+---
+# Test resources
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: test-config
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  environment: "development"
+  debug: "true"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: test-secret
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  password: "secret123"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-deployment
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test
+  template:
+    metadata:
+      labels:
+        app: test
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine

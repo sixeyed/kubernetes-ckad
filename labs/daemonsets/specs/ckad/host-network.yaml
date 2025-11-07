@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-monitor-hostnet
+  labels:
+    app: network-monitor
+    mode: hostnetwork
+spec:
+  selector:
+    matchLabels:
+      app: network-monitor
+      mode: hostnetwork
+  template:
+    metadata:
+      labels:
+        app: network-monitor
+        mode: hostnetwork
+    spec:
+      hostNetwork: true  # Use host network namespace
+      dnsPolicy: ClusterFirstWithHostNet  # Maintain k8s DNS resolution
+
+      containers:
+      - name: monitor
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "Network monitor with hostNetwork: true"
+          echo "Pod IP matches Node IP"
+          echo "Pod IP: $(hostname -i)"
+          echo "Can access services on host ports directly"
+
+          # Start simple HTTP server on port 9100
+          while true; do
+            echo -e "HTTP/1.1 200 OK\n\nHost Network Mode - $(hostname)" | nc -l -p 9100
+          done
+        ports:
+        - containerPort: 9100
+          protocol: TCP
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

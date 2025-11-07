@@ -1,0 +1,60 @@
+# This pod will be stuck in Pending state due to impossible affinity requirements
+# The node label 'disktype=nvme-extreme' doesn't exist in the cluster
+apiVersion: v1
+kind: Pod
+metadata:
+  name: broken-pod-affinity
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - nvme-extreme  # This label value doesn't exist
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+---
+# This deployment will have pending pods due to anti-affinity
+# If you have fewer than 10 nodes, some replicas will remain pending
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: broken-anti-affinity
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  replicas: 10  # More replicas than nodes
+  selector:
+    matchLabels:
+      app: broken-app
+  template:
+    metadata:
+      labels:
+        app: broken-app
+        kubernetes.courselabs.co: affinity-ckad
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: broken-app
+            topologyKey: kubernetes.io/hostname  # Each pod on different node
+      containers:
+      - name: app
+        image: nginx
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise3-fixed
+---
+# Pod with sufficient memory
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-constrained-fixed
+  namespace: exercise3-fixed
+  labels:
+    app: memory-test
+spec:
+  containers:
+  - name: app
+    image: ubuntu
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      apt-get update && apt-get install -y stress-ng
+      # Workload fits within limits
+      stress-ng --vm 1 --vm-bytes 200M --timeout 300s
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"  # FIXED: Sufficient for workload
+      limits:
+        cpu: "200m"
+        memory: "512Mi"  # FIXED: Increased limit
+---
+# Pod with appropriate CPU limits
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-constrained-fixed
+  namespace: exercise3-fixed
+  labels:
+    app: cpu-test
+spec:
+  containers:
+  - name: cpu-intensive
+    image: ubuntu
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      # CPU-intensive workload
+      while true; do
+        dd if=/dev/zero of=/dev/null bs=1M count=100 2>/dev/null
+        sleep 1
+      done
+    resources:
+      requests:
+        cpu: "250m"   # FIXED: Adequate request
+        memory: "64Mi"
+      limits:
+        cpu: "500m"   # FIXED: Allows burst capacity
+        memory: "64Mi"
+---
+# Deployment with proper resources
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: with-limits
+  namespace: exercise3-fixed
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: limited
+  template:
+    metadata:
+      labels:
+        app: limited
+    spec:
+      containers:
+      - name: app
+        image: nginx
+        resources:  # FIXED: Added resource limits
+          requests:
+            cpu: "100m"
+            memory: "64Mi"
+          limits:
+            cpu: "200m"
+            memory: "128Mi"

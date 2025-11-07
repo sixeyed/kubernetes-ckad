@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise4-fixed
+---
+# PVC with default storage class
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-claim-fixed
+  namespace: exercise4-fixed
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # FIXED: Using default storage class (omit storageClassName)
+---
+# StatefulSet with proper volume configuration
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: data-app-fixed
+  namespace: exercise4-fixed
+spec:
+  serviceName: data-service
+  replicas: 2
+  selector:
+    matchLabels:
+      app: data-app
+  template:
+    metadata:
+      labels:
+        app: data-app
+    spec:
+      containers:
+      - name: app
+        image: nginx
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /config  # FIXED: Non-overlapping path
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+# Service for StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: data-service
+  namespace: exercise4-fixed
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: data-app
+  ports:
+  - port: 80
+---
+# Pod with proper volume permissions
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-permission-pod-fixed
+  namespace: exercise4-fixed
+spec:
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 3000
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: shared-data
+      mountPath: /usr/share/nginx/html
+      # FIXED: Removed readOnly to allow writes
+  volumes:
+  - name: shared-data
+    emptyDir: {}

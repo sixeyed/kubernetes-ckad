@@ -1,0 +1,30 @@
+apiVersion: apps.example.com/v1
+kind: WebApp
+metadata:
+  name: status-demo
+  namespace: default
+spec:
+  replicas: 3
+  image: nginx:1.25-alpine
+  port: 80
+status:
+  # Status is typically updated by the operator
+  replicas: 3
+  availableReplicas: 3
+  labelSelector: app=status-demo
+  conditions:
+  - type: Ready
+    status: "True"
+    lastTransitionTime: "2024-01-15T10:30:00Z"
+    reason: AllPodsReady
+    message: All replicas are ready
+  - type: Progressing
+    status: "True"
+    lastTransitionTime: "2024-01-15T10:28:00Z"
+    reason: NewReplicaSetAvailable
+    message: ReplicaSet has successfully progressed
+  - type: Available
+    status: "True"
+    lastTransitionTime: "2024-01-15T10:30:00Z"
+    reason: MinimumReplicasAvailable
+    message: Deployment has minimum availability

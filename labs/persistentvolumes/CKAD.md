@@ -96,9 +96,29 @@ kubectl exec app-pod -- df -h /data
 
 **Time Target**: 4-5 minutes
 
-<!-- TODO: Add example showing logs aggregator sidecar pattern -->
-
 Create a multi-container Pod where one container writes data and another reads it using a shared volume.
+
+**Real-World Use Case**: Log aggregation is a common sidecar pattern where the main application writes logs to a shared volume, and a sidecar container processes, filters, or forwards those logs to a centralized logging system (like ELK, Splunk, or CloudWatch).
+
+```bash
+kubectl apply -f labs/persistentvolumes/specs/ckad/logs-aggregator-sidecar.yaml
+```
+
+This creates two example Pods:
+1. **log-aggregator-app**: Main container writes application logs, sidecar processes and aggregates them
+2. **log-forwarder-pattern**: Simulates how tools like Fluentd or Filebeat forward logs
+
+Verify the log aggregation:
+```bash
+# Check main application logs
+kubectl logs log-aggregator-app -c app
+
+# Check aggregated logs from sidecar
+kubectl logs log-aggregator-app -c log-aggregator
+
+# Watch real-time aggregation
+kubectl logs -f log-aggregator-app -c log-aggregator
+```
 
 ```bash
 kubectl apply -f - <<EOF
@@ -143,9 +163,101 @@ kubectl logs shared-volume-pod -c reader
 
 **Time Target**: 3-4 minutes
 
-<!-- TODO: Add examples for different cloud providers (AWS EBS, Azure Disk, GCP PD) -->
-
 Create a PVC using a specific StorageClass (useful when cluster has multiple storage types).
+
+**Cloud Provider StorageClass Examples**:
+
+Different cloud providers offer different storage classes optimized for various workloads. Here are common examples:
+
+<details>
+<summary>AWS EKS Storage Classes</summary>
+
+```yaml
+# AWS EBS gp3 (General Purpose SSD - recommended)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: aws-ebs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 10Gi
+
+# AWS EBS io2 (Provisioned IOPS - high performance)
+# Use for databases requiring consistent low latency
+storageClassName: io2  # Change to io2 for high-performance workloads
+```
+
+Common AWS StorageClasses:
+- `gp3`: General Purpose SSD (latest generation)
+- `gp2`: General Purpose SSD (previous generation)
+- `io2`: Provisioned IOPS SSD (high performance)
+- `st1`: Throughput Optimized HDD (big data)
+- `sc1`: Cold HDD (infrequent access)
+
+</details>
+
+<details>
+<summary>Azure AKS Storage Classes</summary>
+
+```yaml
+# Azure Premium SSD
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-disk-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium
+  resources:
+    requests:
+      storage: 10Gi
+
+# Azure Standard SSD (cost-effective)
+storageClassName: managed  # For less demanding workloads
+```
+
+Common Azure StorageClasses:
+- `managed-premium`: Premium SSD (production workloads)
+- `managed`: Standard SSD (balanced performance/cost)
+- `azurefile`: Azure Files for ReadWriteMany scenarios
+- `azurefile-premium`: Premium Azure Files
+
+</details>
+
+<details>
+<summary>GCP GKE Storage Classes</summary>
+
+```yaml
+# GCP Standard Persistent Disk
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gcp-pd-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard-rwo
+  resources:
+    requests:
+      storage: 10Gi
+
+# GCP SSD Persistent Disk (higher performance)
+storageClassName: premium-rwo  # For performance-critical workloads
+```
+
+Common GCP StorageClasses:
+- `standard-rwo`: Standard Persistent Disk (HDD)
+- `premium-rwo`: SSD Persistent Disk
+- `balanced-rwo`: Balanced Persistent Disk (SSD)
+
+</details>
+
+See complete examples in `labs/persistentvolumes/specs/ckad/cloud-provider-examples.yaml`
 
 ```bash
 # First, check available StorageClasses
@@ -365,9 +477,18 @@ kubectl logs reader-pod
 
 Use `subPath` to mount specific files or subdirectories from a volume:
 
-<!-- TODO: Add more subPath examples with real-world use cases (e.g., sharing PVC between multiple deployments) -->
+**Real-World Use Cases**:
+
+1. **Single file mounts**: Mount a specific config file without hiding other files in the directory
+2. **Shared PVC isolation**: Multiple applications share one PVC but access different subdirectories
+3. **Database separation**: Separate data, logs, and config on the same volume
+4. **Multi-tenant applications**: Isolate tenant data using subdirectories
+
+<details>
+<summary>Example 1: Mount Single Config File</summary>
 
 ```yaml
+# Mount only nginx.conf without hiding other files in /etc/nginx/conf.d/
 apiVersion: v1
 kind: Pod
 metadata:
@@ -386,34 +507,400 @@ spec:
       name: nginx-config
 ```
 
-**Use Case**: When you need to mount a single file without hiding other files in the target directory.
+</details>
+
+<details>
+<summary>Example 2: Shared PVC with Multiple Deployments</summary>
+
+```yaml
+# Two deployments sharing one PVC, each using their own subdirectory
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-app-storage
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Deployment 1 uses /app1 subdirectory
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: app1
+  template:
+    metadata:
+      labels:
+        app: app1
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        volumeMounts:
+        - name: data
+          mountPath: /data
+          subPath: app1  # Only accesses app1 subdirectory
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: shared-app-storage
+```
+
+**Note**: With ReadWriteOnce, only one Pod can mount at a time. Use ReadWriteMany for simultaneous access.
+
+</details>
+
+<details>
+<summary>Example 3: Database with Separate Subdirectories</summary>
+
+```yaml
+# PostgreSQL with separate data and logs subdirectories
+apiVersion: v1
+kind: Pod
+metadata:
+  name: postgres-subpaths
+spec:
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    - name: PGDATA
+      value: /var/lib/postgresql/data/pgdata
+    volumeMounts:
+    - name: storage
+      mountPath: /var/lib/postgresql/data
+      subPath: data
+    - name: storage
+      mountPath: /var/log/postgresql
+      subPath: logs
+  volumes:
+  - name: storage
+    persistentVolumeClaim:
+      claimName: database-storage
+```
+
+</details>
+
+<details>
+<summary>Example 4: Dynamic subPath with Environment Variables</summary>
+
+```yaml
+# Use subPathExpr to create tenant-specific directories
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-tenant
+spec:
+  containers:
+  - name: app
+    image: busybox
+    env:
+    - name: TENANT_ID
+      value: "tenant-123"
+    volumeMounts:
+    - name: data
+      mountPath: /data
+      subPathExpr: $(TENANT_ID)/data  # Creates tenant-specific path
+  volumes:
+  - name: data
+    emptyDir: {}
+```
+
+</details>
+
+Complete examples in `labs/persistentvolumes/specs/ckad/subpath-shared-pvc.yaml`
+
+**Use Case**: When you need to mount a single file without hiding other files in the target directory, or when organizing multiple applications on shared storage.
 
 ### Volume Expansion
 
-<!-- TODO: Add step-by-step example of expanding a PVC (requires StorageClass with allowVolumeExpansion: true) -->
-<!-- TODO: Document which volume types support expansion and which don't -->
+Some StorageClasses support volume expansion, allowing you to increase PVC size without recreating resources.
 
-Some StorageClasses support volume expansion:
+**Step-by-Step Volume Expansion Example**:
 
 ```bash
-# Check if StorageClass allows expansion
+# Step 1: Verify StorageClass supports expansion
 kubectl get sc -o yaml | grep allowVolumeExpansion
+# Should show: allowVolumeExpansion: true
 
-# Expand PVC (if supported)
-kubectl patch pvc <pvc-name> -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
+# Step 2: Create PVC with expandable StorageClass
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: expandable-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: <your-expandable-storage-class>
+  resources:
+    requests:
+      storage: 1Gi
+EOF
 
-# Monitor expansion progress
-kubectl describe pvc <pvc-name>
+# Step 3: Create Pod using the PVC
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: expansion-test
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "df -h /data && sleep 3600"]
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: expandable-pvc
+EOF
+
+# Step 4: Check current size
+kubectl exec expansion-test -- df -h /data
+
+# Step 5: Expand the PVC to 2Gi
+kubectl patch pvc expandable-pvc -p '{"spec":{"resources":{"requests":{"storage":"2Gi"}}}}'
+
+# Step 6: Monitor expansion progress
+kubectl get pvc expandable-pvc -w
+kubectl describe pvc expandable-pvc | grep -A 5 Conditions
+
+# Step 7: For offline expansion, restart the Pod
+kubectl delete pod expansion-test
+kubectl apply -f <pod-spec>  # Recreate the Pod
+
+# Step 8: Verify new size
+kubectl exec expansion-test -- df -h /data
 ```
 
-**Exam Note**: Not all storage types support expansion. Check the StorageClass configuration.
+**Volume Type Expansion Support**:
+
+| Volume Type | Online Expansion | Offline Expansion | Not Supported |
+|-------------|------------------|-------------------|---------------|
+| AWS EBS (gp2, gp3, io1, io2) | ✅ | - | - |
+| Azure Disk (Premium, Standard SSD) | ✅ | - | - |
+| GCP Persistent Disk (all types) | ✅ | - | - |
+| Ceph RBD | ✅ | - | - |
+| Cinder (OpenStack) | ✅ | - | - |
+| Portworx | ✅ | - | - |
+| Azure File | - | ✅ | - |
+| GlusterFS | - | ✅ | - |
+| HostPath | - | - | ❌ |
+| Local Volumes | - | - | ❌ |
+| EmptyDir | - | - | ❌ (ephemeral) |
+| NFS | Depends on backend | Depends on backend | - |
+
+**Key Differences**:
+- **Online Expansion**: No Pod restart required, filesystem automatically resizes
+- **Offline Expansion**: Pod restart required to complete filesystem resize
+- **Not Supported**: Volume type does not support expansion at all
+
+**Important Notes**:
+- You can only INCREASE volume size, never decrease
+- Expansion is a one-way operation
+- Some cloud providers have quota limits on expansion
+- Always verify StorageClass has `allowVolumeExpansion: true`
+
+See complete working example in `labs/persistentvolumes/specs/ckad/volume-expansion.yaml`
+
+**Exam Note**: Not all storage types support expansion. Check the StorageClass configuration before attempting expansion.
 
 ### ReadWriteMany Volumes
 
-<!-- TODO: Add practical exercise deploying NFS provisioner or using hostPath with RWX -->
-<!-- TODO: Add troubleshooting section for RWX issues in different cluster types -->
-
 For scenarios requiring shared storage across multiple Pods:
+
+**Practical Exercise: Deploy NFS for ReadWriteMany**
+
+ReadWriteMany (RWX) access mode allows multiple Pods on different nodes to mount the same volume simultaneously. This requires network-based storage.
+
+<details>
+<summary>Option 1: Simple NFS Server for Testing (Single-Node Clusters)</summary>
+
+```bash
+# Deploy NFS server and create RWX PVC
+kubectl apply -f labs/persistentvolumes/specs/ckad/nfs-provisioner.yaml
+
+# Wait for NFS server to be ready
+kubectl wait --for=condition=Ready pod -l app=nfs-server -n nfs-provisioner --timeout=60s
+
+# Verify PVC is bound
+kubectl get pvc shared-nfs-pvc
+
+# Deploy multiple Pods using the shared volume
+kubectl get pods -l app=nfs-writer
+kubectl get pods -l app=nfs-reader
+
+# Verify shared access - check logs from readers
+kubectl logs -l app=nfs-reader --tail=10
+
+# All reader Pods should see data written by all writer Pods
+```
+
+</details>
+
+<details>
+<summary>Option 2: HostPath RWX (Docker Desktop/Minikube Only)</summary>
+
+```yaml
+# WARNING: Only works on single-node clusters!
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: hostpath-rwx
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /tmp/shared-data
+    type: DirectoryOrCreate
+```
+
+</details>
+
+**Troubleshooting ReadWriteMany by Cluster Type**:
+
+<details>
+<summary>AWS EKS - RWX Issues</summary>
+
+**Problem**: PVC with ReadWriteMany stays in Pending state
+
+**Cause**: EBS volumes only support ReadWriteOnce
+
+**Solution**: Use AWS EFS (Elastic File System)
+
+```bash
+# Install EFS CSI Driver
+kubectl apply -k "github.com/kubernetes-sigs/aws-efs-csi-driver/deploy/kubernetes/overlays/stable/?ref=release-1.5"
+
+# Create EFS filesystem in AWS Console or with AWS CLI
+# Note your EFS filesystem ID (fs-xxxxxx)
+
+# Create StorageClass for EFS
+kubectl apply -f - <<EOF
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: efs-sc
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: fs-xxxxxx  # Replace with your EFS ID
+  directoryPerms: "700"
+EOF
+
+# Create PVC with ReadWriteMany
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efs-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 5Gi
+EOF
+```
+
+</details>
+
+<details>
+<summary>Azure AKS - RWX Issues</summary>
+
+**Problem**: Azure Disk doesn't support ReadWriteMany
+
+**Solution**: Use Azure Files (built-in support)
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: azure-files-pvc
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: azurefile  # Built-in StorageClass
+  resources:
+    requests:
+      storage: 5Gi
+```
+
+**Alternative**: Azure NetApp Files for enterprise scenarios
+
+</details>
+
+<details>
+<summary>GCP GKE - RWX Issues</summary>
+
+**Problem**: GCP Persistent Disk doesn't support ReadWriteMany
+
+**Solution**: Use Google Filestore
+
+```bash
+# Install Filestore CSI Driver
+kubectl apply -f https://github.com/kubernetes-sigs/gcp-filestore-csi-driver/raw/master/deploy/kubernetes/overlays/stable/deploy-driver.yaml
+
+# Create Filestore instance (via GCP Console or gcloud)
+# Then create PVC referencing Filestore
+```
+
+**Alternative**: Use ReadOnlyMany if data is read-only
+
+</details>
+
+<details>
+<summary>Docker Desktop / Minikube - RWX Issues</summary>
+
+**Problem**: No RWX support in default StorageClass
+
+**Solutions**:
+1. Use hostPath with RWX (works since it's single-node)
+2. Deploy simple NFS server (see nfs-provisioner.yaml)
+3. Use EmptyDir for testing (not persistent)
+
+</details>
+
+<details>
+<summary>General RWX Troubleshooting Commands</summary>
+
+```bash
+# Check which StorageClasses support RWX
+kubectl get sc -o custom-columns=NAME:.metadata.name,PROVISIONER:.provisioner
+
+# Describe pending PVC to see error
+kubectl describe pvc <pvc-name>
+
+# Check if Pods are on different nodes
+kubectl get pods -o wide
+
+# Verify volume is mounted in Pod
+kubectl exec <pod-name> -- mount | grep <mount-path>
+
+# Test concurrent writes from multiple Pods
+kubectl exec <pod-1> -- sh -c 'echo "Pod 1 write" >> /data/test.txt'
+kubectl exec <pod-2> -- sh -c 'echo "Pod 2 write" >> /data/test.txt'
+kubectl exec <pod-1> -- cat /data/test.txt  # Should see both writes
+```
+
+</details>
+
+Complete examples and troubleshooting guide in `labs/persistentvolumes/specs/ckad/nfs-provisioner.yaml`
 
 ```yaml
 apiVersion: v1
@@ -558,8 +1045,6 @@ kubectl get pvc missing-pvc
 
 **Objective**: Implement sidecar pattern with shared volumes
 
-<!-- TODO: Expand this exercise with more realistic scenarios (e.g., log rotation, metric collection) -->
-
 Create a Pod with:
 1. Main container: `nginx:alpine` serving files from `/usr/share/nginx/html`
 2. Sidecar container: `busybox` writing the current date to `/html/index.html` every 5 seconds
@@ -628,10 +1113,30 @@ kubectl exec shared-web-pod -c nginx -- cat /usr/share/nginx/html/index.html
 
 </details>
 
-### Exercise 4: StatefulSet with PVC Templates
+**Advanced Variations**:
 
-<!-- TODO: Complete this exercise with full StatefulSet example -->
-<!-- TODO: Add steps to demonstrate PVC retention after StatefulSet scaling down and up -->
+For more realistic production scenarios, see advanced sidecar patterns in `labs/persistentvolumes/specs/ckad/advanced-sidecar.yaml`:
+
+1. **Log Rotation**: Sidecar automatically rotates application logs to prevent disk space issues
+2. **Metrics Collection**: Sidecar collects and aggregates application metrics
+3. **Configuration Reloader**: Sidecar watches for config changes and notifies the main container
+4. **Security Scanner**: Sidecar scans uploaded files for malicious content
+5. **Backup Agent**: Sidecar performs periodic backups of application data
+
+**Example: Deploy Log Rotation Sidecar**
+
+```bash
+kubectl apply -f labs/persistentvolumes/specs/ckad/advanced-sidecar.yaml
+
+# Check log rotation in action
+kubectl logs log-rotation-pod -c app --tail=20
+kubectl logs log-rotation-pod -c log-rotator --tail=20
+
+# Verify rotated log files
+kubectl exec log-rotation-pod -c log-rotator -- ls -lh /var/log/app/
+```
+
+### Exercise 4: StatefulSet with PVC Templates
 
 **Objective**: Understand how StatefulSets manage persistent storage
 
@@ -639,13 +1144,125 @@ kubectl exec shared-web-pod -c nginx -- cat /usr/share/nginx/html/index.html
 
 This is an advanced topic that may appear in CKAD scenarios involving databases or stateful applications.
 
+StatefulSets use `volumeClaimTemplates` to automatically create a dedicated PVC for each Pod. These PVCs persist even when Pods are deleted or the StatefulSet is scaled down.
+
+<details>
+<summary>Solution</summary>
+
+**Step 1: Deploy StatefulSet with volumeClaimTemplates**
+
 ```bash
-# TODO: Add complete StatefulSet example
-# Should demonstrate:
-# - volumeClaimTemplates
-# - Each Pod gets its own PVC
-# - PVCs persist even when StatefulSet is scaled down
+kubectl apply -f labs/persistentvolumes/specs/ckad/statefulset-pvc.yaml
+
+# Wait for all Pods to be ready
+kubectl get statefulset web -w
+# Ctrl+C when all 3 Pods are Running
+
+# Check created Pods (predictable names: web-0, web-1, web-2)
+kubectl get pods -l app=nginx-stateful
 ```
+
+**Step 2: Verify PVCs were created automatically**
+
+```bash
+# Each Pod gets its own PVC named: {volumeClaimTemplate-name}-{statefulset-name}-{ordinal}
+kubectl get pvc
+
+# Should see: www-web-0, www-web-1, www-web-2
+# All should be in Bound status
+```
+
+**Step 3: Write unique data to each Pod**
+
+```bash
+# Write to web-0
+kubectl exec web-0 -- sh -c 'echo "Data from web-0 at $(date)" >> /usr/share/nginx/html/data.txt'
+
+# Write to web-1
+kubectl exec web-1 -- sh -c 'echo "Data from web-1 at $(date)" >> /usr/share/nginx/html/data.txt'
+
+# Write to web-2
+kubectl exec web-2 -- sh -c 'echo "Data from web-2 at $(date)" >> /usr/share/nginx/html/data.txt'
+
+# Verify each Pod has different data
+kubectl exec web-0 -- cat /usr/share/nginx/html/data.txt
+kubectl exec web-1 -- cat /usr/share/nginx/html/data.txt
+kubectl exec web-2 -- cat /usr/share/nginx/html/data.txt
+```
+
+**Step 4: Test PVC retention after Pod deletion**
+
+```bash
+# Delete web-1
+kubectl delete pod web-1
+
+# StatefulSet automatically recreates web-1
+kubectl get pods -l app=nginx-stateful -w
+# Ctrl+C when web-1 is Running again
+
+# Verify data persisted (should see same data as before)
+kubectl exec web-1 -- cat /usr/share/nginx/html/data.txt
+```
+
+**Step 5: Scale down and verify PVC retention**
+
+```bash
+# Scale down to 1 replica
+kubectl scale statefulset web --replicas=1
+
+# Check Pods (only web-0 should remain)
+kubectl get pods -l app=nginx-stateful
+
+# IMPORTANT: PVCs still exist even though Pods are gone!
+kubectl get pvc
+# Should still see: www-web-0, www-web-1, www-web-2
+```
+
+**Step 6: Scale back up and verify data persists**
+
+```bash
+# Scale back up to 3 replicas
+kubectl scale statefulset web --replicas=3
+
+# Wait for Pods to be ready
+kubectl wait --for=condition=Ready pod/web-2 --timeout=60s
+
+# Verify data persisted through scaling
+kubectl exec web-1 -- cat /usr/share/nginx/html/data.txt
+kubectl exec web-2 -- cat /usr/share/nginx/html/data.txt
+
+# Data should be intact - Pods reconnected to their original PVCs!
+```
+
+**Step 7: Understand PVC lifecycle**
+
+```bash
+# Even if you delete the StatefulSet, PVCs remain
+kubectl delete statefulset web
+
+# PVCs still exist (prevents accidental data loss)
+kubectl get pvc
+
+# Manual cleanup required
+kubectl delete pvc www-web-0 www-web-1 www-web-2
+```
+
+**Key Learnings**:
+
+1. **Automatic PVC Creation**: `volumeClaimTemplates` creates one PVC per Pod
+2. **Predictable Naming**: PVCs follow pattern `{template-name}-{statefulset-name}-{ordinal}`
+3. **Stable Identity**: Each Pod always reconnects to its original PVC
+4. **PVC Retention**: PVCs persist through Pod deletion, scaling, and even StatefulSet deletion
+5. **Manual Cleanup**: You must manually delete PVCs when done
+
+**Additional Examples in statefulset-pvc.yaml**:
+- PostgreSQL cluster with separate data and log volumes
+- OrderedReady vs Parallel pod management
+- Complete troubleshooting guide
+
+</details>
+
+**Test Script**: See `labs/persistentvolumes/specs/ckad/statefulset-pvc.yaml` for automated test script that demonstrates all PVC retention behaviors.
 
 ## Common Exam Pitfalls
 

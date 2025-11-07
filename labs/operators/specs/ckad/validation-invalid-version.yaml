@@ -1,0 +1,9 @@
+# This will fail validation - invalid version format
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: invalid-version
+spec:
+  engine: postgres
+  version: "latest"  # Does not match version pattern
+  storageSize: 50Gi

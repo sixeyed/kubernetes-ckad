@@ -1,0 +1,329 @@
+# Multiple Node Selector Terms - CKAD Practice
+#
+# Multiple nodeSelectorTerms create OR logic between terms
+# Match expressions within a term are AND logic
+
+---
+# Example 1: Basic OR logic (two possible node types)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: flexible-disk
+  labels:
+    app: flexible-storage
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: SSD nodes
+        - matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+        # Term 2: NVMe nodes
+        - matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - nvme
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 2: Production OR staging with specific requirements
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-env-app
+  labels:
+    app: cross-environment
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: Production nodes (any disk)
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - production
+        # Term 2: Staging nodes with SSD
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - staging
+          - key: disk
+            operator: In
+            values:
+            - ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 3: Regional flexibility
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-region-service
+  labels:
+    app: global-service
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: US East
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - us-east-1
+        # Term 2: US West
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - us-west-2
+        # Term 3: Europe
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - eu-west-1
+  containers:
+  - name: service
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 4: Different hardware profiles
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hardware-flexible
+  labels:
+    app: compute-task
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: GPU nodes
+        - matchExpressions:
+          - key: gpu
+            operator: Exists
+        # Term 2: High CPU count nodes
+        - matchExpressions:
+          - key: cpu-count
+            operator: Gt
+            values:
+            - "16"
+        # Term 3: High-frequency CPU nodes
+        - matchExpressions:
+          - key: cpu
+            operator: In
+            values:
+            - high-frequency
+  containers:
+  - name: compute
+    image: busybox
+    command: ["sh", "-c", "echo 'Computing task'; sleep 3600"]
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "1"
+
+---
+# Example 5: Complex OR with AND within terms
+apiVersion: v1
+kind: Pod
+metadata:
+  name: complex-scheduling
+  labels:
+    app: sophisticated
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: Production nodes with SSD and high memory
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - production
+          - key: disk
+            operator: In
+            values:
+            - ssd
+          - key: memory
+            operator: In
+            values:
+            - high
+        # Term 2: Staging nodes with NVMe
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - staging
+          - key: disk
+            operator: In
+            values:
+            - nvme
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 6: Deployment with multiple terms
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flexible-deployment
+  labels:
+    app: flexible
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: flexible
+  template:
+    metadata:
+      labels:
+        app: flexible
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            # Term 1: Production with SSD
+            - matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+              - key: disk
+                operator: In
+                values:
+                - ssd
+                - nvme
+            # Term 2: Any high-performance node
+            - matchExpressions:
+              - key: workload
+                operator: In
+                values:
+                - high-performance
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 7: Avoid spot OR require specific instance type
+apiVersion: v1
+kind: Pod
+metadata:
+  name: stability-preferred
+  labels:
+    app: stable-or-specific
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: Not a spot instance
+        - matchExpressions:
+          - key: node.kubernetes.io/instance-lifecycle
+            operator: DoesNotExist
+        # Term 2: Specific instance type (even if spot)
+        - matchExpressions:
+          - key: node.kubernetes.io/instance-type
+            operator: In
+            values:
+            - c5.xlarge
+            - c5.2xlarge
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 8: Zone failover logic
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zone-aware-deployment
+  labels:
+    app: zone-aware
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: zone-aware
+  template:
+    metadata:
+      labels:
+        app: zone-aware
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            # Primary: us-east-1a with SSD
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - us-east-1a
+              - key: disk
+                operator: In
+                values:
+                - ssd
+            # Fallback: us-east-1b (any disk)
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - us-east-1b
+            # Last resort: us-east-1c (any disk)
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - us-east-1c
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"

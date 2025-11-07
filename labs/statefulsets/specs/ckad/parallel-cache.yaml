@@ -1,0 +1,58 @@
+# Example: Parallel Pod Management for Web Caching Tier
+# Use case: Distributed cache where instances don't depend on each other
+# Benefit: Faster startup time compared to sequential creation
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-cache
+  labels:
+    app: redis-cache
+spec:
+  clusterIP: None
+  selector:
+    app: redis-cache
+  ports:
+  - port: 6379
+    name: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis-cache
+spec:
+  serviceName: redis-cache
+  replicas: 5
+  podManagementPolicy: Parallel  # All Pods start simultaneously
+  selector:
+    matchLabels:
+      app: redis-cache
+  template:
+    metadata:
+      labels:
+        app: redis-cache
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: cache-data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: cache-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 500Mi

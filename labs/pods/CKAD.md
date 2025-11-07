@@ -275,7 +275,7 @@ Similar to ConfigMaps but for sensitive data. Secrets are base64-encoded and can
 <details>
   <summary>Not sure how?</summary>
 
-See complete solution: [`specs/ckad/env-configmap-secret-combined.yaml`](specs/ckad/env-configmap-secret-yaml)
+See complete solution: [`specs/ckad/env-configmap-secret-combined.yaml`](specs/ckad/env-configmap-secret-combined.yaml)
 
 This example demonstrates:
 - Creating ConfigMap and Secret
@@ -329,14 +329,40 @@ spec:
         - NET_BIND_SERVICE
 ```
 
-> **TODO**: Add example showing read-only root filesystem
+See complete examples: [`specs/ckad/security-readonly-filesystem.yaml`](specs/ckad/security-readonly-filesystem.yaml)
+
+This example shows:
+- Running nginx with read-only root filesystem
+- Mounting writable volumes for required directories (`/var/cache/nginx`, `/var/run`, `/tmp`)
+- Combining with `runAsNonRoot` and dropped capabilities
+- Testing the read-only restriction
 
 📋 Create a Pod that runs as non-root user with a read-only root filesystem.
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution showing non-root user + readOnlyRootFilesystem
+See solution: [`specs/ckad/security-readonly-filesystem.yaml`](specs/ckad/security-readonly-filesystem.yaml)
+
+```yaml
+securityContext:
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+volumeMounts:
+- name: tmp
+  mountPath: /tmp  # Writable temp directory
+```
+
+The solution demonstrates:
+- `readOnlyRootFilesystem: true` prevents writes to container filesystem
+- `runAsNonRoot: true` ensures container doesn't run as root
+- Mount `emptyDir` volumes for directories that need write access
+- Drop all capabilities for maximum security
 
 </details><br/>
 
@@ -356,14 +382,41 @@ spec:
     image: nginx
 ```
 
-> **TODO**: Add example showing how to create service account and verify Pod is using it
+See complete examples: [`specs/ckad/serviceaccount.yaml`](specs/ckad/serviceaccount.yaml)
+
+The examples demonstrate:
+- Creating a custom ServiceAccount
+- Assigning it to a Pod with `serviceAccountName`
+- Verifying the mounted service account token at `/var/run/secrets/kubernetes.io/serviceaccount/`
+- Disabling automatic token mounting with `automountServiceAccountToken: false`
+- Using RBAC to grant API access permissions to the ServiceAccount
+- Making authenticated API calls using the service account token
 
 📋 Create a custom service account and assign it to a Pod.
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution with ServiceAccount creation and Pod assignment
+See complete solution: [`specs/ckad/serviceaccount.yaml`](specs/ckad/serviceaccount.yaml)
+
+```bash
+# Create ServiceAccount
+kubectl apply -f labs/pods/specs/ckad/serviceaccount.yaml
+
+# Verify the ServiceAccount was created
+kubectl get serviceaccount my-service-account
+
+# Check the Pod is using the ServiceAccount
+kubectl get pod pod-with-sa -o jsonpath='{.spec.serviceAccountName}'
+
+# Verify token is mounted
+kubectl exec pod-with-sa -- ls /var/run/secrets/kubernetes.io/serviceaccount/
+```
+
+The example includes three scenarios:
+1. Basic ServiceAccount assignment
+2. Disabled token mounting for increased security
+3. ServiceAccount with RBAC permissions for API access
 
 </details><br/>
 
@@ -390,28 +443,156 @@ spec:
 
 More expressive node selection with required and preferred rules.
 
-> **TODO**: Add example showing requiredDuringSchedulingIgnoredDuringExecution
+See complete examples: [`specs/ckad/scheduling-node-affinity.yaml`](specs/ckad/scheduling-node-affinity.yaml)
 
-> **TODO**: Add example showing preferredDuringSchedulingIgnoredDuringExecution
+**Required Affinity** - Pod will ONLY schedule on nodes matching criteria:
+
+```yaml
+affinity:
+  nodeAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: disktype
+          operator: In
+          values:
+          - ssd
+```
+
+**Preferred Affinity** - Pod prefers matching nodes but can schedule elsewhere:
+
+```yaml
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 80
+      preference:
+        matchExpressions:
+        - key: region
+          operator: In
+          values:
+          - us-west
+```
+
+The examples also show:
+- Combined required and preferred rules
+- Different operators: `In`, `NotIn`, `Exists`, `DoesNotExist`, `Gt`, `Lt`
+- Multiple match expressions for complex scheduling decisions
 
 ### Pod Affinity and Anti-Affinity
 
 Controls Pod placement relative to other Pods.
 
-> **TODO**: Add example showing pod affinity (schedule near certain Pods)
+See complete examples: [`specs/ckad/scheduling-pod-affinity.yaml`](specs/ckad/scheduling-pod-affinity.yaml)
 
-> **TODO**: Add example showing pod anti-affinity (spread Pods across nodes)
+**Pod Affinity** - Schedule NEAR other pods (same node/zone):
+
+```yaml
+affinity:
+  podAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - cache
+      topologyKey: kubernetes.io/hostname  # Same node
+```
+
+**Pod Anti-Affinity** - Schedule AWAY from other pods (different nodes):
+
+```yaml
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+    - labelSelector:
+        matchExpressions:
+        - key: app
+          operator: In
+          values:
+          - web
+      topologyKey: kubernetes.io/hostname  # Different nodes
+```
+
+Common use cases:
+- **Affinity**: Co-locate app with cache for low latency
+- **Anti-Affinity**: Spread replicas across nodes for high availability
+- **Zone-level**: Use `topology.kubernetes.io/zone` for cross-zone distribution
 
 ### Taints and Tolerations
 
-> **TODO**: Add example showing how to add tolerations to schedule on tainted nodes
+Taints on nodes repel pods; tolerations allow pods to schedule on tainted nodes.
+
+See complete examples: [`specs/ckad/scheduling-tolerations.yaml`](specs/ckad/scheduling-tolerations.yaml)
+
+**First, taint a node** (command line):
+```bash
+kubectl taint nodes node1 env=production:NoSchedule
+```
+
+**Then add toleration to Pod**:
+```yaml
+tolerations:
+- key: "env"
+  operator: "Equal"
+  value: "production"
+  effect: "NoSchedule"
+```
+
+**Taint effects**:
+- `NoSchedule`: Pod won't be scheduled unless it tolerates the taint
+- `PreferNoSchedule`: Kubernetes tries to avoid scheduling but not guaranteed
+- `NoExecute`: Pod is evicted if it doesn't tolerate (can set `tolerationSeconds`)
+
+**Toleration operators**:
+- `Equal`: Match specific key and value
+- `Exists`: Match any value for the key (or all taints if no key specified)
+
+The examples include:
+- Basic toleration for specific taints
+- Multiple tolerations in one Pod
+- `tolerationSeconds` for temporary toleration
+- Combined with node affinity for precise placement
 
 📋 Create a Pod with node affinity that requires SSD disk and prefers nodes in us-west region.
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution with node affinity rules
+See solution: [`specs/ckad/scheduling-node-affinity.yaml`](specs/ckad/scheduling-node-affinity.yaml)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-combined
+spec:
+  affinity:
+    nodeAffinity:
+      # MUST have SSD
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+      # PREFERS us-west region
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        preference:
+          matchExpressions:
+          - key: region
+            operator: In
+            values:
+            - us-west
+  containers:
+  - name: app
+    image: nginx:alpine
+```
+
+This combines both `required` (must have SSD) and `preferred` (us-west region preferred but not mandatory) rules.
 
 </details><br/>
 
@@ -439,16 +620,89 @@ spec:
 
 ### Pod Lifecycle Hooks
 
-> **TODO**: Add example showing postStart hook
+Lifecycle hooks allow you to run code at specific points in a container's lifecycle.
 
-> **TODO**: Add example showing preStop hook
+See complete examples: [`specs/ckad/lifecycle-hooks.yaml`](specs/ckad/lifecycle-hooks.yaml)
+
+**postStart Hook** - Runs immediately after container starts:
+
+```yaml
+lifecycle:
+  postStart:
+    exec:
+      command:
+      - sh
+      - -c
+      - |
+        echo "Container started at $(date)" > /tmp/startup
+        # Initialize cache, warm up services, etc.
+```
+
+**preStop Hook** - Runs before container stops (graceful shutdown):
+
+```yaml
+lifecycle:
+  preStop:
+    exec:
+      command:
+      - sh
+      - -c
+      - |
+        echo "Graceful shutdown initiated"
+        # Drain connections, save state, cleanup
+        sleep 15
+        echo "Ready to terminate"
+```
+
+Key points:
+- `postStart` runs asynchronously with the container ENTRYPOINT
+- If `postStart` fails, the container is killed
+- `preStop` runs before the TERM signal is sent
+- Pod's `terminationGracePeriodSeconds` includes preStop time
+- Both hooks can use `exec` or `httpGet` handlers
 
 📋 Create a Pod with preStop hook that performs graceful shutdown.
 
 <details>
   <summary>Not sure how?</summary>
 
-> **TODO**: Add solution showing preStop hook implementation
+See complete solution: [`specs/ckad/lifecycle-hooks.yaml`](specs/ckad/lifecycle-hooks.yaml)
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-with-hooks
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    lifecycle:
+      preStop:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            # Graceful shutdown sequence
+            echo "Starting graceful shutdown..."
+
+            # 1. Stop accepting new connections
+            echo "Stopped accepting new connections"
+
+            # 2. Wait for existing requests to complete
+            echo "Waiting for existing requests..."
+            sleep 15
+
+            # 3. Flush cache/save state
+            echo "Flushing cache to disk..."
+            sync
+
+            echo "Graceful shutdown complete"
+  terminationGracePeriodSeconds: 60  # Must be >= preStop duration
+```
+
+The solution demonstrates a production-ready graceful shutdown sequence that allows in-flight requests to complete before termination.
 
 </details><br/>
 
@@ -517,7 +771,61 @@ Understanding the relationship between Dockerfile and Pod spec:
 - `command` in Pod spec overrides `ENTRYPOINT` in Dockerfile
 - `args` in Pod spec overrides `CMD` in Dockerfile
 
-> **TODO**: Add example showing various combinations of command/args
+See comprehensive examples: [`specs/ckad/command-args.yaml`](specs/ckad/command-args.yaml)
+
+The examples demonstrate:
+
+**1. Default image command** (no override):
+```yaml
+containers:
+- name: app
+  image: busybox:latest
+  # Uses image default
+```
+
+**2. Override command only**:
+```yaml
+containers:
+- name: app
+  image: busybox:latest
+  command: ["echo"]
+```
+
+**3. Override both command and args**:
+```yaml
+containers:
+- name: app
+  image: busybox:latest
+  command: ["echo"]
+  args: ["Hello, Kubernetes!"]
+```
+
+**4. Multi-line command with shell**:
+```yaml
+containers:
+- name: app
+  image: busybox:latest
+  command: ["sh", "-c"]
+  args:
+  - |
+    echo "Starting..."
+    echo "Running..."
+    sleep 3600
+```
+
+**5. Using environment variables in commands**:
+```yaml
+containers:
+- name: app
+  image: busybox:latest
+  env:
+  - name: MESSAGE
+    value: "Hello"
+  command: ["sh", "-c"]
+  args: ["echo $MESSAGE"]
+```
+
+The file includes 10+ examples covering all common patterns, including using ConfigMaps for startup scripts.
 
 ## Lab Exercises
 
@@ -605,15 +913,202 @@ kubectl describe pod node-affinity-app  # Check scheduling decisions
 
 ### Scenario 1: Debug a Failing Pod
 
-> **TODO**: Add troubleshooting scenario with misconfigured probes
+See complete scenario: [`specs/ckad/scenario-debug-probes.yaml`](specs/ckad/scenario-debug-probes.yaml)
+
+**Common probe issues and solutions:**
+
+**Problem 1: Aggressive liveness probe**
+- Issue: `initialDelaySeconds: 1` and `failureThreshold: 1` causes immediate restarts
+- Solution: Increase `initialDelaySeconds` to allow startup time, use `failureThreshold: 3`
+
+**Problem 2: Wrong port in probe**
+- Issue: Probe checks port 8080 but app runs on port 80
+- Solution: Verify port matches container's listening port
+
+**Problem 3: Wrong path**
+- Issue: Probe checks `/healthz` but endpoint doesn't exist (returns 404)
+- Solution: Use existing path like `/` or create proper health endpoint
+
+**Problem 4: Missing startup probe for slow apps**
+- Issue: App takes 45s to start, but liveness probe starts at 10s and fails
+- Solution: Add startup probe with `failureThreshold: 15` to allow adequate startup time
+
+**Problem 5: Wrong command in exec probe**
+- Issue: Command `/bin/check-health.sh` doesn't exist
+- Solution: Use commands that exist in the container
+
+**Debugging commands:**
+```bash
+# Check pod status and restart count
+kubectl get pods
+kubectl describe pod <pod-name>
+
+# Look for probe failures in events
+kubectl describe pod <pod-name> | grep -A 5 Events
+
+# Check probe configuration
+kubectl get pod <pod-name> -o yaml | grep -A 20 Probe
+
+# Test probe manually
+kubectl exec <pod-name> -- curl localhost:80/
+kubectl exec <pod-name> -- cat /tmp/healthy
+
+# View logs from previous instance
+kubectl logs <pod-name> --previous
+```
 
 ### Scenario 2: Update Environment Variables
 
-> **TODO**: Add scenario showing how to update Pod with new env vars
+See complete scenario: [`specs/ckad/scenario-update-env-vars.yaml`](specs/ckad/scenario-update-env-vars.yaml)
+
+**Key concept:** You CANNOT update environment variables in a running Pod. Pods are immutable - you must recreate them.
+
+**Method 1: Direct Pod Update (with downtime)**
+```bash
+# Export current Pod spec
+kubectl get pod app-with-env -o yaml > pod.yaml
+
+# Edit the file and modify env values
+# Then recreate the Pod
+kubectl delete pod app-with-env
+kubectl apply -f pod.yaml
+```
+
+**Method 2: Using ConfigMap (recommended)**
+```bash
+# Edit the ConfigMap
+kubectl edit configmap app-config
+
+# Restart the Pod to pick up changes
+kubectl delete pod app-with-configmap
+kubectl apply -f pod.yaml
+```
+
+**Method 3: Using Deployment (best for production)**
+```bash
+# Update environment variable in Deployment
+kubectl set env deployment/app-deployment ENV_VAR=new_value
+
+# This triggers automatic rolling update with no downtime
+kubectl rollout status deployment/app-deployment
+```
+
+**Method 4: ConfigMap as Volume Mount (hot reload)**
+```yaml
+# ConfigMap mounted as file - changes appear automatically
+volumeMounts:
+- name: config
+  mountPath: /config
+volumes:
+- name: config
+  configMap:
+    name: reloadable-config
+```
+- Changes sync within ~60 seconds (kubelet sync period)
+- Application must watch file and reload config
+- No Pod restart needed
+
+**Verification:**
+```bash
+# Check current env vars
+kubectl exec <pod-name> -- env
+kubectl exec <pod-name> -- printenv ENV_VAR_NAME
+
+# Verify ConfigMap changes
+kubectl get configmap <name> -o yaml
+```
 
 ### Scenario 3: Fix Resource Issues
 
-> **TODO**: Add scenario with OOMKilled or CPU throttling
+See complete scenario: [`specs/ckad/scenario-resource-issues.yaml`](specs/ckad/scenario-resource-issues.yaml)
+
+**Problem 1: OOMKilled (Out of Memory)**
+```yaml
+# Issue: Memory limit too low
+resources:
+  limits:
+    memory: "50Mi"
+  requests:
+    memory: "50Mi"
+# App tries to use 100M → OOMKilled
+```
+
+**Solution:** Increase memory limit appropriately
+```yaml
+resources:
+  limits:
+    memory: "150Mi"
+  requests:
+    memory: "100Mi"
+```
+
+**Problem 2: CPU Throttling**
+```yaml
+# Issue: CPU limit too restrictive
+resources:
+  limits:
+    cpu: "100m"  # 0.1 CPU
+# App needs 2 cores → Severe throttling, runs slowly
+```
+
+**Solution:** Increase CPU limit
+```yaml
+resources:
+  limits:
+    cpu: "1000m"  # 1 full CPU
+  requests:
+    cpu: "500m"
+```
+
+**Problem 3: No resource limits**
+- Issue: Pod can consume all node resources, starving other pods
+- Solution: Always set both requests and limits
+
+**Problem 4: Memory leak**
+- Issue: Application gradually consumes more memory → eventual OOMKilled
+- Solution: Fix the application or increase limits (temporary workaround)
+
+**Diagnostic commands:**
+```bash
+# Check for OOMKilled status
+kubectl get pods
+kubectl describe pod <pod-name>
+# Look for: "Last State: Terminated, Reason: OOMKilled"
+
+# Monitor resource usage
+kubectl top pod <pod-name>
+kubectl top pods --all-namespaces
+kubectl top nodes
+
+# Watch usage in real-time
+watch kubectl top pod <pod-name>
+
+# Check events for resource issues
+kubectl get events --sort-by='.lastTimestamp'
+
+# View logs from before OOMKilled
+kubectl logs <pod-name> --previous
+
+# Check resource configuration
+kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].resources}'
+```
+
+**Signs of issues:**
+- **OOMKilled status**: Memory limit too low or memory leak
+- **High restart count**: Resource or application issue
+- **CPU at 100% of limit**: Possible throttling affecting performance
+- **Pending status**: Insufficient node resources to schedule pod
+
+**Best practices:**
+```yaml
+resources:
+  requests:
+    cpu: "250m"       # Guaranteed minimum
+    memory: "128Mi"
+  limits:
+    cpu: "500m"       # Can burst to 0.5 CPU
+    memory: "256Mi"   # Hard limit
+```
 
 ## Quick Reference Commands
 

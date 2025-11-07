@@ -1,0 +1,97 @@
+# Scenario 4: HPA Not Scaling
+# PROBLEM: HPA is not scaling the deployment
+
+# Broken version - missing resource requests
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-broken
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hpa-broken
+  template:
+    metadata:
+      labels:
+        app: hpa-broken
+    spec:
+      containers:
+      - name: app
+        image: registry.k8s.io/hpa-example
+        ports:
+        - containerPort: 80
+        # PROBLEM: No resource requests defined!
+        # HPA cannot calculate CPU utilization without requests
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-broken
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-broken
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+---
+# Fixed version - with resource requests
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hpa-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hpa-fixed
+  template:
+    metadata:
+      labels:
+        app: hpa-fixed
+    spec:
+      containers:
+      - name: app
+        image: registry.k8s.io/hpa-example
+        ports:
+        - containerPort: 80
+
+        # SOLUTION: Add resource requests for HPA to work
+        resources:
+          requests:
+            cpu: "200m"      # HPA needs this!
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-fixed
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: hpa-fixed
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50

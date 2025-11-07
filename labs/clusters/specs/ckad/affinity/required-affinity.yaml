@@ -1,0 +1,242 @@
+# Required Node Affinity - CKAD Practice
+#
+# Pod MUST be placed on nodes matching the rules
+# Uses requiredDuringSchedulingIgnoredDuringExecution
+
+---
+# Example 1: Basic required affinity (In operator)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ssd-required
+  labels:
+    app: high-performance
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+            - nvme
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 2: Multiple values (OR logic within values)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-region-pod
+  labels:
+    app: geo-aware
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - us-east-1
+            - us-west-2
+            - eu-west-1
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 3: NotIn operator (exclusion)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: avoid-hdd
+  labels:
+    app: performance-critical
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disk
+            operator: NotIn
+            values:
+            - hdd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 4: Exists operator (key must exist)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-required
+  labels:
+    app: ml-workload
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: gpu
+            operator: Exists
+  containers:
+  - name: training
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'Training on GPU node'; sleep 3600"]
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+
+---
+# Example 5: DoesNotExist operator (key must NOT exist)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: no-spot-instances
+  labels:
+    app: stable-service
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node.kubernetes.io/instance-lifecycle
+            operator: DoesNotExist
+  containers:
+  - name: service
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 6: Multiple match expressions (AND logic)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: strict-requirements
+  labels:
+    app: production-db
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: environment
+            operator: In
+            values:
+            - production
+          - key: disk
+            operator: In
+            values:
+            - ssd
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+            - amd64
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "1"
+
+---
+# Example 7: Gt and Lt operators (numeric comparison)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: high-cpu-node
+  labels:
+    app: compute-intensive
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node.kubernetes.io/cpu-count
+            operator: Gt
+            values:
+            - "4"
+  containers:
+  - name: compute
+    image: busybox
+    command: ["sh", "-c", "echo 'Computing on high CPU node'; sleep 3600"]
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "2"
+
+---
+# Example 8: Deployment with required affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app-production
+  labels:
+    app: web
+    environment: production
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+        environment: production
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: environment
+                operator: In
+                values:
+                - production
+              - key: disk
+                operator: In
+                values:
+                - ssd
+                - nvme
+      containers:
+      - name: web
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"

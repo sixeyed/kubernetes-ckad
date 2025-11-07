@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pending-node-selector
+  labels:
+    app: troubleshooting-demo
+    scenario: pending
+spec:
+  containers:
+  - name: web
+    image: nginx
+  nodeSelector:
+    disk-type: ssd-nvme  # This label likely doesn't exist on any node
+    gpu: nvidia-a100     # Another label that probably doesn't exist

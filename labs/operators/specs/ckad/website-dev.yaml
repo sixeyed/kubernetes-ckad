@@ -1,0 +1,13 @@
+apiVersion: web.example.com/v1
+kind: Website
+metadata:
+  name: dev-site
+  namespace: default
+  labels:
+    environment: dev
+spec:
+  domain: dev.example.com
+  replicas: 1
+  sslEnabled: false
+  image: nginx:1.25-alpine
+  port: 80

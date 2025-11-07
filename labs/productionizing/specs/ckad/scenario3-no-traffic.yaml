@@ -1,0 +1,86 @@
+# Scenario 3: Application Not Receiving Traffic due to failing readiness probe
+# PROBLEM: Service not routing traffic because readiness probe is failing
+
+# Broken version - readiness probe fails
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-traffic-broken
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: no-traffic
+  template:
+    metadata:
+      labels:
+        app: no-traffic
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+
+        # PROBLEM: Readiness probe checking wrong path
+        readinessProbe:
+          httpGet:
+            path: /ready      # This path doesn't exist!
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: no-traffic-broken
+spec:
+  selector:
+    app: no-traffic
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# Fixed version - correct readiness probe
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: no-traffic-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: no-traffic-fixed
+  template:
+    metadata:
+      labels:
+        app: no-traffic-fixed
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+
+        # SOLUTION: Use correct path that exists
+        readinessProbe:
+          httpGet:
+            path: /           # nginx serves content at root
+            port: 80
+          periodSeconds: 5
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: no-traffic-fixed
+spec:
+  selector:
+    app: no-traffic-fixed
+  ports:
+  - port: 80
+    targetPort: 80

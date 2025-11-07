@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-main
+  labels:
+    app: whoami-canary
+    kubernetes.courselabs.co: deployments-ckad
+  annotations:
+    kubernetes.io/change-cause: "Main version v1"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: whoami-canary
+      version: main
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: whoami-canary
+        version: main
+        track: stable
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        env:
+        - name: VERSION
+          value: "1.0-main"
+        - name: DEPLOYMENT
+          value: "main"
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 3
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10

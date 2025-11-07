@@ -1,0 +1,35 @@
+apiVersion: apps.example.com/v1
+kind: WebApp
+metadata:
+  name: tenant-a-app
+  namespace: tenant-a
+  labels:
+    tenant: a
+spec:
+  replicas: 2
+  image: nginx:1.25-alpine
+  port: 80
+---
+apiVersion: apps.example.com/v1
+kind: WebApp
+metadata:
+  name: tenant-b-app
+  namespace: tenant-b
+  labels:
+    tenant: b
+spec:
+  replicas: 3
+  image: nginx:1.25-alpine
+  port: 80
+---
+apiVersion: apps.example.com/v1
+kind: WebApp
+metadata:
+  name: tenant-c-app
+  namespace: tenant-c
+  labels:
+    tenant: c
+spec:
+  replicas: 1
+  image: nginx:1.25-alpine
+  port: 80

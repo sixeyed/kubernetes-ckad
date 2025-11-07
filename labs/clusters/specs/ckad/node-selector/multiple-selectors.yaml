@@ -1,0 +1,170 @@
+# Multiple Node Selectors - CKAD Practice
+#
+# Demonstrates Pods with multiple node selector requirements (AND logic)
+
+---
+# Example 1: Two selectors - both must match
+apiVersion: v1
+kind: Pod
+metadata:
+  name: strict-requirements
+  labels:
+    app: critical-app
+spec:
+  nodeSelector:
+    environment: production
+    disk: ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 2: Three selectors - all must match
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  labels:
+    app: ml-training
+spec:
+  nodeSelector:
+    gpu: nvidia-t4
+    environment: production
+    disk: nvme
+  containers:
+  - name: ml-app
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'GPU training starting'; sleep 3600"]
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "2"
+
+---
+# Example 3: Standard labels + custom labels
+apiVersion: v1
+kind: Pod
+metadata:
+  name: regional-service
+  labels:
+    app: geo-distributed
+spec:
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    kubernetes.io/os: linux
+    topology.kubernetes.io/region: us-east-1
+    environment: production
+  containers:
+  - name: service
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 4: Deployment with multiple selectors
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: high-performance-api
+  labels:
+    app: api
+    tier: backend
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        tier: backend
+    spec:
+      nodeSelector:
+        workload: compute-intensive
+        disk: ssd
+        environment: production
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+          limits:
+            memory: "512Mi"
+            cpu: "1"
+
+---
+# Example 5: Zone-specific + hardware requirements
+apiVersion: v1
+kind: Pod
+metadata:
+  name: zone-aware-app
+  labels:
+    app: zone-specific
+spec:
+  nodeSelector:
+    topology.kubernetes.io/zone: us-east-1a
+    disk: ssd
+    workload: memory-intensive
+  containers:
+  - name: app
+    image: redis:7-alpine
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+
+---
+# Example 6: Will fail if no matching node
+# This Pod requires very specific conditions
+apiVersion: v1
+kind: Pod
+metadata:
+  name: impossible-requirements
+  labels:
+    app: demo-pending
+spec:
+  nodeSelector:
+    environment: production
+    disk: ssd
+    gpu: nvidia-a100
+    workload: ai-training
+    region: mars  # This will likely not exist!
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo 'This probably will not schedule'; sleep 60"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+
+---
+# Example 7: Instance type targeting (cloud-specific)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: instance-specific
+  labels:
+    app: cloud-native
+spec:
+  nodeSelector:
+    node.kubernetes.io/instance-type: t3.medium
+    kubernetes.io/os: linux
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"

@@ -1,0 +1,217 @@
+# Exercise 3: Egress Restriction
+#
+# This demonstrates how to restrict outbound traffic from pods to internal
+# services only, blocking external internet access while allowing DNS and
+# internal cluster communication.
+#
+# Requirements:
+# - Pods with app=restricted can only access internal services (10.0.0.0/8)
+# - All external traffic is blocked
+# - DNS is allowed for internal service discovery
+# - Demonstrates CIDR-based egress rules
+
+---
+# Namespace for the exercise
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: restricted-egress
+  labels:
+    demo: egress-restriction
+
+---
+# Internal Service that restricted pods CAN access
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: internal-api
+  namespace: restricted-egress
+  labels:
+    app: internal-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: internal-api
+  template:
+    metadata:
+      labels:
+        app: internal-api
+    spec:
+      containers:
+      - name: api
+        image: kiamol/ch05-pi
+        ports:
+        - containerPort: 8080
+
+---
+# Internal API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: internal-api
+  namespace: restricted-egress
+  labels:
+    app: internal-api
+spec:
+  selector:
+    app: internal-api
+  ports:
+  - port: 8080
+    targetPort: 8080
+
+---
+# Restricted Pod Deployment
+# These pods will have egress restrictions applied
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: restricted-app
+  namespace: restricted-egress
+  labels:
+    app: restricted
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: restricted
+  template:
+    metadata:
+      labels:
+        app: restricted
+    spec:
+      containers:
+      - name: app
+        image: curlimages/curl:latest
+        command: ["sleep", "3600"]
+
+---
+# Unrestricted Pod for Comparison
+# This pod has no egress restrictions
+apiVersion: v1
+kind: Pod
+metadata:
+  name: unrestricted-pod
+  namespace: restricted-egress
+  labels:
+    app: unrestricted
+spec:
+  containers:
+  - name: curl
+    image: curlimages/curl:latest
+    command: ["sleep", "3600"]
+
+---
+# Egress NetworkPolicy - Restrict to Internal Only
+# This policy allows egress only to internal cluster networks
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restricted-egress-policy
+  namespace: restricted-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: restricted
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS (critical for service discovery)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow to internal cluster networks only (10.0.0.0/8)
+  # This blocks all external internet traffic
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/8
+        # Optionally block cloud metadata service
+        except:
+        - 10.0.0.1/32  # Example: block specific internal IP
+
+---
+# Alternative: More Restrictive with Multiple Internal Networks
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restricted-egress-multi-cidr
+  namespace: restricted-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: restricted-v2
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow to specific internal networks
+  - to:
+    - ipBlock:
+        cidr: 10.0.0.0/8     # Internal network 1
+  - to:
+    - ipBlock:
+        cidr: 172.16.0.0/12  # Internal network 2
+  - to:
+    - ipBlock:
+        cidr: 192.168.0.0/16 # Internal network 3
+
+---
+# Alternative: Allow Specific Internal Services Only (No CIDR)
+# This is the most restrictive - only allow to specific labeled services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: restricted-egress-services-only
+  namespace: restricted-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: restricted-v3
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+  # Allow only to internal-api service
+  - to:
+    - podSelector:
+        matchLabels:
+          app: internal-api
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# Test Pod for Validation
+# Use this to test egress restrictions
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-egress
+  namespace: restricted-egress
+  labels:
+    app: restricted
+spec:
+  containers:
+  - name: test
+    image: busybox
+    command: ["sleep", "3600"]

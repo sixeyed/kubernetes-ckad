@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: troubleshoot-crashloop
+  labels:
+    app: troubleshoot
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: troubleshoot-crashloop
+  template:
+    metadata:
+      labels:
+        app: troubleshoot-crashloop
+    spec:
+      containers:
+      - name: app
+        image: busybox:1.36
+        # This command will cause container to crash immediately
+        command: ['sh', '-c', 'exit 1']
+        resources:
+          requests:
+            memory: "16Mi"
+            cpu: "25m"

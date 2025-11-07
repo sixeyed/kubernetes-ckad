@@ -1,0 +1,131 @@
+# Example: Using port names vs port numbers in Ingress
+# Shows the difference and benefits of named ports
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+# Service with named ports
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: web-app
+  ports:
+  - name: http          # Named port
+    port: 8080
+    targetPort: 80
+  - name: https         # Another named port
+    port: 8443
+    targetPort: 80
+  - name: metrics       # Metrics port (example)
+    port: 9090
+    targetPort: 80
+---
+# Ingress using port number
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: port-number-ingress
+  namespace: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: portnumber.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 8080  # Reference by number
+---
+# Ingress using port name (recommended)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: port-name-ingress
+  namespace: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: portname.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              name: http   # Reference by name (more flexible)
+---
+# Multiple paths using different named ports
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-port-ingress
+  namespace: port-names
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: multiport.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              name: http
+      - path: /metrics
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              name: metrics
+
+# Benefits of named ports:
+# 1. More readable - clear what port is for
+# 2. Port number can change without updating Ingress
+# 3. Self-documenting configuration
+# 4. Easier to maintain across multiple resources

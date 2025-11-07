@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: troubleshoot-imagepull
+  labels:
+    app: troubleshoot
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: troubleshoot-imagepull
+  template:
+    metadata:
+      labels:
+        app: troubleshoot-imagepull
+    spec:
+      containers:
+      - name: app
+        # Non-existent image will cause ImagePullBackOff
+        image: sixeyed/whoami:does-not-exist-999
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"

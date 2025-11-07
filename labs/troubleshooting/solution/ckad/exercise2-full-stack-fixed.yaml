@@ -1,0 +1,112 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: exercise2-fixed
+---
+# Database pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database
+  namespace: exercise2-fixed
+  labels:
+    app: db
+    tier: data
+spec:
+  containers:
+  - name: postgres
+    image: postgres:14
+    ports:
+    - containerPort: 5432
+    env:
+    - name: POSTGRES_PASSWORD  # FIXED: Added required env var
+      value: "example"
+    - name: POSTGRES_DB
+      value: "appdb"
+---
+# Database service
+apiVersion: v1
+kind: Service
+metadata:
+  name: database-service
+  namespace: exercise2-fixed
+spec:
+  selector:
+    app: db  # FIXED: Matches pod label
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+# Backend pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend
+  namespace: exercise2-fixed
+  labels:
+    app: backend
+    tier: api
+spec:
+  containers:
+  - name: api
+    image: nginx
+    ports:
+    - containerPort: 8080
+    env:
+    - name: DATABASE_HOST
+      value: "database-service"  # FIXED: Correct service name
+    - name: DATABASE_PORT
+      value: "5432"
+---
+# Backend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: exercise2-fixed
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+# Frontend pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+  namespace: exercise2-fixed
+  labels:
+    app: frontend
+    tier: web
+spec:
+  containers:
+  - name: web
+    image: nginx
+    ports:
+    - containerPort: 80
+    env:
+    - name: API_URL
+      value: "http://backend-service"
+---
+# Network policy allowing required traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend-to-backend
+  namespace: exercise2-fixed
+spec:
+  podSelector:
+    matchLabels:
+      tier: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: web
+    ports:
+    - protocol: TCP
+      port: 8080

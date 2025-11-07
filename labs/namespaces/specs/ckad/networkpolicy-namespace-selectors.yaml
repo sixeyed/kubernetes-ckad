@@ -1,0 +1,209 @@
+# NetworkPolicy with namespace selectors for advanced isolation
+
+# Namespace for frontend apps
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend-ns
+  labels:
+    tier: frontend
+
+---
+# Namespace for backend apps
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend-ns
+  labels:
+    tier: backend
+
+---
+# Namespace for database
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: database-ns
+  labels:
+    tier: database
+
+---
+# Frontend Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-app
+  namespace: frontend-ns
+  labels:
+    app: frontend
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+
+---
+# Backend Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-app
+  namespace: backend-ns
+  labels:
+    app: backend
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-svc
+  namespace: backend-ns
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+# Database Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database
+  namespace: database-ns
+  labels:
+    app: database
+spec:
+  containers:
+  - name: postgres
+    image: postgres:alpine
+    ports:
+    - containerPort: 5432
+    env:
+    - name: POSTGRES_PASSWORD
+      value: example
+
+---
+# Database Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-svc
+  namespace: database-ns
+spec:
+  selector:
+    app: database
+  ports:
+  - port: 5432
+    targetPort: 5432
+
+---
+# NetworkPolicy: Backend can only accept traffic from Frontend namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-allow-frontend
+  namespace: backend-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          tier: frontend
+    ports:
+    - protocol: TCP
+      port: 80
+
+---
+# NetworkPolicy: Database can only accept traffic from Backend namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-allow-backend
+  namespace: database-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          tier: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+
+---
+# NetworkPolicy: Frontend allows ingress from anywhere
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-allow-all
+  namespace: frontend-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+  - Ingress
+  ingress:
+  - {}
+
+---
+# NetworkPolicy: Deny all traffic to backend except from frontend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-default-deny
+  namespace: backend-ns
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# NetworkPolicy: Allow backend to database egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-egress-database
+  namespace: backend-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          tier: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53

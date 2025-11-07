@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-settings-fixed
+data:
+  database_host: "db.example.com"
+  database_port: "5432"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-wrong-key-fixed
+  labels:
+    app: troubleshooting-demo
+    scenario: configmap
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c", "echo DB: $DB_HOST:$DB_PORT; sleep 3600"]
+    env:
+    - name: DB_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-settings-fixed
+          key: database_host  # Fixed: correct key name
+    - name: DB_PORT
+      valueFrom:
+        configMapKeyRef:
+          name: app-settings-fixed
+          key: database_port  # Fixed: correct key name

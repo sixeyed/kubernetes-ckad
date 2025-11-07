@@ -1,0 +1,90 @@
+# Pod Security Standards per namespace
+# Demonstrates different security levels across namespaces
+
+# Privileged namespace - allows all workloads
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: privileged-ns
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+
+---
+# Baseline namespace - minimal restrictions
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: baseline-ns
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+
+---
+# Restricted namespace - highly restricted
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: restricted-ns
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# Pod that works in privileged namespace
+apiVersion: v1
+kind: Pod
+metadata:
+  name: privileged-pod
+  namespace: privileged-ns
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      privileged: true
+
+---
+# Pod that works in baseline namespace
+apiVersion: v1
+kind: Pod
+metadata:
+  name: baseline-pod
+  namespace: baseline-ns
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      runAsNonRoot: false
+      allowPrivilegeEscalation: false
+
+---
+# Pod that works in restricted namespace
+apiVersion: v1
+kind: Pod
+metadata:
+  name: restricted-pod
+  namespace: restricted-ns
+spec:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+      runAsNonRoot: true
+      runAsUser: 1000
+      seccompProfile:
+        type: RuntimeDefault

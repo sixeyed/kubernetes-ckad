@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hostpath-insecure
+  labels:
+    app: hostpath-insecure
+    security: bad-example
+spec:
+  selector:
+    matchLabels:
+      app: hostpath-insecure
+  template:
+    metadata:
+      labels:
+        app: hostpath-insecure
+    spec:
+      # NO security context - runs as root
+      # RISKY: Full access to host filesystem
+      containers:
+      - name: insecure-app
+        image: busybox
+        command: ['sh', '-c']
+        args:
+        - |
+          echo "WARNING: This container has dangerous privileges!"
+          echo "Can read/write entire host filesystem:"
+          ls -la /host-root
+          echo ""
+          echo "Can access sensitive files:"
+          cat /host-root/etc/passwd 2>/dev/null || echo "Cannot read /etc/passwd"
+          echo ""
+          echo "Can modify host system (DANGEROUS!):"
+          # DON'T DO THIS IN PRODUCTION
+          echo "# Added by insecure pod" >> /host-root/tmp/insecure-modification.txt
+          sleep 3600
+        volumeMounts:
+        - name: host-root
+          mountPath: /host-root
+          # RISKY: Read-write access to entire host filesystem
+        securityContext:
+          # RISKY: Running as root
+          privileged: true  # NEVER USE IN PRODUCTION
+
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory

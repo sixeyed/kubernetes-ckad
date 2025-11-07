@@ -1,0 +1,142 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app1
+  namespace: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app1
+  template:
+    metadata:
+      labels:
+        app: app1
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "app1"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app2
+  namespace: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: app2
+  template:
+    metadata:
+      labels:
+        app: app2
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        env:
+        - name: WHOAMI_ENVIRONMENT
+          value: "app2"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app1-svc
+  namespace: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: app1
+  ports:
+  - port: 80
+    targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app2-svc
+  namespace: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: app2
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# To use this Ingress, create TLS secrets for each domain:
+# Run: ./self-signed-cert-script.sh
+# Then: kubectl create secret tls multi-app-tls --cert=multi-app.crt --key=multi-app.key -n multi-cert
+# Or use wildcard: kubectl create secret tls wildcard-tls --cert=wildcard.crt --key=wildcard.key -n multi-cert
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: multi-cert-ingress
+  namespace: multi-cert
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  # Option 1: Separate certificate for each host
+  - hosts:
+    - app1.example.com
+    secretName: app1-tls
+  - hosts:
+    - app2.example.com
+    secretName: app2-tls
+  # Option 2: Single certificate covering multiple hosts
+  # - hosts:
+  #   - app1.example.com
+  #   - app2.example.com
+  #   secretName: multi-app-tls
+  # Option 3: Wildcard certificate
+  # - hosts:
+  #   - app1.example.com
+  #   - app2.example.com
+  #   secretName: wildcard-tls
+  rules:
+  - host: app1.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app1-svc
+            port:
+              number: 80
+  - host: app2.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: app2-svc
+            port:
+              number: 80

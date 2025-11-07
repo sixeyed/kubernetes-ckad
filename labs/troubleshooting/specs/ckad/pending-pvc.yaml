@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pending-pvc-claim
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+  storageClassName: non-existent-storage-class  # This storage class doesn't exist
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pending-pvc-pod
+  labels:
+    app: troubleshooting-demo
+    scenario: pending
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: pending-pvc-claim  # PVC won't bind, so pod stays pending

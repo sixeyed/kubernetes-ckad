@@ -1,0 +1,391 @@
+# Advanced Sidecar Pattern 1: Log Rotation
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: log-rotation-pod
+  labels:
+    app: log-rotation
+spec:
+  volumes:
+  - name: logs
+    emptyDir:
+      sizeLimit: 1Gi
+  containers:
+  # Main application generating logs
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        counter=0
+        while true; do
+          timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+          echo "[$timestamp] Log entry #$counter from application" >> /var/log/app/application.log
+          counter=$((counter + 1))
+          # Simulate variable log volume
+          if [ $((counter % 100)) -eq 0 ]; then
+            echo "[$timestamp] Large log entry: $(head -c 500 /dev/urandom | base64)" >> /var/log/app/application.log
+          fi
+          sleep 1
+        done
+    volumeMounts:
+    - name: logs
+      mountPath: /var/log/app
+
+  # Sidecar: Log rotation to prevent disk space issues
+  - name: log-rotator
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Log rotator started"
+        while true; do
+          # Check log file size
+          if [ -f /var/log/app/application.log ]; then
+            size=$(stat -c%s /var/log/app/application.log 2>/dev/null || echo 0)
+            echo "Current log size: $size bytes"
+
+            # Rotate if larger than 100KB
+            if [ "$size" -gt 100000 ]; then
+              echo "Rotating logs..."
+              timestamp=$(date '+%Y%m%d-%H%M%S')
+              mv /var/log/app/application.log /var/log/app/application-$timestamp.log
+              echo "Log rotated to application-$timestamp.log"
+
+              # Keep only last 5 rotated logs
+              ls -t /var/log/app/application-*.log 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null
+            fi
+          fi
+          sleep 30
+        done
+    volumeMounts:
+    - name: logs
+      mountPath: /var/log/app
+---
+# Advanced Sidecar Pattern 2: Metrics Collection
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metrics-config
+data:
+  metrics.conf: |
+    # Metrics collection configuration
+    collection_interval: 10
+    metrics:
+      - cpu_usage
+      - memory_usage
+      - request_count
+      - error_rate
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: metrics-collector-pod
+  labels:
+    app: metrics-collector
+spec:
+  volumes:
+  - name: metrics
+    emptyDir: {}
+  - name: config
+    configMap:
+      name: metrics-config
+  containers:
+  # Main application with metrics endpoint
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        mkdir -p /metrics
+        while true; do
+          # Simulate application generating metrics
+          requests=$((RANDOM % 1000))
+          errors=$((RANDOM % 50))
+          cpu=$((RANDOM % 100))
+          memory=$((RANDOM % 2048))
+
+          cat > /metrics/app_metrics.txt <<EOF
+        timestamp=$(date '+%s')
+        requests_total=$requests
+        errors_total=$errors
+        cpu_usage_percent=$cpu
+        memory_usage_mb=$memory
+        EOF
+          sleep 5
+        done
+    volumeMounts:
+    - name: metrics
+      mountPath: /metrics
+
+  # Sidecar: Metrics aggregator
+  - name: metrics-collector
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Metrics collector started"
+        touch /metrics/aggregated_metrics.log
+
+        while true; do
+          if [ -f /metrics/app_metrics.txt ]; then
+            echo "=== Metrics at $(date '+%Y-%m-%d %H:%M:%S') ===" >> /metrics/aggregated_metrics.log
+            cat /metrics/app_metrics.txt >> /metrics/aggregated_metrics.log
+
+            # Calculate error rate
+            requests=$(grep requests_total /metrics/app_metrics.txt | cut -d'=' -f2)
+            errors=$(grep errors_total /metrics/app_metrics.txt | cut -d'=' -f2)
+            if [ "$requests" -gt 0 ]; then
+              error_rate=$((errors * 100 / requests))
+              echo "error_rate_percent=$error_rate" >> /metrics/aggregated_metrics.log
+
+              # Alert on high error rate
+              if [ "$error_rate" -gt 10 ]; then
+                echo "ALERT: High error rate detected: $error_rate%" >> /metrics/aggregated_metrics.log
+              fi
+            fi
+            echo "" >> /metrics/aggregated_metrics.log
+
+            # Keep only last 100 lines
+            tail -100 /metrics/aggregated_metrics.log > /metrics/aggregated_metrics.log.tmp
+            mv /metrics/aggregated_metrics.log.tmp /metrics/aggregated_metrics.log
+          fi
+          sleep 10
+        done
+    volumeMounts:
+    - name: metrics
+      mountPath: /metrics
+    - name: config
+      mountPath: /config
+---
+# Advanced Sidecar Pattern 3: Configuration Reloader
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-dynamic-config
+data:
+  app.conf: |
+    # Application configuration v1
+    log_level=INFO
+    max_connections=100
+    timeout=30
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: config-reloader-pod
+  labels:
+    app: config-reloader
+spec:
+  volumes:
+  - name: config
+    configMap:
+      name: app-dynamic-config
+  - name: shared-config
+    emptyDir: {}
+  containers:
+  # Main application
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Application started"
+        while true; do
+          if [ -f /app/config/app.conf ]; then
+            echo "=== Current Configuration ==="
+            cat /app/config/app.conf
+            echo "==========================="
+          fi
+          sleep 30
+        done
+    volumeMounts:
+    - name: shared-config
+      mountPath: /app/config
+
+  # Sidecar: Configuration watcher and reloader
+  - name: config-reloader
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Config reloader started"
+        checksum=""
+
+        while true; do
+          # Calculate checksum of mounted ConfigMap
+          new_checksum=$(md5sum /config/app.conf 2>/dev/null | cut -d' ' -f1)
+
+          if [ "$checksum" != "$new_checksum" ]; then
+            echo "Configuration change detected!"
+            echo "Old checksum: $checksum"
+            echo "New checksum: $new_checksum"
+
+            # Copy new config to shared volume
+            cp /config/app.conf /app/config/app.conf
+            echo "Configuration reloaded at $(date)"
+
+            checksum="$new_checksum"
+          fi
+          sleep 10
+        done
+    volumeMounts:
+    - name: config
+      mountPath: /config
+    - name: shared-config
+      mountPath: /app/config
+---
+# Advanced Sidecar Pattern 4: Security Scanner
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-scanner-pod
+  labels:
+    app: security-scanner
+spec:
+  volumes:
+  - name: scan-results
+    emptyDir: {}
+  - name: app-files
+    emptyDir: {}
+  containers:
+  # Main application
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        # Simulate application writing files
+        mkdir -p /app/uploads
+        while true; do
+          filename="file_$(date +%s).txt"
+          content="Sample content $(head -c 100 /dev/urandom | base64)"
+          echo "$content" > /app/uploads/$filename
+          echo "Created: $filename"
+          sleep 15
+        done
+    volumeMounts:
+    - name: app-files
+      mountPath: /app/uploads
+
+  # Sidecar: Security scanner
+  - name: scanner
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Security scanner started"
+
+        while true; do
+          echo "=== Running security scan at $(date) ===" >> /scan-results/scan.log
+
+          # Scan files for suspicious patterns
+          for file in /app/uploads/*; do
+            if [ -f "$file" ]; then
+              filename=$(basename "$file")
+              size=$(stat -c%s "$file")
+
+              echo "Scanning: $filename (size: $size bytes)" >> /scan-results/scan.log
+
+              # Check for suspicious content (example checks)
+              if grep -qi "malicious" "$file" 2>/dev/null; then
+                echo "ALERT: Suspicious content in $filename" >> /scan-results/scan.log
+                echo "QUARANTINE: Moving $filename" >> /scan-results/scan.log
+                mv "$file" "/app/uploads/quarantine_$filename"
+              fi
+
+              # Check file size
+              if [ "$size" -gt 1000000 ]; then
+                echo "WARNING: Large file detected: $filename" >> /scan-results/scan.log
+              fi
+            fi
+          done
+
+          echo "" >> /scan-results/scan.log
+          sleep 20
+        done
+    volumeMounts:
+    - name: app-files
+      mountPath: /app/uploads
+    - name: scan-results
+      mountPath: /scan-results
+---
+# Advanced Sidecar Pattern 5: Backup Agent
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-agent-pod
+  labels:
+    app: backup-agent
+spec:
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: app-data-pvc
+  - name: backups
+    emptyDir:
+      sizeLimit: 500Mi
+  containers:
+  # Main application writing data
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        mkdir -p /data/app
+        while true; do
+          echo "$(date): Important data entry" >> /data/app/database.txt
+          sleep 10
+        done
+    volumeMounts:
+    - name: data
+      mountPath: /data
+
+  # Sidecar: Backup agent
+  - name: backup-agent
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+      - |
+        echo "Backup agent started"
+        backup_interval=60  # seconds
+
+        while true; do
+          timestamp=$(date '+%Y%m%d-%H%M%S')
+          backup_file="/backups/backup-$timestamp.tar.gz"
+
+          echo "Creating backup at $(date)..."
+          tar -czf "$backup_file" -C /data app/ 2>/dev/null
+
+          if [ -f "$backup_file" ]; then
+            size=$(stat -c%s "$backup_file")
+            echo "Backup created: backup-$timestamp.tar.gz (size: $size bytes)"
+
+            # Keep only last 5 backups
+            ls -t /backups/backup-*.tar.gz | tail -n +6 | xargs rm -f 2>/dev/null
+
+            # List current backups
+            echo "Available backups:"
+            ls -lh /backups/
+          fi
+
+          sleep $backup_interval
+        done
+    volumeMounts:
+    - name: data
+      mountPath: /data
+      readOnly: true
+    - name: backups
+      mountPath: /backups

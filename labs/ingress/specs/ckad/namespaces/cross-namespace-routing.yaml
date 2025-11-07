@@ -1,0 +1,166 @@
+# Cross-namespace routing with separate Ingresses
+# Each namespace has its own Ingress referencing local services
+# All route to the same hostname with different paths
+
+# Ingress in frontend namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-ingress
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc  # Service in frontend namespace
+            port:
+              number: 80
+---
+# Ingress in api namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: api
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: api-svc  # Service in api namespace
+            port:
+              number: 8080
+---
+# Ingress in admin namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin-ingress
+  namespace: admin
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /admin
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-svc  # Service in admin namespace
+            port:
+              number: 80
+---
+# Alternative: Using different hostnames per namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend-host-ingress
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: web.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-host-ingress
+  namespace: api
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: api.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-svc
+            port:
+              number: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: admin-host-ingress
+  namespace: admin
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: admin.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: admin-svc
+            port:
+              number: 80
+---
+# Advanced: ExternalName Service for cross-namespace access
+# (Use this pattern only when necessary)
+apiVersion: v1
+kind: Service
+metadata:
+  name: remote-api-reference
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  type: ExternalName
+  externalName: api-svc.api.svc.cluster.local
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+# Ingress using ExternalName service
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: external-name-ingress
+  namespace: frontend
+  labels:
+    kubernetes.courselabs.co: ingress
+  annotations:
+    nginx.ingress.kubernetes.io/upstream-vhost: "api-svc.api.svc.cluster.local"
+spec:
+  rules:
+  - host: crossns.example.com
+    http:
+      paths:
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: remote-api-reference
+            port:
+              number: 8080

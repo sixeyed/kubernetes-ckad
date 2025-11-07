@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: netpol-test
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend
+  namespace: netpol-test
+  labels:
+    app: backend
+    tier: api
+spec:
+  containers:
+  - name: api
+    image: nginx
+    ports:
+    - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: netpol-test
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 80
+    targetPort: 80
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend
+  namespace: netpol-test
+  labels:
+    app: frontend
+    tier: web
+spec:
+  containers:
+  - name: web
+    image: busybox
+    command: ["/bin/sh", "-c", "sleep 3600"]
+---
+# This NetworkPolicy blocks all ingress traffic to backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-ingress
+  namespace: netpol-test
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  # No ingress rules = deny all ingress

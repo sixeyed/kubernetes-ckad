@@ -1,0 +1,242 @@
+# Namespace isolation with RBAC
+# Demonstrates: Using namespaces and RBAC for environment isolation
+# Development namespace with relaxed permissions
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    environment: development
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Staging namespace with moderate permissions
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    environment: staging
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Production namespace with strict permissions
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prod
+  labels:
+    environment: production
+    kubernetes.courselabs.co: rbac-ckad
+---
+# ServiceAccount: Developer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: developer
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Developers get 'edit' access in dev namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dev-edit
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit  # Can create/update/delete most resources
+subjects:
+- kind: ServiceAccount
+  name: developer
+  namespace: default
+---
+# Developers get 'view' access in staging
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: staging-view
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view  # Read-only access
+subjects:
+- kind: ServiceAccount
+  name: developer
+  namespace: default
+---
+# Developers get 'view' access in production (read-only)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prod-view
+  namespace: prod
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+- kind: ServiceAccount
+  name: developer
+  namespace: default
+---
+# ServiceAccount: SRE/Operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sre
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# SRE gets 'edit' in staging
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sre-staging-edit
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+- kind: ServiceAccount
+  name: sre
+  namespace: default
+---
+# SRE gets 'admin' in production (full namespace control)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sre-prod-admin
+  namespace: prod
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: admin  # Full namespace access including RBAC
+subjects:
+- kind: ServiceAccount
+  name: sre
+  namespace: default
+---
+# Application ServiceAccounts (scoped to their own namespace)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-dev
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-staging
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-prod
+  namespace: prod
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# App-specific role (read ConfigMaps and Secrets only)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-runtime
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-runtime
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-runtime
+  namespace: prod
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list"]
+---
+# Bind app ServiceAccounts to app-runtime role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-dev-binding
+  namespace: dev
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-runtime
+subjects:
+- kind: ServiceAccount
+  name: app-dev
+  namespace: dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-staging-binding
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-runtime
+subjects:
+- kind: ServiceAccount
+  name: app-staging
+  namespace: staging
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-prod-binding
+  namespace: prod
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: app-runtime
+subjects:
+- kind: ServiceAccount
+  name: app-prod
+  namespace: prod

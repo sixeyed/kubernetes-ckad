@@ -1,0 +1,200 @@
+# Exercise 2: Cross-Namespace Communication
+#
+# This demonstrates how to configure NetworkPolicy to allow communication
+# between pods in different namespaces using namespace selectors.
+#
+# Architecture:
+# - Frontend namespace: Contains web application
+# - Backend namespace: Contains API service (labeled tier=backend)
+# - Policy allows frontend apps to access backend APIs cross-namespace
+
+---
+# Frontend Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    tier: frontend
+    env: demo
+
+---
+# Backend Namespace (labeled for selection)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+  labels:
+    tier: backend
+    env: demo
+
+---
+# Frontend App Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webapp
+  namespace: frontend
+  labels:
+    app: webapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: webapp
+  template:
+    metadata:
+      labels:
+        app: webapp
+    spec:
+      containers:
+      - name: webapp
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+
+---
+# Frontend App Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: webapp
+  namespace: frontend
+  labels:
+    app: webapp
+spec:
+  type: NodePort
+  selector:
+    app: webapp
+  ports:
+  - port: 80
+    targetPort: 80
+
+---
+# Backend API Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: backend
+  labels:
+    app: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: kiamol/ch05-pi
+        ports:
+        - containerPort: 8080
+
+---
+# Backend API Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: backend
+  labels:
+    app: api
+spec:
+  selector:
+    app: api
+  ports:
+  - port: 8080
+    targetPort: 8080
+
+---
+# Backend NetworkPolicy - Allow from Frontend Namespace
+# This policy allows ingress to backend API from any pod in the frontend namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-from-frontend-ns
+  namespace: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # Allow from any pod in namespaces labeled tier=frontend
+    - namespaceSelector:
+        matchLabels:
+          tier: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# Frontend NetworkPolicy - Egress to Backend
+# Allow frontend apps to reach backend API in backend namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: webapp-egress-to-backend
+  namespace: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: webapp
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS for service discovery
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow to API in backend namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          tier: backend
+      podSelector:
+        matchLabels:
+          app: api
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
+# Alternative: Allow from Specific Pods in Frontend Namespace
+# This is a more restrictive version that only allows from specific pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api-allow-from-frontend-app
+  namespace: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # AND condition: namespace must be frontend AND pod must be webapp
+    - namespaceSelector:
+        matchLabels:
+          tier: frontend
+      podSelector:
+        matchLabels:
+          app: webapp
+    ports:
+    - protocol: TCP
+      port: 8080

@@ -1,0 +1,91 @@
+# BROKEN: Ingress references service in wrong namespace
+# Issue: Ingress is in 'default' namespace but service is in 'apps' namespace
+# Fix: Move Ingress to 'apps' namespace OR move service to 'default' namespace
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: apps
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+  namespace: apps
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-svc
+  namespace: apps  # Service is in 'apps' namespace
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: web-app
+  ports:
+  - port: 80
+    targetPort: 80
+---
+# BROKEN: This Ingress is in 'default' namespace
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-namespace-ingress
+  namespace: default  # Wrong namespace!
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: broken1.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc  # This service doesn't exist in 'default' namespace
+            port:
+              number: 80
+
+# SOLUTION: Move Ingress to correct namespace
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fixed-namespace-ingress
+  namespace: apps  # Correct namespace matching the service
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: fixed1.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-svc
+            port:
+              number: 80

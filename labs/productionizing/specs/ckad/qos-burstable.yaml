@@ -1,0 +1,19 @@
+# QoS Class: Burstable
+# Achieved when requests != limits (or only requests are set)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-burstable
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"  # Different from request
+        cpu: "500m"      # Different from request

@@ -1,0 +1,88 @@
+# Exercise 1 Solution: ServiceAccount with Basic Permissions
+# Step 1: Create the ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webapp
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 2: Create test ConfigMaps
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  database.url: "postgresql://db:5432/myapp"
+  log.level: "INFO"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: other-config
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  other: "data"
+---
+# Step 3: Create Role with required permissions
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webapp-role
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Pods: get and list
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+# Services: get and list
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list"]
+# ConfigMap named 'app-config' only: get
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["app-config"]
+  verbs: ["get"]
+---
+# Step 4: Create RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webapp-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: webapp-role
+subjects:
+- kind: ServiceAccount
+  name: webapp
+  namespace: default
+---
+# Step 5: Create Pod using the ServiceAccount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-pod
+  namespace: default
+  labels:
+    app: webapp
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: webapp
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never

@@ -1,0 +1,95 @@
+# Exercise 4: Security Hardening
+# Before and After comparison
+
+# BEFORE: Insecure deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: insecure-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: insecure-app
+  template:
+    metadata:
+      labels:
+        app: insecure-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        # No security context
+        # No resource limits
+        # Runs as root
+        # Writable filesystem
+        # All capabilities enabled
+---
+# AFTER: Hardened deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hardened-app
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: hardened-app
+  template:
+    metadata:
+      labels:
+        app: hardened-app
+    spec:
+      # Disable SA token auto-mount
+      automountServiceAccountToken: false
+
+      # Pod-level security
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+      - name: nginx
+        image: nginx:alpine
+
+        # Container-level security
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+
+        # Resource limits
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+        # Required writable volumes
+        volumeMounts:
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+        - name: tmp
+          mountPath: /tmp
+
+      volumes:
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
+      - name: tmp
+        emptyDir: {}

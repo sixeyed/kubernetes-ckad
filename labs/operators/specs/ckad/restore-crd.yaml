@@ -1,0 +1,75 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: databaserestores.backup.example.com
+spec:
+  group: backup.example.com
+  names:
+    plural: databaserestores
+    singular: databaserestore
+    kind: DatabaseRestore
+    shortNames:
+    - dbrestore
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    additionalPrinterColumns:
+    - name: Database
+      type: string
+      jsonPath: .spec.databaseRef.name
+    - name: Backup
+      type: string
+      jsonPath: .spec.backupRef.name
+    - name: Status
+      type: string
+      jsonPath: .status.phase
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            properties:
+              databaseRef:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+              backupRef:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  namespace:
+                    type: string
+                required:
+                - name
+              pointInTime:
+                type: string
+                format: date-time
+            required:
+            - databaseRef
+            - backupRef
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum: ["Pending", "Restoring", "Completed", "Failed"]
+              startTime:
+                type: string
+                format: date-time
+              completionTime:
+                type: string
+                format: date-time
+              message:
+                type: string

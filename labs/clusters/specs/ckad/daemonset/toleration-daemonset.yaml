@@ -1,0 +1,134 @@
+# DaemonSet with Tolerations - CKAD Practice
+# Allows running on tainted nodes
+
+---
+# Example 1: Run on control plane nodes
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: control-plane-monitor
+  labels:
+    app: system-monitor
+spec:
+  selector:
+    matchLabels:
+      app: cp-monitor
+  template:
+    metadata:
+      labels:
+        app: cp-monitor
+    spec:
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      containers:
+      - name: monitor
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Monitoring control plane'; sleep 60; done"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+
+---
+# Example 2: Tolerate all taints (universal)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: universal-logger
+  namespace: kube-system
+  labels:
+    app: logging
+spec:
+  selector:
+    matchLabels:
+      app: universal-logger
+  template:
+    metadata:
+      labels:
+        app: universal-logger
+    spec:
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: logger
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Logging from all nodes'; sleep 30; done"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 3: Tolerate disk pressure
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: disk-cleanup
+  labels:
+    app: cleanup
+spec:
+  selector:
+    matchLabels:
+      app: disk-cleanup
+  template:
+    metadata:
+      labels:
+        app: disk-cleanup
+    spec:
+      tolerations:
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoSchedule
+      - key: node.kubernetes.io/disk-pressure
+        operator: Exists
+        effect: NoExecute
+      containers:
+      - name: cleanup
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Cleaning disk'; sleep 300; done"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+
+---
+# Example 4: Network plugin with multiple tolerations
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: cni-plugin
+  namespace: kube-system
+  labels:
+    app: network
+spec:
+  selector:
+    matchLabels:
+      app: cni-plugin
+  template:
+    metadata:
+      labels:
+        app: cni-plugin
+    spec:
+      hostNetwork: true
+      tolerations:
+      - key: node-role.kubernetes.io/control-plane
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/master
+        effect: NoSchedule
+      - key: node.kubernetes.io/not-ready
+        operator: Exists
+        effect: NoExecute
+      - key: node.kubernetes.io/unreachable
+        operator: Exists
+        effect: NoExecute
+      containers:
+      - name: cni
+        image: busybox
+        command: ["sh", "-c", "echo 'CNI plugin running'; sleep 3600"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"

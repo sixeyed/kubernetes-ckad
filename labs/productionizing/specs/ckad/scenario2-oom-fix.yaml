@@ -1,0 +1,56 @@
+# Scenario 2: Fix OOMKilled Pods
+# PROBLEM: Pods are being OOMKilled due to insufficient memory limits
+
+# Broken version - will be OOMKilled
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oom-broken
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oom-app
+  template:
+    metadata:
+      labels:
+        app: oom-app
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "64Mi"
+          limits:
+            memory: "128Mi"  # TOO LOW for nginx with typical workload
+---
+# Fixed version - increased memory limits
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oom-fixed
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oom-app-fixed
+  template:
+    metadata:
+      labels:
+        app: oom-app-fixed
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "256Mi"   # Increased based on monitoring
+            cpu: "100m"
+          limits:
+            memory: "512Mi"   # Increased to prevent OOMKill
+            cpu: "200m"

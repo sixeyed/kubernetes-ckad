@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-emptydir-alternative
+  labels:
+    app: troubleshooting-demo
+    scenario: volume
+spec:
+  containers:
+  - name: app
+    image: nginx
+    volumeMounts:
+    - name: data
+      mountPath: /usr/share/nginx/html
+    - name: cache
+      mountPath: /var/cache/nginx
+  volumes:
+  - name: data
+    emptyDir: {}
+  - name: cache
+    emptyDir:
+      medium: Memory  # RAM-backed volume for cache
+      sizeLimit: 128Mi

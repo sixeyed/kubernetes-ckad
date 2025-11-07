@@ -1,0 +1,13 @@
+apiVersion: web.example.com/v1
+kind: Website
+metadata:
+  name: production-site
+  namespace: default
+  labels:
+    environment: production
+spec:
+  domain: www.example.com
+  replicas: 5
+  sslEnabled: true
+  image: nginx:1.25-alpine
+  port: 443

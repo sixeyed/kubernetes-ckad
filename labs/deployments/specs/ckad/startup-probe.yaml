@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-startup
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: whoami-startup
+  template:
+    metadata:
+      labels:
+        app: whoami-startup
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"
+        # STARTUP PROBE: Handles slow-starting containers
+        # Disables liveness/readiness checks until startup succeeds
+        # Use for: legacy apps, apps with long initialization times
+        startupProbe:
+          # HTTP GET check
+          httpGet:
+            path: /
+            port: http
+            scheme: HTTP
+
+          initialDelaySeconds: 0    # Start checking immediately
+          periodSeconds: 10         # Check every 10 seconds
+          timeoutSeconds: 3         # Wait 3s for response
+          successThreshold: 1       # 1 success = started
+          failureThreshold: 30      # 30 failures = 300s (5 min) max startup time
+                                    # Calculation: failureThreshold × periodSeconds
+
+        # Liveness probe only starts checking AFTER startup probe succeeds
+        livenessProbe:
+          httpGet:
+            path: /
+            port: http
+          initialDelaySeconds: 0    # Waits for startup probe first
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-startup
+  labels:
+    kubernetes.courselabs.co: deployments-ckad
+spec:
+  selector:
+    app: whoami-startup
+  ports:
+  - port: 80
+    targetPort: http

@@ -95,15 +95,58 @@ kubectl label node node-1 team=backend
 kubectl label node node-2 team=frontend
 ```
 
-**TODO**: Create examples:
-- `specs/labels/label-nodes.sh` - Script to label nodes
-- `specs/labels/node-label-examples.yaml` - Various labeling scenarios
+### Exercise: Working with Node Labels
 
-**TODO**: Add exercise:
-1. View all node labels
-2. Add custom labels to nodes
-3. Query nodes by label selectors
-4. Update and remove labels
+Try these node labeling operations:
+
+```bash
+# 1. View all node labels
+kubectl get nodes --show-labels
+
+# 2. View specific label columns
+kubectl get nodes -o custom-columns=NAME:.metadata.name,LABELS:.metadata.labels
+
+# 3. Add custom labels to first node
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') environment=production
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') disk=ssd
+
+# 4. Query nodes by label selector
+kubectl get nodes -l environment=production
+kubectl get nodes -l disk=ssd
+
+# 5. Use multiple selectors (AND logic)
+kubectl get nodes -l environment=production,disk=ssd
+
+# 6. Update existing label (requires --overwrite)
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') environment=staging --overwrite
+
+# 7. Remove a label (note the minus sign)
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') disk-
+
+# 8. View updated labels
+kubectl get nodes --show-labels
+```
+
+**Practice with example manifests:**
+
+```bash
+# Label nodes using the provided script
+chmod +x specs/ckad/labels/label-nodes.sh
+./specs/ckad/labels/label-nodes.sh
+
+# Deploy Pods with node selectors
+kubectl apply -f specs/ckad/labels/node-label-examples.yaml
+
+# Verify Pods scheduled on correct nodes
+kubectl get pods -o wide
+
+# Check which Pod is waiting (no matching node)
+kubectl get pods
+kubectl describe pod <pending-pod-name>
+
+# Cleanup
+kubectl delete -f specs/ckad/labels/node-label-examples.yaml
+```
 
 ## Node Selectors
 
@@ -186,16 +229,58 @@ spec:
         image: backend-api:v2
 ```
 
-**TODO**: Create examples:
-- `specs/node-selector/basic-selector.yaml`
-- `specs/node-selector/deployment-selector.yaml`
-- `specs/node-selector/multiple-selectors.yaml`
+### Exercise: Node Selectors in Action
 
-**TODO**: Add exercise:
-1. Label nodes with different characteristics
-2. Deploy Pods with various node selectors
-3. Show Pods scheduled only on matching nodes
-4. Test what happens when no nodes match
+Practice node selector scheduling:
+
+```bash
+# 1. Label nodes with different characteristics
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') disk=ssd environment=production workload=compute-intensive
+
+# If you have multiple nodes:
+if [ $(kubectl get nodes --no-headers | wc -l) -gt 1 ]; then
+  kubectl label node $(kubectl get nodes -o jsonpath='{.items[1].metadata.name}') disk=hdd environment=staging workload=memory-intensive
+fi
+
+# 2. Deploy Pods with basic node selectors
+kubectl apply -f specs/ckad/node-selector/basic-selector.yaml
+
+# 3. Verify Pods scheduled on correct nodes
+kubectl get pods -o wide
+
+# Check which nodes each Pod landed on
+kubectl get pods -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,SELECTORS:.spec.nodeSelector
+
+# 4. Deploy Deployments with node selectors
+kubectl apply -f specs/ckad/node-selector/deployment-selector.yaml
+
+# Watch Pods being scheduled
+kubectl get pods -o wide -w
+
+# 5. Deploy Pods with multiple selectors (all must match)
+kubectl apply -f specs/ckad/node-selector/multiple-selectors.yaml
+
+# 6. Test what happens when no nodes match
+# Look for the "impossible-requirements" Pod
+kubectl get pods
+kubectl describe pod impossible-requirements
+
+# You should see: "0/X nodes are available: X node(s) didn't match Pod's node affinity/selector"
+
+# 7. Fix the pending Pod by updating node labels
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') region=mars
+kubectl get pod impossible-requirements -o wide
+
+# Cleanup
+kubectl delete -f specs/ckad/node-selector/
+kubectl label nodes --all region-
+```
+
+**Key observations:**
+- Pods with matching node selectors schedule immediately
+- Pods without matching nodes stay Pending
+- All nodeSelector labels must match (AND logic)
+- Standard Kubernetes labels work alongside custom labels
 
 ## Taints and Tolerations
 
@@ -351,19 +436,73 @@ spec:
 
 **Key Point:** Tolerations allow scheduling but don't guarantee it. Combine with node selectors or affinity for guaranteed placement.
 
-**TODO**: Create comprehensive examples:
-- `specs/taints/taint-examples.sh` - Various taint scenarios
-- `specs/taints/toleration-exact.yaml`
-- `specs/taints/toleration-exists.yaml`
-- `specs/taints/toleration-all.yaml`
-- `specs/taints/combined-selector-toleration.yaml`
+### Exercise: Taints and Tolerations
 
-**TODO**: Add exercise:
-1. Taint nodes with different effects
-2. Deploy Pods without tolerations (won't schedule)
-3. Add tolerations and redeploy
-4. Test NoExecute taint evicting Pods
-5. Show toleration + nodeSelector combination
+Practice tainting nodes and using tolerations:
+
+```bash
+# 1. View current node taints
+kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
+
+# 2. Taint a node with NoSchedule effect
+kubectl taint node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') dedicated=gpu:NoSchedule
+
+# 3. Try to deploy a Pod without toleration (will be Pending)
+kubectl run no-toleration --image=nginx --restart=Never
+kubectl get pod no-toleration
+kubectl describe pod no-toleration | grep -A 5 Events
+
+# You should see: "0/X nodes are available: X node(s) had taints that the pod didn't tolerate"
+
+# 4. Deploy Pods with exact match tolerations
+kubectl apply -f specs/ckad/taints/toleration-exact.yaml
+kubectl get pods -o wide
+
+# 5. Deploy Pods with Exists operator (wildcard)
+kubectl apply -f specs/ckad/taints/toleration-exists.yaml
+kubectl get pods -o wide
+
+# 6. Test NoExecute taint (evicts existing Pods)
+kubectl run test-eviction --image=nginx --restart=Never
+sleep 3
+kubectl get pod test-eviction -o wide
+
+# Apply NoExecute taint
+kubectl taint node $(kubectl get pod test-eviction -o jsonpath='{.spec.nodeName}') maintenance=true:NoExecute
+
+# Pod will be evicted
+kubectl get pod test-eviction
+
+# 7. Deploy Pods with universal tolerations (runs anywhere)
+kubectl apply -f specs/ckad/taints/toleration-all.yaml
+kubectl get pods -o wide
+
+# 8. Combine node selector with tolerations
+kubectl apply -f specs/ckad/taints/combined-selector-toleration.yaml
+kubectl get pods -o wide
+
+# 9. Remove taints
+kubectl taint node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') dedicated=gpu:NoSchedule-
+kubectl taint nodes --all maintenance=true:NoExecute- --ignore-not-found=true
+
+# 10. Cleanup
+kubectl delete pod no-toleration test-eviction --ignore-not-found=true
+kubectl delete -f specs/ckad/taints/
+```
+
+**Practice with the interactive script:**
+
+```bash
+chmod +x specs/ckad/taints/taint-examples.sh
+./specs/ckad/taints/taint-examples.sh
+```
+
+**Key concepts:**
+- **NoSchedule**: New Pods won't be scheduled (existing Pods stay)
+- **PreferNoSchedule**: Soft constraint (try to avoid)
+- **NoExecute**: New Pods won't schedule AND existing Pods are evicted
+- **Toleration types**: Equal (exact match) vs Exists (wildcard)
+- Combine tolerations with node selectors for precise placement
 
 ## Node Affinity
 
@@ -508,19 +647,68 @@ Pod can run on:
 - Nodes with `environment=production` OR
 - Nodes with `environment=staging` AND `region=us-east`
 
-**TODO**: Create examples:
-- `specs/affinity/required-affinity.yaml`
-- `specs/affinity/preferred-affinity.yaml`
-- `specs/affinity/combined-affinity.yaml`
-- `specs/affinity/multiple-terms.yaml`
-- `specs/affinity/operators-examples.yaml`
+### Exercise: Node Affinity
 
-**TODO**: Add exercise:
-1. Deploy with required affinity
-2. Deploy with preferred affinity
-3. Compare with node selector
-4. Test multiple selector terms (OR logic)
-5. Show weight priority in preferred affinity
+Practice node affinity rules:
+
+```bash
+# 1. Label nodes for affinity testing
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') disk=ssd environment=production cpu-count=8
+
+if [ $(kubectl get nodes --no-headers | wc -l) -gt 1 ]; then
+  kubectl label node $(kubectl get nodes -o jsonpath='{.items[1].metadata.name}') disk=hdd environment=staging cpu-count=4
+fi
+
+# 2. Deploy with required affinity (hard constraint)
+kubectl apply -f specs/ckad/affinity/required-affinity.yaml
+kubectl get pods -o wide
+
+# Check if any Pods are Pending
+kubectl get pods | grep Pending
+
+# 3. Deploy with preferred affinity (soft constraint)
+kubectl apply -f specs/ckad/affinity/preferred-affinity.yaml
+kubectl get pods -o wide
+
+# Notice: Preferred Pods schedule even if preference not met
+
+# 4. Deploy with combined affinity (required + preferred)
+kubectl apply -f specs/ckad/affinity/combined-affinity.yaml
+kubectl get pods -o wide
+
+# 5. Test multiple selector terms (OR logic)
+kubectl apply -f specs/ckad/affinity/multiple-terms.yaml
+kubectl get pods -o wide
+
+# 6. Test all operators
+kubectl apply -f specs/ckad/affinity/operators-examples.yaml
+kubectl get pods -o wide
+
+# Check which operators work
+kubectl describe pod operator-in | grep -A 5 Node-Selectors
+kubectl describe pod operator-gt | grep -A 5 Node-Selectors
+
+# 7. Compare node selector vs affinity
+# Node selector - simple but inflexible
+kubectl run simple --image=nginx --overrides='{"spec":{"nodeSelector":{"disk":"ssd"}}}'
+
+# Affinity - more expressive
+kubectl run advanced --image=nginx --dry-run=client -o yaml > /tmp/affinity-pod.yaml
+# Edit to add affinity rules, then apply
+
+# 8. Cleanup
+kubectl delete -f specs/ckad/affinity/
+kubectl delete pod simple advanced --ignore-not-found=true
+kubectl label nodes --all disk- environment- cpu-count-
+```
+
+**Key observations:**
+- **Required affinity**: Hard constraint, Pod won't schedule without match
+- **Preferred affinity**: Soft constraint, scheduler tries but not mandatory
+- **Weight**: Higher weights (1-100) are more preferred
+- **OR logic**: Multiple nodeSelectorTerms create alternatives
+- **AND logic**: Multiple matchExpressions within a term all must match
+- More flexible than nodeSelector but more verbose
 
 ## Pod Affinity and Anti-Affinity
 
@@ -679,18 +867,70 @@ Requirements:
 - Must be in same zone as database Pod (pod affinity)
 - Prefer not to run on same node as other app-pod instances (pod anti-affinity)
 
-**TODO**: Create comprehensive examples:
-- `specs/pod-affinity/affinity-same-node.yaml`
-- `specs/pod-affinity/affinity-same-zone.yaml`
-- `specs/pod-affinity/anti-affinity-spread.yaml`
-- `specs/pod-affinity/combined-affinities.yaml`
+### Exercise: Pod Affinity and Anti-Affinity
 
-**TODO**: Add exercise:
-1. Deploy cache Pods
-2. Deploy app Pods with affinity to cache
-3. Deploy web Pods with anti-affinity (spread across nodes)
-4. Show Pod distribution across nodes
-5. Combine node + pod affinities
+Practice Pod-to-Pod scheduling:
+
+```bash
+# 1. Deploy cache Pods first (they'll be the target for affinity)
+kubectl apply -f specs/ckad/pod-affinity/affinity-same-node.yaml --selector='metadata.name=cache-pod'
+kubectl get pods -o wide
+
+# 2. Deploy app Pods with affinity to cache (same node)
+kubectl apply -f specs/ckad/pod-affinity/affinity-same-node.yaml
+kubectl get pods -o wide
+
+# Verify: app-with-cache should be on same node as cache-pod
+kubectl get pods -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName
+
+# 3. Deploy Pods with zone affinity
+kubectl apply -f specs/ckad/pod-affinity/affinity-same-zone.yaml
+kubectl get pods -o wide
+
+# Check zone distribution
+kubectl get pods -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.spec.nodeAffinity
+
+# 4. Deploy with anti-affinity (spread across nodes for HA)
+kubectl apply -f specs/ckad/pod-affinity/anti-affinity-spread.yaml
+kubectl get pods -o wide
+
+# Verify spreading - each replica on different node
+kubectl get pods -l app=web-ha -o wide
+
+# If you have fewer nodes than replicas, some Pods will be Pending
+kubectl get pods | grep Pending
+kubectl describe pod <pending-pod> | grep -A 5 Events
+
+# 5. Deploy with combined affinities
+kubectl apply -f specs/ckad/pod-affinity/combined-affinities.yaml
+kubectl get pods -o wide
+
+# 6. Show Pod distribution visualization
+echo "=== Pod Distribution Across Nodes ==="
+for node in $(kubectl get nodes -o jsonpath='{.items[*].metadata.name}'); do
+  echo "Node: $node"
+  kubectl get pods -o wide --all-namespaces --field-selector spec.nodeName=$node | grep -v NAME
+  echo ""
+done
+
+# 7. Test anti-affinity behavior
+# Scale up deployment with anti-affinity
+kubectl scale deployment web-ha --replicas=10
+kubectl get pods -l app=web-ha -o wide
+
+# Some Pods may be Pending if you have fewer nodes than replicas
+
+# 8. Cleanup
+kubectl delete -f specs/ckad/pod-affinity/
+```
+
+**Key concepts:**
+- **Pod affinity**: Schedule near other Pods (same node/zone/region)
+- **Pod anti-affinity**: Schedule away from other Pods (spreading)
+- **Topology key**: Defines "closeness" (hostname=node, zone=AZ, region=region)
+- **Required**: Hard constraint (Pod won't schedule if not met)
+- **Preferred**: Soft constraint (scheduler tries but not mandatory)
+- Use anti-affinity for HA, affinity for locality (reduce latency)
 
 ## DaemonSets
 
@@ -804,18 +1044,70 @@ spec:
 - `RollingUpdate` - Update one node at a time (default)
 - `OnDelete` - Update only when Pods manually deleted
 
-**TODO**: Create examples:
-- `specs/daemonset/basic-daemonset.yaml`
-- `specs/daemonset/node-selector-daemonset.yaml`
-- `specs/daemonset/toleration-daemonset.yaml`
-- `specs/daemonset/update-strategy.yaml`
+### Exercise: DaemonSets
 
-**TODO**: Add exercise:
-1. Deploy basic DaemonSet
-2. Verify Pod on each node
-3. Add node selector to limit nodes
-4. Add tolerations for control plane
-5. Update DaemonSet image and watch rolling update
+Practice DaemonSet deployment and management:
+
+```bash
+# 1. Deploy basic DaemonSet (runs on all worker nodes)
+kubectl apply -f specs/ckad/daemonset/basic-daemonset.yaml
+kubectl get daemonset
+kubectl get pods -o wide -l app=node-monitor
+
+# 2. Verify one Pod per node
+echo "Pods per node:"
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | while read node; do
+  count=$(kubectl get pods -o wide --all-namespaces --field-selector spec.nodeName=$node | grep node-monitor | wc -l)
+  echo "$node: $count Pod(s)"
+done
+
+# 3. Deploy DaemonSet with node selector (limited nodes)
+kubectl label node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') accelerator=nvidia disk=ssd
+kubectl apply -f specs/ckad/daemonset/node-selector-daemonset.yaml
+kubectl get pods -o wide -l app=gpu-plugin
+
+# Notice: Only runs on labeled nodes
+
+# 4. Deploy DaemonSet with tolerations (runs on control plane)
+kubectl apply -f specs/ckad/daemonset/toleration-daemonset.yaml
+kubectl get pods -o wide -l app=cp-monitor
+
+# Should see Pods on control plane nodes too
+
+# 5. Test update strategies
+kubectl apply -f specs/ckad/daemonset/update-strategy.yaml
+
+# Watch rolling update in action
+kubectl set image daemonset/rolling-update-ds app=nginx:1.22-alpine
+kubectl rollout status daemonset/rolling-update-ds
+
+# Check rollout history
+kubectl rollout history daemonset/rolling-update-ds
+
+# 6. Test OnDelete strategy
+kubectl set image daemonset/ondelete-ds app=nginx:1.22-alpine
+kubectl get pods -l app=ondelete-demo
+
+# Pods won't update automatically - must delete manually
+kubectl delete pod -l app=ondelete-demo --field-selector spec.nodeName=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get pods -l app=ondelete-demo -o wide
+
+# 7. View DaemonSet details
+kubectl describe daemonset node-monitor
+kubectl get daemonset node-monitor -o yaml
+
+# 8. Cleanup
+kubectl delete -f specs/ckad/daemonset/
+kubectl label nodes --all accelerator- disk-
+```
+
+**Key concepts:**
+- **DaemonSet**: Ensures one Pod per node (or subset of nodes)
+- **Use cases**: Logging, monitoring, network agents, storage daemons
+- **Update strategies**: RollingUpdate (automatic) vs OnDelete (manual)
+- **maxUnavailable**: Controls how many nodes can be updating simultaneously
+- Combine with node selectors for targeted deployment
+- Use tolerations to run on control plane/tainted nodes
 
 ## Node Maintenance
 
@@ -893,16 +1185,82 @@ kubectl uncordon worker-node-1
 kubectl rollout restart deployment/myapp
 ```
 
-**TODO**: Create examples:
-- `specs/maintenance/maintenance-workflow.sh`
-- `specs/maintenance/poddisruptionbudget.yaml`
+### Exercise: Node Maintenance Operations
 
-**TODO**: Add exercise:
-1. Deploy application across nodes
-2. Cordon a node and deploy new Pods (won't schedule there)
-3. Drain a node (Pods evicted)
-4. Uncordon and verify scheduling enabled
-5. Rebalance Pods across nodes
+Practice safe node maintenance:
+
+```bash
+# 1. Deploy application across nodes
+kubectl create deployment web-app --image=nginx:alpine --replicas=5
+kubectl get pods -o wide -l app=web-app
+
+# 2. Cordon a node (prevent new scheduling)
+kubectl cordon $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get nodes
+
+# Node shows as Ready,SchedulingDisabled
+
+# 3. Scale up and observe scheduling
+kubectl scale deployment web-app --replicas=10
+kubectl get pods -o wide -l app=web-app
+
+# New Pods won't schedule on cordoned node
+
+# 4. Deploy with PodDisruptionBudget
+kubectl apply -f specs/ckad/maintenance/poddisruptionbudget.yaml
+
+# Check PDB status
+kubectl get pdb
+kubectl describe pdb web-app-pdb
+
+# 5. Drain the node (evict Pods)
+kubectl drain $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') \
+  --ignore-daemonsets \
+  --delete-emptydir-data
+
+# Watch Pods being evicted and rescheduled
+kubectl get pods -o wide -w
+
+# 6. Verify Pods moved
+echo "Pods on drained node:"
+kubectl get pods -o wide --all-namespaces \
+  --field-selector spec.nodeName=$(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+
+# Should only show DaemonSet Pods
+
+# 7. Uncordon the node
+kubectl uncordon $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}')
+kubectl get nodes
+
+# 8. Rebalance Pods (optional)
+kubectl rollout restart deployment web-app
+kubectl get pods -o wide -l app=web-app
+
+# 9. Run complete workflow script
+chmod +x specs/ckad/maintenance/maintenance-workflow.sh
+./specs/ckad/maintenance/maintenance-workflow.sh
+
+# 10. Test drain with force (use carefully!)
+# kubectl drain <node> --force --ignore-daemonsets --delete-emptydir-data --grace-period=0
+
+# 11. Cleanup
+kubectl delete -f specs/ckad/maintenance/poddisruptionbudget.yaml
+kubectl delete deployment web-app
+```
+
+**Common drain flags:**
+- `--ignore-daemonsets`: Required for DaemonSet Pods
+- `--delete-emptydir-data`: Delete Pods with emptyDir volumes
+- `--force`: Force deletion (use carefully)
+- `--grace-period=N`: Wait N seconds before force kill
+- `--disable-eviction`: Bypass PodDisruptionBudgets (dangerous)
+
+**Best practices:**
+- Always cordon before drain
+- Check PodDisruptionBudgets first
+- Monitor Pod rescheduling
+- Uncordon after maintenance
+- Consider rebalancing workloads
 
 ## Resource Requests and Limits
 
@@ -975,11 +1333,54 @@ kubectl describe pod <pod-name>
 - Add more nodes
 - Remove/scale down other Pods
 
-**TODO**: Create examples showing:
-- Pods with various resource requirements
-- Over-subscription scenarios
-- QoS classes (Guaranteed, Burstable, BestEffort)
-- Priority and preemption
+### Exercise: Resource Requests and Scheduling
+
+```bash
+# 1. View node capacity
+kubectl describe node $(kubectl get nodes -o jsonpath='{.items[0].metadata.name}') | grep -A 10 "Allocatable:"
+
+# 2. Deploy Pod with resource requests
+kubectl run resource-demo --image=nginx --restart=Never \
+  --requests='memory=256Mi,cpu=500m' \
+  --limits='memory=512Mi,cpu=1'
+
+# 3. Check QoS class
+kubectl get pod resource-demo -o jsonpath='{.status.qosClass}'
+# Output: Guaranteed (requests == limits)
+
+# 4. Deploy Burstable QoS Pod
+kubectl run burstable-pod --image=nginx --restart=Never \
+  --requests='memory=128Mi,cpu=100m' \
+  --limits='memory=512Mi,cpu=500m'
+
+kubectl get pod burstable-pod -o jsonpath='{.status.qosClass}'
+# Output: Burstable (requests < limits)
+
+# 5. Deploy BestEffort QoS Pod
+kubectl run besteffort-pod --image=nginx --restart=Never
+kubectl get pod besteffort-pod -o jsonpath='{.status.qosClass}'
+# Output: BestEffort (no requests/limits)
+
+# 6. Create Pod that won't fit on any node
+kubectl run huge-pod --image=nginx --restart=Never \
+  --requests='memory=999Gi,cpu=999'
+
+kubectl get pod huge-pod
+kubectl describe pod huge-pod | grep -A 5 Events
+# Will see: "0/X nodes are available: X Insufficient memory, X Insufficient cpu"
+
+# 7. View node resource allocation
+kubectl top nodes
+kubectl describe nodes | grep -A 5 "Allocated resources"
+
+# 8. Cleanup
+kubectl delete pod resource-demo burstable-pod besteffort-pod huge-pod
+```
+
+**QoS Classes:**
+- **Guaranteed**: requests == limits for all containers (highest priority)
+- **Burstable**: requests < limits (medium priority)
+- **BestEffort**: no requests/limits (lowest priority, evicted first)
 
 ## API Version Compatibility
 
@@ -1020,10 +1421,32 @@ kubectl apply --dry-run=server -f manifest.yaml
 
 **CKAD Tip:** Always use stable (`v1`) APIs, not `beta` versions.
 
-**TODO**: Add examples of:
-- API version migration scripts
-- Backward compatibility patterns
-- Testing across Kubernetes versions
+### Exercise: API Version Compatibility
+
+```bash
+# 1. List available API versions
+kubectl api-versions | sort
+
+# 2. Check specific API resources
+kubectl api-resources | grep -i deployment
+kubectl api-resources | grep -i ingress
+
+# 3. Get API resource details
+kubectl explain deployment --api-version=apps/v1
+kubectl explain ingress --api-version=networking.k8s.io/v1
+
+# 4. Validate manifest against cluster
+kubectl apply --dry-run=server -f manifest.yaml
+
+# 5. Check deprecated APIs in your cluster
+kubectl get deployments.v1.apps
+kubectl get ingresses.v1.networking.k8s.io
+```
+
+**Common API migrations:**
+- Ingress: `extensions/v1beta1` → `networking.k8s.io/v1` (removed in v1.22)
+- PodSecurityPolicy: `policy/v1beta1` → Removed in v1.25 (use Pod Security Standards)
+- CronJob: `batch/v1beta1` → `batch/v1` (stable since v1.21)
 
 ## Troubleshooting Scheduling Issues
 
@@ -1087,10 +1510,93 @@ kubectl get nodes --show-labels | grep <topology-key>
 kubectl get pod <pod-name> -o yaml | grep -A 20 affinity
 ```
 
-**TODO**: Create comprehensive troubleshooting lab with:
-- Various broken scheduling scenarios
-- Systematic debugging steps
-- Decision tree for diagnosis
+### Exercise: Troubleshooting Scheduling
+
+Practice diagnosing common scheduling issues:
+
+```bash
+# Scenario 1: Pod stuck in Pending
+kubectl run test --image=nginx --dry-run=client -o yaml | \
+  sed 's/resources: {}/resources:\n      requests:\n        memory: "999Gi"/' | \
+  kubectl apply -f -
+
+kubectl get pod test
+kubectl describe pod test | grep -A 10 Events
+# Fix: Reduce resource requests or add nodes
+
+# Scenario 2: No nodes match selector
+kubectl run selective --image=nginx --overrides='{"spec":{"nodeSelector":{"nonexistent":"label"}}}'
+kubectl describe pod selective | grep -A 5 Events
+# Fix: Add label to node or fix selector
+
+# Scenario 3: All nodes tainted
+kubectl taint nodes --all test=true:NoSchedule
+kubectl run tainted-test --image=nginx
+kubectl describe pod tainted-test
+# Fix: Add toleration or remove taint
+kubectl taint nodes --all test-
+
+# Scenario 4: DaemonSet not on all nodes
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: test-ds
+spec:
+  selector:
+    matchLabels:
+      app: test-ds
+  template:
+    metadata:
+      labels:
+        app: test-ds
+    spec:
+      nodeSelector:
+        nonexistent: label
+      containers:
+      - name: test
+        image: nginx
+EOF
+
+kubectl get daemonset test-ds
+# Fix: Remove or fix nodeSelector
+
+# Scenario 5: Pod affinity not working
+# Deploy without target Pods first
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: orphan-pod
+spec:
+  affinity:
+    podAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app: nonexistent
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: app
+    image: nginx
+EOF
+
+kubectl describe pod orphan-pod | grep -A 5 Events
+# Fix: Deploy target Pods first or use preferred affinity
+
+# Cleanup
+kubectl delete pod test selective tainted-test orphan-pod --ignore-not-found=true
+kubectl delete daemonset test-ds --ignore-not-found=true
+```
+
+**Debugging checklist:**
+1. Check Pod status: `kubectl get pods`
+2. Check events: `kubectl describe pod <name>`
+3. Check node status: `kubectl get nodes`
+4. Check node labels: `kubectl get nodes --show-labels`
+5. Check node taints: `kubectl describe nodes | grep Taints`
+6. Check node resources: `kubectl describe nodes | grep -A 5 "Allocated resources"`
+7. Check affinity rules: `kubectl get pod <name> -o yaml | grep -A 20 affinity`
 
 ## CKAD Exam Tips
 
@@ -1179,59 +1685,157 @@ affinity:
 - Advanced scheduling plugins
 - Cluster autoscaling
 
-**TODO**: Add 10 rapid-fire CKAD practice scenarios
+## 10 Rapid-Fire CKAD Practice Scenarios
+
+Time yourself - aim for 2-3 minutes per scenario:
+
+**Scenario 1:** Create a Pod named `ssd-app` that only runs on nodes with `disk=ssd` label.
+```bash
+kubectl run ssd-app --image=nginx --dry-run=client -o yaml | \
+  sed '/spec:/a\  nodeSelector:\n    disk: ssd' | kubectl apply -f -
+```
+
+**Scenario 2:** Taint node `node-1` with `maintenance=true:NoSchedule` and deploy a Pod that tolerates it.
+```bash
+kubectl taint node node-1 maintenance=true:NoSchedule
+kubectl run tolerant-pod --image=nginx --overrides='{"spec":{"tolerations":[{"key":"maintenance","operator":"Equal","value":"true","effect":"NoSchedule"}]}}'
+```
+
+**Scenario 3:** Deploy a 3-replica Deployment with anti-affinity to spread across nodes.
+```bash
+kubectl create deployment spread-app --image=nginx --replicas=3 --dry-run=client -o yaml | \
+  sed '/spec:/a\      affinity:\n        podAntiAffinity:\n          requiredDuringSchedulingIgnoredDuringExecution:\n          - labelSelector:\n              matchLabels:\n                app: spread-app\n            topologyKey: kubernetes.io/hostname' | kubectl apply -f -
+```
+
+**Scenario 4:** Create a DaemonSet named `monitor` that runs on all nodes including control plane.
+```bash
+kubectl create deployment monitor --image=busybox --dry-run=client -o yaml | \
+  sed 's/Deployment/DaemonSet/; s/replicas: 1//' | \
+  sed '/spec:/a\      tolerations:\n      - operator: Exists' | kubectl apply -f -
+```
+
+**Scenario 5:** Cordon node `node-2`, drain it safely, then uncordon.
+```bash
+kubectl cordon node-2
+kubectl drain node-2 --ignore-daemonsets --delete-emptydir-data
+kubectl uncordon node-2
+```
+
+**Scenario 6:** Create a Pod with required node affinity for `environment=production` OR `environment=staging`.
+```bash
+kubectl run multi-env --image=nginx --dry-run=client -o yaml > /tmp/pod.yaml
+# Edit to add affinity with multiple nodeSelectorTerms
+kubectl apply -f /tmp/pod.yaml
+```
+
+**Scenario 7:** Deploy a Pod that must be in same zone as Pods labeled `app=database`.
+```bash
+kubectl run zone-app --image=nginx --overrides='{"spec":{"affinity":{"podAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchLabels":{"app":"database"}},"topologyKey":"topology.kubernetes.io/zone"}]}}}}'
+```
+
+**Scenario 8:** Create a PodDisruptionBudget for deployment `web-app` with minAvailable 2.
+```bash
+kubectl create pdb web-app-pdb --selector=app=web-app --min-available=2
+```
+
+**Scenario 9:** Deploy a Pod with resource requests: 256Mi memory, 500m CPU.
+```bash
+kubectl run resource-pod --image=nginx --requests='memory=256Mi,cpu=500m'
+```
+
+**Scenario 10:** Find all Pods on node `node-1` and identify their QoS class.
+```bash
+kubectl get pods -o wide --all-namespaces --field-selector spec.nodeName=node-1
+kubectl get pods -o custom-columns=NAME:.metadata.name,QOS:.status.qosClass --all-namespaces
+```
 
 ## Lab Challenge: Multi-Tier Application with Advanced Scheduling
 
 Deploy a realistic application with various scheduling constraints:
 
-**TODO**: Create comprehensive challenge with:
+### Challenge Instructions
 
-### Requirements
+Deploy a complete multi-tier application demonstrating advanced scheduling:
 
-1. **Database Tier**
-   - DaemonSet or StatefulSet on nodes with `disk=ssd`
-   - Tolerate `database=critical:NoSchedule` taint
-   - Anti-affinity to spread across nodes
+**Step 1: Node Preparation**
+```bash
+# Label nodes (adjust node names for your cluster)
+kubectl label node node-1 disk=ssd environment=production memory=high
+kubectl label node node-2 disk=ssd environment=production compute=optimized
+kubectl label node node-3 disk=hdd environment=staging
 
-2. **Cache Tier**
-   - Deployment with 3 replicas
-   - Node affinity for `memory=high`
-   - Anti-affinity to spread across zones
-   - Pod affinity to be near database
+# Taint database nodes
+kubectl taint node node-1 database=critical:NoSchedule
 
-3. **Application Tier**
-   - Deployment with 5 replicas
-   - Required: Linux amd64 nodes
-   - Preferred: nodes with `compute=optimized`
-   - Anti-affinity to spread across nodes
-   - Pod affinity to be near cache (same zone)
+# Add zone labels (if not present)
+kubectl label node node-1 topology.kubernetes.io/zone=zone-a
+kubectl label node node-2 topology.kubernetes.io/zone=zone-b
+kubectl label node node-3 topology.kubernetes.io/zone=zone-c
+```
 
-4. **Monitoring**
-   - DaemonSet on all nodes including control plane
-   - Tolerate all taints
-   - Resource requests: cpu 100m, memory 128Mi
+**Step 2: Deploy Database Tier**
+```bash
+kubectl apply -f specs/ckad/challenge/database.yaml
+kubectl get pods -o wide -l tier=database
+# Verify: Only on SSD nodes, spread across nodes
+```
 
-5. **Node Configuration**
-   - Label nodes with appropriate characteristics
-   - Taint database nodes
-   - At least 3 worker nodes in different zones
+**Step 3: Deploy Cache Tier**
+```bash
+kubectl apply -f specs/ckad/challenge/cache.yaml
+kubectl get pods -o wide -l tier=cache
+# Verify: On high-memory nodes, spread across zones, near database
+```
 
-6. **Maintenance Tasks**
-   - Cordon and drain one node
-   - Verify Pods rescheduled correctly
-   - Uncordon and rebalance
+**Step 4: Deploy Application Tier**
+```bash
+kubectl apply -f specs/ckad/challenge/application.yaml
+kubectl get pods -o wide -l tier=app
+# Verify: Spread across nodes, near cache
+```
+
+**Step 5: Deploy Monitoring**
+```bash
+kubectl apply -f specs/ckad/challenge/monitoring.yaml
+kubectl get pods -o wide -l app=monitoring
+# Verify: One Pod per node, including control plane
+```
+
+**Step 6: Create PodDisruptionBudgets**
+```bash
+kubectl apply -f specs/ckad/challenge/pdb.yaml
+kubectl get pdb
+```
+
+**Step 7: Test Maintenance**
+```bash
+# Cordon and drain
+kubectl cordon node-2
+kubectl drain node-2 --ignore-daemonsets --delete-emptydir-data
+
+# Verify application still available
+kubectl get pods -o wide
+
+# Uncordon
+kubectl uncordon node-2
+```
+
+**Step 8: Verify Success**
+```bash
+# Run validation script
+chmod +x specs/ckad/challenge/validate.sh
+./specs/ckad/challenge/validate.sh
+```
 
 **Success Criteria:**
-- All Pods scheduled on appropriate nodes
-- Database Pods on SSD nodes only
-- Cache and app Pods co-located in same zones
-- Monitoring DaemonSet on every node
-- Anti-affinity rules prevent Pod concentration
-- Drain operation completes successfully
-- Application remains available during maintenance
+- ✅ Database Pods on SSD nodes with taints tolerated
+- ✅ Cache Pods on high-memory nodes in different zones
+- ✅ App Pods spread across nodes, co-located with cache by zone
+- ✅ Monitoring on all nodes including control plane
+- ✅ PodDisruptionBudgets protecting critical services
+- ✅ Application survives node maintenance
 
-**TODO**: Create all specs in `specs/challenge/` directory
+**Challenge files:** See `specs/ckad/challenge/` directory
 
 ## Quick Reference
 

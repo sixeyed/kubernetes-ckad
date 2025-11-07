@@ -1,0 +1,45 @@
+# Demonstrates OOMKilled behavior when container exceeds memory limit
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-demo
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: memory-hog
+    image: polinux/stress
+    command: ["stress"]
+    args:
+    - "--vm"
+    - "1"
+    - "--vm-bytes"
+    - "200M"  # Try to allocate 200Mi
+    - "--vm-hang"
+    - "1"
+    resources:
+      requests:
+        memory: "100Mi"
+      limits:
+        memory: "150Mi"  # Will be OOMKilled when exceeding this
+---
+# Demonstrates CPU throttling when container exceeds CPU limit
+apiVersion: v1
+kind: Pod
+metadata:
+  name: cpu-throttle-demo
+  labels:
+    kubernetes.courselabs.co: productionizing
+spec:
+  containers:
+  - name: cpu-hog
+    image: polinux/stress
+    command: ["stress"]
+    args:
+    - "--cpu"
+    - "2"  # Try to use 2 CPUs
+    resources:
+      requests:
+        cpu: "250m"
+      limits:
+        cpu: "500m"  # Will be throttled to 0.5 CPU (not killed)

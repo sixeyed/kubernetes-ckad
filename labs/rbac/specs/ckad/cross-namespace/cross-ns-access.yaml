@@ -1,0 +1,97 @@
+# Cross-namespace access example
+# Demonstrates: ServiceAccount in one namespace accessing resources in another
+# Create 'app' namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Create 'data' namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: data
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# ServiceAccount in 'app' namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: data-processor
+  namespace: app
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Resources in 'data' namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: data-config
+  namespace: data
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  endpoint: "data.example.com"
+  format: "json"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: data-credentials
+  namespace: data
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+type: Opaque
+stringData:
+  username: "datauser"
+  password: "datapass123"
+---
+# Role in 'data' namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: data-reader
+  namespace: data
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+---
+# RoleBinding in 'data' namespace granting access to ServiceAccount from 'app' namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: data-processor-binding
+  namespace: data  # Binding is in 'data' namespace
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: data-reader
+subjects:
+- kind: ServiceAccount
+  name: data-processor
+  namespace: app  # ServiceAccount is in 'app' namespace (different!)
+---
+# Test Pod in 'app' namespace using the ServiceAccount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-processor-pod
+  namespace: app
+  labels:
+    app: data-processor
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: data-processor
+  containers:
+  - name: processor
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never

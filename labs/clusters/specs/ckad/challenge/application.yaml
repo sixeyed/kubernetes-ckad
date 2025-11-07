@@ -1,0 +1,87 @@
+# Application Tier - Challenge
+# Requirements: Linux amd64, prefer compute-optimized, spread across nodes, near cache
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: application
+  labels:
+    tier: app
+    app: web
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      tier: app
+      app: web
+  template:
+    metadata:
+      labels:
+        tier: app
+        app: web
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                - linux
+              - key: kubernetes.io/arch
+                operator: In
+                values:
+                - amd64
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            preference:
+              matchExpressions:
+              - key: compute
+                operator: In
+                values:
+                - optimized
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  tier: cache
+              topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  tier: app
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: web
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: http
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+          limits:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: application
+  labels:
+    tier: app
+spec:
+  type: ClusterIP
+  selector:
+    tier: app
+  ports:
+  - port: 80
+    targetPort: 80

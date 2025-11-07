@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-bg
+  labels:
+    app: whoami-bg
+    kubernetes.courselabs.co: deployments-ckad
+  annotations:
+    description: "Service routing to GREEN environment"
+spec:
+  type: NodePort
+  # Service selector targets GREEN deployment only
+  # This switches all traffic to the green environment
+  selector:
+    app: whoami-bg
+    environment: green
+  ports:
+  - port: 80
+    targetPort: http
+    nodePort: 30025
+    name: http

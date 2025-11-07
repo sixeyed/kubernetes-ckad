@@ -1,0 +1,10 @@
+# This will fail validation - replicas exceeds maximum
+apiVersion: db.example.com/v1
+kind: Database
+metadata:
+  name: invalid-replicas
+spec:
+  engine: postgres
+  version: "14.0"
+  storageSize: 50Gi
+  replicas: 10  # Maximum is 5

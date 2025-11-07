@@ -1,0 +1,373 @@
+# Node Affinity Operators - CKAD Practice
+#
+# Demonstrates all available operators: In, NotIn, Exists, DoesNotExist, Gt, Lt
+
+---
+# Example 1: In operator (value in list)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-in
+  labels:
+    app: in-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disk
+            operator: In
+            values:
+            - ssd
+            - nvme
+            - raid-ssd
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 2: NotIn operator (value NOT in list)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-notin
+  labels:
+    app: notin-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disk
+            operator: NotIn
+            values:
+            - hdd
+            - slow
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 3: Exists operator (key exists, any value)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-exists
+  labels:
+    app: exists-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: gpu
+            operator: Exists
+  containers:
+  - name: app
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'Node has GPU label'; sleep 3600"]
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "500m"
+
+---
+# Example 4: DoesNotExist operator (key must not exist)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-doesnotexist
+  labels:
+    app: doesnotexist-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: spot-instance
+            operator: DoesNotExist
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "200m"
+
+---
+# Example 5: Gt operator (greater than)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-gt
+  labels:
+    app: gt-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: cpu-count
+            operator: Gt
+            values:
+            - "8"
+  containers:
+  - name: app
+    image: busybox
+    command: ["sh", "-c", "echo 'Running on node with >8 CPUs'; sleep 3600"]
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "2"
+
+---
+# Example 6: Lt operator (less than)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-lt
+  labels:
+    app: lt-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: memory-gb
+            operator: Lt
+            values:
+            - "64"
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+
+---
+# Example 7: Combining multiple operators
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-combined
+  labels:
+    app: combined-operators
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # Must have GPU
+          - key: gpu
+            operator: Exists
+          # Must be SSD or NVMe
+          - key: disk
+            operator: In
+            values:
+            - ssd
+            - nvme
+          # Must not be spot instance
+          - key: spot-instance
+            operator: DoesNotExist
+          # Must have more than 4 CPUs
+          - key: cpu-count
+            operator: Gt
+            values:
+            - "4"
+  containers:
+  - name: training
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'Complex requirements met'; sleep 3600"]
+    resources:
+      requests:
+        memory: "2Gi"
+        cpu: "2"
+
+---
+# Example 8: Operators with OR logic (multiple terms)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: operator-or-logic
+  labels:
+    app: or-logic-example
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        # Term 1: Has GPU label
+        - matchExpressions:
+          - key: gpu
+            operator: Exists
+        # Term 2: High CPU count (>16)
+        - matchExpressions:
+          - key: cpu-count
+            operator: Gt
+            values:
+            - "16"
+        # Term 3: High memory (>64GB)
+        - matchExpressions:
+          - key: memory-gb
+            operator: Gt
+            values:
+            - "64"
+  containers:
+  - name: compute
+    image: busybox
+    command: ["sh", "-c", "echo 'Running on powerful node'; sleep 3600"]
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "1"
+
+---
+# Example 9: Practical production example
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: production-database
+  labels:
+    app: database
+    environment: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+        environment: production
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              # Must be in specific environments
+              - key: environment
+                operator: In
+                values:
+                - production
+                - prod
+              # Must have fast storage
+              - key: disk
+                operator: In
+                values:
+                - ssd
+                - nvme
+              # Must not be a spot instance
+              - key: node.kubernetes.io/instance-lifecycle
+                operator: DoesNotExist
+              # Prefer larger instances (>4 CPUs)
+              - key: cpu-count
+                operator: Gt
+                values:
+                - "4"
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "example"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "1"
+          limits:
+            memory: "2Gi"
+            cpu: "2"
+
+---
+# Example 10: Using NotIn to avoid certain nodes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: avoid-test-nodes
+  labels:
+    app: production-only
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # Avoid test and development nodes
+          - key: environment
+            operator: NotIn
+            values:
+            - test
+            - development
+            - dev
+            - qa
+          # Avoid small instance types
+          - key: node.kubernetes.io/instance-type
+            operator: NotIn
+            values:
+            - t3.micro
+            - t3.small
+            - t2.micro
+            - t2.small
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 11: Numeric comparisons
+apiVersion: v1
+kind: Pod
+metadata:
+  name: resource-requirements
+  labels:
+    app: resource-intensive
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          # At least 8 CPUs
+          - key: cpu-count
+            operator: Gt
+            values:
+            - "7"
+          # At least 16GB memory
+          - key: memory-gb
+            operator: Gt
+            values:
+            - "15"
+          # Less than 100GB disk (small storage OK)
+          - key: disk-gb
+            operator: Lt
+            values:
+            - "100"
+  containers:
+  - name: compute
+    image: busybox
+    command: ["sh", "-c", "echo 'Running on node with specific resources'; sleep 3600"]
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "4"

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: private-registry-pod
+  labels:
+    app: troubleshooting-demo
+    scenario: imagepull-auth
+spec:
+  containers:
+  - name: app
+    image: private.registry.io/myapp:1.0
+    ports:
+    - containerPort: 8080
+  # Missing imagePullSecrets - will fail to authenticate

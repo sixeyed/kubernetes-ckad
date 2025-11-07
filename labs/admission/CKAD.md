@@ -543,13 +543,175 @@ When a resource won't create:
 
 ## Advanced Topics
 
-TODO: Add sections on:
-- Custom Resource Definitions with validation
-- Admission webhook failure policies (Ignore vs Fail)
-- Namespace selectors in webhooks
-- Audit annotations
-- Dry-run with admission controllers
-- Common Gatekeeper ConstraintTemplates (library)
+### Custom Resource Definitions with Validation
+
+CRDs can include OpenAPI v3 schema validation that runs during admission:
+
+```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: applications.example.com
+spec:
+  group: example.com
+  names:
+    kind: Application
+    plural: applications
+  scope: Namespaced
+  versions:
+  - name: v1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - replicas
+            - image
+            properties:
+              replicas:
+                type: integer
+                minimum: 1
+                maximum: 10
+              image:
+                type: string
+                pattern: '^[a-z0-9\-\./:]+$'
+```
+
+**CKAD Relevance:** When working with custom resources (Operators, Helm charts), validation errors come from CRD schemas.
+
+### Admission Webhook Failure Policies
+
+Webhooks have a `failurePolicy` that determines behavior when the webhook fails:
+
+| Policy | Behavior | Risk |
+|--------|----------|------|
+| **Fail** | Reject the request if webhook errors | Safe but can block all deployments |
+| **Ignore** | Allow the request if webhook errors | Unsafe but prevents outages |
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: my-webhook
+webhooks:
+- name: validate.example.com
+  failurePolicy: Fail  # or Ignore
+  timeoutSeconds: 10
+  # ...
+```
+
+**CKAD Impact:** If a webhook is down with `Fail` policy, you can't create any matching resources. Look for timeout errors.
+
+### Namespace Selectors in Webhooks
+
+Webhooks can target specific namespaces:
+
+```yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: my-webhook
+webhooks:
+- name: validate.example.com
+  namespaceSelector:
+    matchLabels:
+      environment: production
+  # Only applies to namespaces with environment=production label
+```
+
+**Debugging:**
+```bash
+# Check if namespace matches webhook selector
+kubectl get namespace my-ns --show-labels
+
+# Check webhook namespace selectors
+kubectl get validatingwebhookconfigurations my-webhook -o yaml | grep -A5 namespaceSelector
+```
+
+### Audit Annotations
+
+Admission controllers can add audit annotations that appear in audit logs:
+
+```bash
+# When admission controller adds annotations, they appear in audit events
+# You won't see these in normal kubectl output
+
+# Example audit log entry:
+{
+  "annotations": {
+    "mutation.gatekeeper.sh/applied": "true",
+    "validation.gatekeeper.sh/constraint": "required-labels"
+  }
+}
+```
+
+**CKAD Relevance:** Minimal for exam, but helps understand why certain fields were added automatically.
+
+### Dry-run with Admission Controllers
+
+Use `--dry-run=server` to test admission without creating resources:
+
+```bash
+# Client-side dry-run (no admission check)
+kubectl apply -f pod.yaml --dry-run=client
+
+# Server-side dry-run (runs through admission)
+kubectl apply -f pod.yaml --dry-run=server
+
+# This will show admission errors without creating the object
+kubectl apply -f privileged-pod.yaml --dry-run=server -n secure-ns
+# Error: violates PodSecurity "baseline:latest": privileged
+```
+
+**Exam Strategy:** Use `--dry-run=server` to validate YAML before applying.
+
+### Common Gatekeeper ConstraintTemplates
+
+Gatekeeper has a library of common constraint templates:
+
+| ConstraintTemplate | Purpose | Common Use |
+|-------------------|---------|------------|
+| **K8sRequiredLabels** | Enforce required labels | `app`, `owner`, `version` labels |
+| **K8sAllowedRepos** | Restrict image registries | Only pull from internal registry |
+| **K8sContainerLimits** | Enforce resource limits | All containers must have limits |
+| **K8sRequiredResources** | Require resource requests/limits | Enforce resource management |
+| **K8sBlockNodePort** | Block NodePort services | Security in multi-tenant |
+| **K8sPSPCapabilities** | Restrict Linux capabilities | Security hardening |
+| **K8sNoHostNamespace** | Block host network/PID/IPC | Prevent privilege escalation |
+
+**Finding Templates:**
+```bash
+# List installed templates
+kubectl get constrainttemplates
+
+# View template definition
+kubectl describe constrainttemplate k8srequiredlabels
+
+# View active constraints
+kubectl get constraints --all-namespaces
+```
+
+**Example Constraint:**
+```yaml
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRequiredLabels
+metadata:
+  name: must-have-app-label
+spec:
+  match:
+    kinds:
+    - apiGroups: [""]
+      kinds: ["Pod"]
+  parameters:
+    labels:
+    - key: "app"
+```
+
+**CKAD Practice:** If you see Gatekeeper errors, describe the constraint to find requirements.
 
 ## Common CKAD Pitfalls
 
@@ -632,7 +794,134 @@ Tasks:
 2. Read the error message to understand requirements
 3. Fix the Deployment to pass admission
 
-TODO: Add step-by-step solution
+<details>
+  <summary>Step-by-Step Solution</summary>
+
+**Setup:**
+
+First, install Gatekeeper (if not already installed):
+
+```bash
+# Install OPA Gatekeeper
+kubectl apply -f labs/admission/specs/opa-gatekeeper
+
+# Wait for Gatekeeper to be ready
+kubectl wait --for=condition=ready pod -l app=gatekeeper -n gatekeeper-system --timeout=180s
+```
+
+Create the namespace and apply the constraint:
+
+```bash
+# Create namespace for the exercise
+kubectl create namespace exercise1
+
+# Apply the constraint that requires 'app' and 'environment' labels
+kubectl apply -f labs/admission/specs/ckad/exercise1-constraint.yaml
+
+# Wait for constraint to be ready
+sleep 10
+```
+
+**Step 1: Deploy the broken application**
+
+```bash
+# Try to deploy the application (it has a missing label)
+kubectl apply -f labs/admission/specs/ckad/exercise1-deployment-broken.yaml
+```
+
+The Deployment will be created, but no Pods will appear:
+
+```bash
+kubectl get deploy web-app -n exercise1
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   0/3     0            0           10s
+```
+
+**Step 2: Identify why Pods aren't created**
+
+Check the ReplicaSet events (this is where admission errors appear):
+
+```bash
+kubectl get rs -n exercise1
+# Shows ReplicaSet exists but with 0 ready replicas
+
+kubectl describe rs -n exercise1
+```
+
+You'll see an error message in the events section:
+
+```
+Warning  FailedCreate  5s (x3 over 7s)  replicaset-controller
+  Error creating: admission webhook "validation.gatekeeper.sh" denied the request:
+  [pod-must-have-labels] you must provide labels: {"environment"}
+```
+
+**Step 3: Understand the requirement**
+
+Check the Gatekeeper constraint to understand what's required:
+
+```bash
+# List all constraints
+kubectl get constraints --all-namespaces
+
+# Describe the specific constraint
+kubectl describe k8srequiredlabels pod-must-have-labels
+```
+
+The constraint shows:
+- **Match**: Applies to all Pods in namespace `exercise1`
+- **Parameters**: Requires labels `app` and `environment`
+
+**Step 4: Fix the Deployment**
+
+Update the Deployment to include the missing label:
+
+```bash
+# Apply the fixed version
+kubectl apply -f labs/admission/specs/ckad/exercise1-deployment-fixed.yaml
+
+# Verify Pods are now created
+kubectl get pods -n exercise1
+# NAME                       READY   STATUS    RESTARTS   AGE
+# web-app-xxxxxxxxxx-xxxxx   1/1     Running   0          5s
+# web-app-xxxxxxxxxx-xxxxx   1/1     Running   0          5s
+# web-app-xxxxxxxxxx-xxxxx   1/1     Running   0          5s
+
+kubectl get deploy web-app -n exercise1
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   3/3     3            3           2m
+```
+
+**Alternative: Manual fix without the provided YAML**
+
+```bash
+# Edit the deployment directly
+kubectl edit deploy web-app -n exercise1
+
+# Add the missing label to spec.template.metadata.labels:
+#   labels:
+#     app: web-app
+#     environment: development  # Add this line
+
+# Save and exit - Pods will now be created
+```
+
+**Key Learnings:**
+
+1. **Deployment creates but Pods don't** → Check ReplicaSet events
+2. **Admission webhook error format** → `admission webhook "..." denied the request: ...`
+3. **Gatekeeper errors include constraint name** → `[pod-must-have-labels]`
+4. **Use describe on constraints** → Shows match rules and parameters
+5. **Fix Pod template, not Deployment metadata** → Labels in `spec.template.metadata.labels`
+
+**Cleanup:**
+
+```bash
+kubectl delete namespace exercise1
+kubectl delete constrainttemplate k8srequiredlabels
+```
+
+</details><br />
 
 ### Exercise 2: Pod Security Standard
 
@@ -644,7 +933,208 @@ Tasks:
 5. Change to `restricted` enforcement
 6. Fix the pod to meet restricted requirements
 
-TODO: Add detailed solution
+<details>
+  <summary>Detailed Solution</summary>
+
+**Step 1: Create namespace with baseline enforcement**
+
+```bash
+# Create the namespace
+kubectl create namespace secure-app
+
+# Apply baseline Pod Security Standard with enforcement
+kubectl label namespace secure-app pod-security.kubernetes.io/enforce=baseline
+
+# Verify the label
+kubectl get namespace secure-app --show-labels
+```
+
+**Step 2: Try to deploy a pod that violates baseline policy**
+
+```bash
+# Try to create a pod with hostNetwork (violates baseline)
+kubectl apply -f labs/admission/specs/ckad/exercise2-pod-baseline-violation.yaml
+```
+
+You'll see an error:
+
+```
+Error from server (Forbidden): error when creating "exercise2-pod-baseline-violation.yaml":
+pods "nginx-hostnetwork" is forbidden: violates PodSecurity "baseline:latest":
+host namespaces (hostNetwork=true)
+```
+
+**Understanding the error:**
+- The Pod Security admission controller intercepted the request
+- "baseline" policy prohibits `hostNetwork: true`
+- Other baseline violations include: `hostPID`, `hostIPC`, `privileged: true`, `hostPath` volumes
+
+**Step 3: Deploy a baseline-compliant pod**
+
+```bash
+# Deploy a pod that meets baseline requirements
+kubectl apply -f labs/admission/specs/ckad/exercise2-pod-baseline-compliant.yaml
+
+# Verify it's running
+kubectl get pod nginx-baseline -n secure-app
+# NAME              READY   STATUS    RESTARTS   AGE
+# nginx-baseline    1/1     Running   0          5s
+```
+
+This works because:
+- No host namespace sharing
+- No privileged containers
+- No hostPath volumes
+- No dangerous capabilities
+
+**Step 4: Change to restricted enforcement**
+
+```bash
+# Update namespace to enforce restricted policy
+kubectl label namespace secure-app pod-security.kubernetes.io/enforce=restricted --overwrite
+
+# The existing pod continues running (policies apply at creation time)
+kubectl get pod nginx-baseline -n secure-app
+# Still running
+
+# But try to create a new pod with the same spec
+kubectl delete pod nginx-baseline -n secure-app
+kubectl apply -f labs/admission/specs/ckad/exercise2-pod-baseline-compliant.yaml
+```
+
+You'll now get an error:
+
+```
+Error from server (Forbidden): error when creating "exercise2-pod-baseline-compliant.yaml":
+pods "nginx-baseline" is forbidden: violates PodSecurity "restricted:latest":
+allowPrivilegeEscalation != false (container "nginx" must set securityContext.allowPrivilegeEscalation=false),
+unrestricted capabilities (container "nginx" must set securityContext.capabilities.drop=["ALL"]),
+runAsNonRoot != true (pod or container "nginx" must set securityContext.runAsNonRoot=true),
+seccompProfile (pod or container "nginx" must set securityContext.seccompProfile.type to "RuntimeDefault" or "Localhost")
+```
+
+**Step 5: Fix the pod to meet restricted requirements**
+
+The error tells us exactly what's needed. Deploy the restricted-compliant pod:
+
+```bash
+# Deploy pod that meets all restricted requirements
+kubectl apply -f labs/admission/specs/ckad/exercise2-pod-restricted-compliant.yaml
+
+# Verify it's running
+kubectl get pod nginx-restricted -n secure-app
+# NAME               READY   STATUS    RESTARTS   AGE
+# nginx-restricted   1/1     Running   0          8s
+```
+
+**What changed for restricted compliance:**
+
+```yaml
+spec:
+  # 1. Pod must run as non-root
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    # 2. Seccomp profile required
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+  - name: nginx
+    # 3. Must use non-root image (standard nginx runs as root)
+    image: nginxinc/nginx-unprivileged:alpine
+
+    securityContext:
+      # 4. Must explicitly disable privilege escalation
+      allowPrivilegeEscalation: false
+
+      # 5. Must drop ALL capabilities
+      capabilities:
+        drop:
+        - ALL
+```
+
+**Step 6: Deploy a multi-replica Deployment with restricted policy**
+
+```bash
+# Deploy a full application
+kubectl apply -f labs/admission/specs/ckad/exercise2-deployment-restricted.yaml
+
+# Verify all pods are running
+kubectl get deploy secure-web -n secure-app
+# NAME         READY   UP-TO-DATE   AVAILABLE   AGE
+# secure-web   2/2     2            2           15s
+
+kubectl get pods -n secure-app -l app=secure-web
+# NAME                          READY   STATUS    RESTARTS   AGE
+# secure-web-xxxxxxxxxx-xxxxx   1/1     Running   0          15s
+# secure-web-xxxxxxxxxx-xxxxx   1/1     Running   0          15s
+```
+
+**Testing the application:**
+
+```bash
+# Port-forward to test
+kubectl port-forward deploy/secure-web 8080:8080 -n secure-app
+
+# In another terminal
+curl localhost:8080
+# Should return nginx welcome page
+```
+
+**Step 7: Understanding enforcement modes**
+
+You can use multiple modes together:
+
+```bash
+# Enforce baseline, but warn and audit for restricted
+kubectl label namespace secure-app \
+  pod-security.kubernetes.io/enforce=baseline \
+  pod-security.kubernetes.io/warn=restricted \
+  pod-security.kubernetes.io/audit=restricted \
+  --overwrite
+
+# Now baseline is enforced (blocks violations)
+# But you get warnings for restricted violations
+kubectl apply -f labs/admission/specs/ckad/exercise2-pod-baseline-compliant.yaml
+
+# You'll see a warning but pod is created:
+# Warning: would violate PodSecurity "restricted:latest": ...
+# pod/nginx-baseline created
+```
+
+**Key Learnings:**
+
+1. **Pod Security Standards are namespace-scoped** - Set via labels
+2. **Three levels**: privileged (unrestricted), baseline (minimal), restricted (hardened)
+3. **Three modes**: enforce (block), warn (show warning), audit (log only)
+4. **Baseline prevents**: hostNetwork, hostPID, hostIPC, privileged, hostPath
+5. **Restricted requires**: runAsNonRoot, drop ALL capabilities, no privilege escalation, seccomp profile
+6. **Standard images may not work** - Many run as root (need nginx-unprivileged, etc.)
+7. **Policies apply at creation** - Existing pods aren't affected by label changes
+8. **Error messages are detailed** - They list every requirement that's not met
+9. **Use warn mode to test** - Before enforcing restricted, use warn to find issues
+
+**Common Issues and Fixes:**
+
+| Error | Fix |
+|-------|-----|
+| `hostNetwork=true` | Remove or set to `false` |
+| `allowPrivilegeEscalation != false` | Add `securityContext.allowPrivilegeEscalation: false` |
+| `runAsNonRoot != true` | Add `securityContext.runAsNonRoot: true` and `runAsUser: 1000` |
+| `unrestricted capabilities` | Add `capabilities: {drop: [ALL]}` |
+| `seccompProfile` not set | Add `securityContext.seccompProfile: {type: RuntimeDefault}` |
+| Image runs as root | Use non-root variants: `nginx-unprivileged`, `redis:alpine` with user flag |
+
+**Cleanup:**
+
+```bash
+kubectl delete namespace secure-app
+```
+
+</details><br />
 
 ### Exercise 3: ResourceQuota Troubleshooting
 
@@ -657,7 +1147,306 @@ Tasks:
 2. Check quota usage
 3. Fix by adjusting resources or quota
 
-TODO: Add solution
+<details>
+  <summary>Complete Solution</summary>
+
+**Step 1: Create namespace and apply ResourceQuota**
+
+```bash
+# Create the namespace
+kubectl create namespace quota-demo
+
+# Apply the ResourceQuota
+kubectl apply -f labs/admission/specs/ckad/exercise3-quota.yaml
+
+# Verify quota is created
+kubectl describe resourcequota compute-quota -n quota-demo
+```
+
+The quota shows:
+
+```
+Name:            compute-quota
+Namespace:       quota-demo
+Resource         Used  Hard
+--------         ----  ----
+limits.cpu       0     4
+limits.memory    0     8Gi
+pods             0     10
+requests.cpu     0     2
+requests.memory  0     4Gi
+```
+
+**Understanding the quota:**
+- Maximum 10 pods
+- Total CPU requests: 2 cores
+- Total CPU limits: 4 cores
+- Total memory requests: 4Gi
+- Total memory limits: 8Gi
+
+**Step 2: Deploy an application that exceeds quota**
+
+```bash
+# Deploy web-app with 5 replicas
+kubectl apply -f labs/admission/specs/ckad/exercise3-deployment-partial.yaml
+
+# Check the deployment
+kubectl get deploy web-app -n quota-demo
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   4/5     4            4           20s
+```
+
+**Problem:** Only 4 out of 5 pods are created!
+
+**Step 3: Identify the issue**
+
+Check the ReplicaSet events:
+
+```bash
+# Get ReplicaSet
+kubectl get rs -n quota-demo
+
+# Describe to see errors
+kubectl describe rs -n quota-demo
+```
+
+You'll see an error in events:
+
+```
+Warning  FailedCreate  10s (x5 over 30s)  replicaset-controller
+  Error creating: pods "web-app-xxxxx" is forbidden: exceeded quota: compute-quota,
+  requested: requests.cpu=500m, used: requests.cpu=2, limited: requests.cpu=2
+```
+
+**Step 4: Check current quota usage**
+
+```bash
+# Detailed quota status
+kubectl describe resourcequota compute-quota -n quota-demo
+```
+
+Output shows:
+
+```
+Resource         Used  Hard
+--------         ----  ----
+limits.cpu       4     4
+limits.memory    4Gi   8Gi
+pods             4     10
+requests.cpu     2     2      ← At limit!
+requests.memory  2Gi   4Gi
+```
+
+**Analysis:**
+- Each pod requests: CPU=500m, Memory=512Mi
+- 4 pods consume: CPU=2000m (2 cores), Memory=2Gi
+- The 5th pod needs: CPU=500m more, but quota only allows 2 cores total
+- Quota is blocking the 5th pod
+
+**Step 5: Calculate what fits**
+
+```
+Current pod resources:
+  requests: cpu=500m, memory=512Mi
+  limits: cpu=1, memory=1Gi
+
+With 5 replicas:
+  Total requests: cpu=2.5, memory=2.5Gi
+  Total limits: cpu=5, memory=5Gi
+
+Quota limits:
+  requests.cpu: 2 (EXCEEDED by 0.5 cores)
+  requests.memory: 4Gi (OK)
+  limits.cpu: 4 (EXCEEDED by 1 core)
+  limits.memory: 8Gi (OK)
+```
+
+**Step 6: Fix Option 1 - Reduce resource requests**
+
+```bash
+# Apply deployment with reduced resource requests
+kubectl apply -f labs/admission/specs/ckad/exercise3-deployment-fixed.yaml
+
+# Now check the deployment
+kubectl get deploy web-app -n quota-demo
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   5/5     5            5           45s
+
+# All 5 pods are now running!
+kubectl get pods -n quota-demo
+```
+
+**New resource calculation:**
+```
+Per pod: requests.cpu=200m, limits.cpu=500m
+5 pods:  requests.cpu=1, limits.cpu=2.5
+Within quota! ✓
+```
+
+**Step 7: Verify quota usage**
+
+```bash
+kubectl describe resourcequota compute-quota -n quota-demo
+```
+
+Now shows:
+
+```
+Resource         Used    Hard
+--------         ----    ----
+limits.cpu       2500m   4
+limits.memory    2560Mi  8Gi
+pods             5       10
+requests.cpu     1       2      ← Plenty of room now
+requests.memory  1280Mi  4Gi
+```
+
+**Step 8: Test what happens when quota is exceeded**
+
+Deploy another application:
+
+```bash
+# Deploy another app
+kubectl apply -f labs/admission/specs/ckad/exercise3-other-app.yaml
+
+# Check status
+kubectl get deploy api-service -n quota-demo
+# NAME          READY   UP-TO-DATE   AVAILABLE   AGE
+# api-service   3/3     3            3           10s
+```
+
+All 3 pods start because:
+```
+web-app: 5 pods * 200m = 1 core
+api-service: 3 pods * 200m = 0.6 cores
+Total: 1.6 cores (within quota of 2 cores)
+```
+
+**Step 9: Hit the quota limit**
+
+```bash
+# Try to scale web-app to 8 replicas
+kubectl scale deploy web-app --replicas=8 -n quota-demo
+
+# Check the deployment
+kubectl get deploy web-app -n quota-demo
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   7/8     7            7           5m
+
+# Only 7 pods run - quota exceeded again
+```
+
+Check ReplicaSet:
+
+```bash
+kubectl describe rs -n quota-demo | grep -A5 "Error creating"
+# Error creating: pods "web-app-xxxxx" is forbidden: exceeded quota: compute-quota,
+# requested: requests.cpu=200m, used: requests.cpu=1800m, limited: requests.cpu=2
+```
+
+**Step 10: Fix Option 2 - Scale down other workloads**
+
+```bash
+# Check what's using resources
+kubectl describe resourcequota compute-quota -n quota-demo
+
+# Scale down api-service to free up resources
+kubectl scale deploy api-service --replicas=1 -n quota-demo
+
+# Wait a moment for pods to terminate
+sleep 5
+
+# Now web-app can scale up
+kubectl get deploy web-app -n quota-demo
+# NAME      READY   UP-TO-DATE   AVAILABLE   AGE
+# web-app   8/8     8            8           7m
+```
+
+**Step 11: Fix Option 3 - Increase the quota (if you have permission)**
+
+```bash
+# Edit the quota
+kubectl edit resourcequota compute-quota -n quota-demo
+
+# Change:
+#   requests.cpu: "2"
+# To:
+#   requests.cpu: "3"
+
+# Or apply an updated YAML:
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: compute-quota
+  namespace: quota-demo
+spec:
+  hard:
+    requests.cpu: "3"        # Increased from 2
+    requests.memory: 4Gi
+    limits.cpu: "6"          # Increased from 4
+    limits.memory: 8Gi
+    pods: "15"               # Increased from 10
+EOF
+
+# Now both deployments can scale as needed
+```
+
+**Key Learnings:**
+
+1. **ResourceQuota is enforced at Pod creation time** - Not retroactively
+2. **Admission controller blocks Pods that exceed quota** - Not Deployments
+3. **Check ReplicaSet events** - That's where quota errors appear
+4. **Quota tracks cumulative usage** - All pods in namespace count toward quota
+5. **Calculate total resources needed** - Multiply per-pod resources by replica count
+6. **Three fix strategies:**
+   - Reduce resource requests/limits per pod
+   - Scale down other workloads in the namespace
+   - Increase the quota (if allowed)
+7. **Quotas are namespace-scoped** - Other namespaces unaffected
+8. **Use describe resourcequota** - Shows Used vs Hard limits clearly
+9. **Pods vs. Resources** - You might have pod quota but hit CPU/memory first
+10. **Existing pods keep running** - Even if you later reduce quota
+
+**Common Scenarios:**
+
+| Symptom | Likely Cause | Solution |
+|---------|--------------|----------|
+| Some replicas missing | Quota exceeded | Check `describe rs` for quota error |
+| Can't create any pods | Pod count quota hit | Scale down or increase pod quota |
+| Deployment stuck at 0/N | All quotas exceeded | Review `describe resourcequota` |
+| First pods work, later fail | Cumulative quota hit | Calculate total resources needed |
+| Scaling fails silently | Check ReplicaSet | `describe rs` shows admission errors |
+
+**Troubleshooting Commands:**
+
+```bash
+# Check quota status
+kubectl describe resourcequota -n <namespace>
+
+# See all resource usage
+kubectl top pods -n <namespace>
+
+# Calculate what's consuming quota
+kubectl get pods -n <namespace> -o custom-columns=\
+NAME:.metadata.name,\
+CPU_REQ:.spec.containers[*].resources.requests.cpu,\
+MEM_REQ:.spec.containers[*].resources.requests.memory
+
+# Check for quota-related errors
+kubectl describe rs -n <namespace> | grep -A3 "exceeded quota"
+
+# See events related to quota
+kubectl get events -n <namespace> --sort-by='.lastTimestamp' | grep quota
+```
+
+**Cleanup:**
+
+```bash
+kubectl delete namespace quota-demo
+```
+
+</details><br />
 
 ## Exam Tips
 

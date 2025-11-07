@@ -1,0 +1,91 @@
+# BROKEN: Ingress references non-existent service
+# Issue: Service name is misspelled or doesn't exist
+# Fix: Correct the service name or create the missing service
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: troubleshoot-2
+  labels:
+    kubernetes.courselabs.co: ingress
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-service
+  namespace: troubleshoot-2
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+        kubernetes.courselabs.co: ingress
+    spec:
+      containers:
+      - name: whoami
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service  # Correct service name
+  namespace: troubleshoot-2
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  selector:
+    app: api
+  ports:
+  - port: 8080
+    targetPort: 80
+---
+# BROKEN: Service name is wrong
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: broken-service-ingress
+  namespace: troubleshoot-2
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: broken2.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-svc  # Wrong name - service is called 'api-service'
+            port:
+              number: 8080
+
+# SOLUTION: Use correct service name
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fixed-service-ingress
+  namespace: troubleshoot-2
+  labels:
+    kubernetes.courselabs.co: ingress
+spec:
+  rules:
+  - host: fixed2.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api-service  # Correct service name
+            port:
+              number: 8080

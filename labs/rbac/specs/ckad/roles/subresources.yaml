@@ -1,0 +1,88 @@
+# Role with subresource permissions
+# Demonstrates: pods/log, pods/exec, pods/portforward, deployments/scale
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-operator
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+# Basic pod access
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+# Access to pod logs (subresource)
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get", "list"]
+# Execute commands in pods (subresource)
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+# Port forwarding (subresource)
+- apiGroups: [""]
+  resources: ["pods/portforward"]
+  verbs: ["create"]
+# View pod status (subresource)
+- apiGroups: [""]
+  resources: ["pods/status"]
+  verbs: ["get"]
+# Deployment viewing and scaling
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+# Scale deployments (subresource)
+- apiGroups: ["apps"]
+  resources: ["deployments/scale"]
+  verbs: ["get", "update", "patch"]
+---
+# ServiceAccount for testing
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-operator-sa
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-operator-binding
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-operator
+subjects:
+- kind: ServiceAccount
+  name: pod-operator-sa
+  namespace: default
+---
+# Example deployment to test scaling
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: test-app
+  template:
+    metadata:
+      labels:
+        app: test-app
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80

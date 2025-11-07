@@ -1,0 +1,112 @@
+# Basic DaemonSet Examples - CKAD Practice
+
+---
+# Example 1: Simple DaemonSet (one Pod per node)
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-monitor
+  labels:
+    app: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: node-monitor
+  template:
+    metadata:
+      labels:
+        app: node-monitor
+    spec:
+      containers:
+      - name: monitor
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Monitoring node'; sleep 60; done"]
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "25m"
+          limits:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 2: Logging DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-collector
+  namespace: kube-system
+  labels:
+    app: logging
+spec:
+  selector:
+    matchLabels:
+      app: log-collector
+  template:
+    metadata:
+      labels:
+        app: log-collector
+    spec:
+      containers:
+      - name: fluentd
+        image: fluent/fluentd:v1.14-1
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+---
+# Example 3: Network agent DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: network-agent
+  labels:
+    app: network
+spec:
+  selector:
+    matchLabels:
+      app: network-agent
+  template:
+    metadata:
+      labels:
+        app: network-agent
+    spec:
+      hostNetwork: true
+      containers:
+      - name: agent
+        image: busybox
+        command: ["sh", "-c", "echo 'Network agent running'; sleep 3600"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 4: Security scanner DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: security-scanner
+  labels:
+    app: security
+spec:
+  selector:
+    matchLabels:
+      app: security-scanner
+  template:
+    metadata:
+      labels:
+        app: security-scanner
+    spec:
+      containers:
+      - name: scanner
+        image: busybox
+        command: ["sh", "-c", "while true; do echo 'Scanning for vulnerabilities'; sleep 300; done"]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"

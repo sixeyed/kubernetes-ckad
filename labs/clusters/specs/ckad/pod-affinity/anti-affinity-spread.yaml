@@ -1,0 +1,312 @@
+# Pod Anti-Affinity - Spread Pods Apart - CKAD Practice
+#
+# Keep Pods apart for high availability
+
+---
+# Example 1: Basic anti-affinity (spread across nodes)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-ha
+  labels:
+    app: web
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - web
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 2: Preferred anti-affinity (soft spreading)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-spread
+  labels:
+    app: api
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - api
+              topologyKey: kubernetes.io/hostname
+      containers:
+      - name: api
+        image: nginx:alpine
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 3: Spread across zones (high availability)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: database-replicas
+  labels:
+    app: database
+    role: replica
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+        role: replica
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: database
+            topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: postgres
+        image: postgres:14-alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "example"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+# Example 4: Avoid co-location with specific Pods
+apiVersion: v1
+kind: Pod
+metadata:
+  name: batch-job
+  labels:
+    app: batch
+    workload: intensive
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - database
+            - cache
+        topologyKey: kubernetes.io/hostname
+  containers:
+  - name: batch
+    image: busybox
+    command: ["sh", "-c", "echo 'Batch job avoiding DB nodes'; sleep 300"]
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"
+
+---
+# Example 5: StatefulSet with anti-affinity
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb-ha
+  labels:
+    app: mongodb
+spec:
+  serviceName: mongodb
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                app: mongodb
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: mongodb
+        image: mongo:5
+        ports:
+        - containerPort: 27017
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+
+---
+# Example 6: Weighted anti-affinity preferences
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker-spread
+  labels:
+    app: worker
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: kubernetes.io/hostname
+          - weight: 50
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - worker
+              topologyKey: topology.kubernetes.io/zone
+      containers:
+      - name: worker
+        image: busybox
+        command: ["sh", "-c", "while true; do echo Working...; sleep 60; done"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 7: Multi-label anti-affinity
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-ha
+  labels:
+    app: frontend
+    tier: web
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+        tier: web
+    spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - frontend
+              - key: tier
+                operator: In
+                values:
+                - web
+            topologyKey: kubernetes.io/hostname
+      containers:
+      - name: frontend
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+
+---
+# Example 8: Avoid same instance type (if more nodes than replicas)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: diverse-placement
+  labels:
+    app: diverse
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: diverse
+  template:
+    metadata:
+      labels:
+        app: diverse
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: diverse
+              topologyKey: node.kubernetes.io/instance-type
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"

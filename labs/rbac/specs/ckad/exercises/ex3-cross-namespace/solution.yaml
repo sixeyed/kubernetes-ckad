@@ -1,0 +1,97 @@
+# Exercise 3 Solution: Cross-Namespace Access
+# Step 1: Create namespaces
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: app
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 2: Create ServiceAccount in 'app' namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: backend
+  namespace: app
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+# Step 3: Create ConfigMaps in 'shared' namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shared-config
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  cache.server: "redis.shared.svc:6379"
+  message.queue: "rabbitmq.shared.svc:5672"
+  environment: "production"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: other-config
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+data:
+  other: "data"
+  restricted: "true"
+---
+# Step 4: Create Role in 'shared' namespace (specific ConfigMap access only)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: shared-config-reader
+  namespace: shared
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  resourceNames: ["shared-config"]  # Only this specific ConfigMap
+  verbs: ["get"]
+---
+# Step 5: Create RoleBinding in 'shared' namespace
+# This grants the ServiceAccount from 'app' namespace access to resources in 'shared' namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: backend-shared-config-access
+  namespace: shared  # RoleBinding is in 'shared' namespace
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: shared-config-reader
+subjects:
+- kind: ServiceAccount
+  name: backend
+  namespace: app  # ServiceAccount is in different namespace
+---
+# Step 6: Create test Pod in 'app' namespace using the ServiceAccount
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backend-pod
+  namespace: app
+  labels:
+    app: backend
+    kubernetes.courselabs.co: rbac-ckad
+spec:
+  serviceAccountName: backend
+  containers:
+  - name: app
+    image: nginx:alpine
+    command: ["sleep", "3600"]
+  restartPolicy: Never

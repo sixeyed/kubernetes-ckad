@@ -1,0 +1,19 @@
+apiVersion: postgres.example.com/v1
+kind: PostgresCluster
+metadata:
+  name: upgrade-demo
+  namespace: default
+  labels:
+    environment: staging
+spec:
+  version: "16"  # Upgraded from "15"
+  replicas: 3
+  storage:
+    size: 100Gi
+    storageClass: fast-ssd
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"
+    retention: 7
+  monitoring:
+    enabled: true

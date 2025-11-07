@@ -1,0 +1,267 @@
+# Combined Node Selector and Tolerations - CKAD Practice
+#
+# Demonstrates using node selectors AND tolerations together
+# Toleration allows scheduling on tainted nodes
+# Node selector ensures specific node targeting
+
+---
+# Example 1: GPU workload on tainted GPU nodes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-ml-training
+  labels:
+    app: ml-training
+spec:
+  nodeSelector:
+    gpu: nvidia-t4
+    environment: production
+  tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "gpu"
+    effect: "NoSchedule"
+  containers:
+  - name: training
+    image: nvidia/cuda:11.0-base
+    command: ["sh", "-c", "echo 'Training ML model on GPU'; sleep 3600"]
+    resources:
+      requests:
+        memory: "4Gi"
+        cpu: "2"
+
+---
+# Example 2: Database on tainted SSD nodes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: database-pod
+  labels:
+    app: postgres
+    tier: database
+spec:
+  nodeSelector:
+    disk: ssd
+    workload: database
+  tolerations:
+  - key: "database"
+    operator: "Equal"
+    value: "critical"
+    effect: "NoSchedule"
+  containers:
+  - name: postgres
+    image: postgres:14-alpine
+    env:
+    - name: POSTGRES_PASSWORD
+      value: "example"
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "1"
+      limits:
+        memory: "2Gi"
+        cpu: "2"
+
+---
+# Example 3: Deployment on specific tainted nodes
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: batch-workers
+  labels:
+    app: batch
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: batch
+  template:
+    metadata:
+      labels:
+        app: batch
+    spec:
+      nodeSelector:
+        workload: batch-processing
+        disk: hdd
+      tolerations:
+      - key: "workload"
+        operator: "Equal"
+        value: "batch"
+        effect: "NoSchedule"
+      - key: "workload"
+        operator: "Equal"
+        value: "batch"
+        effect: "PreferNoSchedule"
+      containers:
+      - name: worker
+        image: busybox
+        command: ["sh", "-c", "while true; do echo Processing batch job...; sleep 15; done"]
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "500m"
+
+---
+# Example 4: Control plane monitoring
+apiVersion: v1
+kind: Pod
+metadata:
+  name: control-plane-metrics
+  labels:
+    app: metrics
+    target: control-plane
+spec:
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  - key: "node-role.kubernetes.io/master"
+    operator: "Exists"
+    effect: "NoSchedule"
+  containers:
+  - name: metrics
+    image: busybox
+    command: ["sh", "-c", "echo 'Collecting control plane metrics'; sleep 3600"]
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+
+---
+# Example 5: Regional application with tolerations
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: regional-service
+  labels:
+    app: regional
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: regional
+  template:
+    metadata:
+      labels:
+        app: regional
+    spec:
+      nodeSelector:
+        topology.kubernetes.io/region: us-east-1
+        environment: production
+      tolerations:
+      - key: "maintenance"
+        operator: "Exists"
+        effect: "PreferNoSchedule"
+      containers:
+      - name: service
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "200m"
+
+---
+# Example 6: High-memory workload on tainted nodes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: memory-intensive-app
+  labels:
+    app: big-data-processing
+spec:
+  nodeSelector:
+    workload: memory-intensive
+    memory: high
+  tolerations:
+  - key: "workload"
+    operator: "Equal"
+    value: "memory-intensive"
+    effect: "NoSchedule"
+  - key: "node.kubernetes.io/memory-pressure"
+    operator: "Exists"
+    effect: "NoSchedule"
+  containers:
+  - name: processor
+    image: busybox
+    command: ["sh", "-c", "echo 'Processing large dataset'; sleep 3600"]
+    resources:
+      requests:
+        memory: "8Gi"
+        cpu: "2"
+      limits:
+        memory: "16Gi"
+        cpu: "4"
+
+---
+# Example 7: DaemonSet on specific node types
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-device-plugin
+  labels:
+    app: gpu-plugin
+spec:
+  selector:
+    matchLabels:
+      app: gpu-plugin
+  template:
+    metadata:
+      labels:
+        app: gpu-plugin
+    spec:
+      nodeSelector:
+        accelerator: nvidia
+      tolerations:
+      - key: "dedicated"
+        operator: "Equal"
+        value: "gpu"
+        effect: "NoSchedule"
+      - key: "nvidia.com/gpu"
+        operator: "Exists"
+        effect: "NoSchedule"
+      containers:
+      - name: plugin
+        image: nvidia/k8s-device-plugin:v0.12.0
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+
+---
+# Example 8: Multiple constraints example
+apiVersion: v1
+kind: Pod
+metadata:
+  name: complex-scheduling
+  labels:
+    app: complex
+spec:
+  nodeSelector:
+    kubernetes.io/arch: amd64
+    kubernetes.io/os: linux
+    disk: ssd
+    environment: production
+    zone: us-east-1a
+  tolerations:
+  - key: "environment"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+  - key: "disk"
+    operator: "Equal"
+    value: "ssd"
+    effect: "NoSchedule"
+  - key: "maintenance"
+    operator: "Exists"
+    effect: "PreferNoSchedule"
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "500m"

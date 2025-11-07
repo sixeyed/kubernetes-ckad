@@ -1,0 +1,107 @@
+# Example 1: Avoid Control Plane Nodes
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: avoid-control-plane
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node-role.kubernetes.io/control-plane
+            operator: DoesNotExist
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Example 2: Specific Region and Zone
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: region-zone-specific
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: topology.kubernetes.io/region
+            operator: In
+            values:
+            - us-west
+          - key: topology.kubernetes.io/zone
+            operator: In
+            values:
+            - us-west-1a
+            - us-west-1b
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Example 3: Specific Architecture
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: arm-architecture
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: kubernetes.io/arch
+            operator: In
+            values:
+            - arm64
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"
+
+# Example 4: Specific Instance Type (Cloud)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: large-instance-type
+  labels:
+    kubernetes.courselabs.co: affinity-ckad
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: node.kubernetes.io/instance-type
+            operator: In
+            values:
+            - t3.large
+            - t3.xlarge
+  containers:
+  - name: app
+    image: nginx
+    resources:
+      limits:
+        memory: "128Mi"
+        cpu: "100m"

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: crash-missing-env
+  labels:
+    app: troubleshooting-demo
+    scenario: crashloop
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ["/bin/sh", "-c"]
+    args:
+    - |
+      echo "Starting application..."
+      echo "Checking required environment variable..."
+      if [ -z "$REQUIRED_CONFIG" ]; then
+        echo "ERROR: REQUIRED_CONFIG environment variable is not set!"
+        exit 1
+      fi
+      echo "Application running"
+      sleep 3600
+    # Missing required environment variable - pod will crash

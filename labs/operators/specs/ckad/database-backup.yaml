@@ -1,0 +1,16 @@
+apiVersion: backup.example.com/v1
+kind: DatabaseBackup
+metadata:
+  name: production-db-backup
+  namespace: default
+spec:
+  databaseRef:
+    name: production-db
+    namespace: default
+  backupType: full
+  destination:
+    s3:
+      bucket: my-database-backups
+      prefix: postgres/production
+      region: us-west-2
+  retention: 30

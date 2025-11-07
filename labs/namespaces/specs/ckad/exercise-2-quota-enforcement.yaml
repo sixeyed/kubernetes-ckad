@@ -1,0 +1,144 @@
+# Exercise 2: Quota Enforcement
+# Create a namespace with strict limits and test enforcement
+
+# Namespace with limited resources
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: limited-resources
+
+---
+# Strict ResourceQuota
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: strict-quota
+  namespace: limited-resources
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi
+    pods: "3"
+    services: "2"
+    configmaps: "5"
+    secrets: "5"
+    persistentvolumeclaims: "2"
+
+---
+# Pod 1 - Will succeed
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-1
+  namespace: limited-resources
+  labels:
+    app: test-app
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+
+---
+# Pod 2 - Will succeed
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-2
+  namespace: limited-resources
+  labels:
+    app: test-app
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: "500m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "1Gi"
+
+---
+# Pod 3 - Will succeed (reaches pod limit)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-3
+  namespace: limited-resources
+  labels:
+    app: test-app
+spec:
+  containers:
+  - name: busybox
+    image: busybox
+    command: ["sleep", "3600"]
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "256Mi"
+      limits:
+        cpu: "500m"
+        memory: "512Mi"
+
+---
+# Pod 4 - Will FAIL (exceeds pod count)
+# Uncomment to test quota enforcement
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: pod-4-will-fail
+#   namespace: limited-resources
+# spec:
+#   containers:
+#   - name: nginx
+#     image: nginx:alpine
+#     resources:
+#       requests:
+#         cpu: "100m"
+#         memory: "128Mi"
+#       limits:
+#         cpu: "200m"
+#         memory: "256Mi"
+
+---
+# Pod with excessive resources - Will FAIL (exceeds CPU/memory quota)
+# Uncomment to test quota enforcement
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: pod-too-large
+#   namespace: limited-resources
+# spec:
+#   containers:
+#   - name: nginx
+#     image: nginx:alpine
+#     resources:
+#       requests:
+#         cpu: "3"
+#         memory: "3Gi"
+#       limits:
+#         cpu: "6"
+#         memory: "6Gi"
+
+---
+# Pod without resources - Will FAIL (quota requires resource specs)
+# Uncomment to test quota enforcement
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: pod-no-resources
+#   namespace: limited-resources
+# spec:
+#   containers:
+#   - name: nginx
+#     image: nginx:alpine

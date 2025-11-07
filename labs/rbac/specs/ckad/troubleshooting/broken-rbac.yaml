@@ -1,0 +1,165 @@
+# Troubleshooting exercise with common RBAC errors
+# This file contains intentional misconfigurations for practice
+# Error 1: RoleBinding references non-existent Role
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: broken-sa-1
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: broken-binding-1
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: non-existent-role  # ERROR: This role doesn't exist
+subjects:
+- kind: ServiceAccount
+  name: broken-sa-1
+  namespace: default
+---
+# Error 2: RoleBinding missing namespace in subject
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: broken-sa-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: broken-binding-2
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pod-reader-2
+subjects:
+- kind: ServiceAccount
+  name: broken-sa-2
+  # ERROR: Missing namespace field (required for ServiceAccount subjects)
+---
+# Error 3: Wrong API group for resource
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: broken-role-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: ["apps"]  # ERROR: Pods are in core API group [""], not ["apps"]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: broken-sa-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: broken-binding-3
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: broken-role-3
+subjects:
+- kind: ServiceAccount
+  name: broken-sa-3
+  namespace: default
+---
+# Error 4: Using resourceNames with list verb (not supported)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: broken-role-4
+  namespace: default
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames: ["my-secret"]  # resourceNames specified
+  verbs: ["list"]  # ERROR: list doesn't work with resourceNames
+---
+# Error 5: Role and RoleBinding in different namespaces
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-a
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ns-b
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: role-in-ns-a
+  namespace: ns-a
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sa-in-ns-b
+  namespace: ns-b
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: broken-binding-5
+  namespace: ns-b  # ERROR: RoleBinding in ns-b trying to reference Role in ns-a
+  labels:
+    kubernetes.courselabs.co: rbac-ckad
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: role-in-ns-a  # This role is in ns-a, not ns-b
+subjects:
+- kind: ServiceAccount
+  name: sa-in-ns-b
+  namespace: ns-b

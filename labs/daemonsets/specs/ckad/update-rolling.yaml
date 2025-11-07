@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: logger-rolling
+  labels:
+    app: logger
+    strategy: rolling
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: logger
+      strategy: rolling
+  template:
+    metadata:
+      labels:
+        app: logger
+        strategy: rolling
+    spec:
+      containers:
+      - name: logger
+        image: busybox:1.35
+        command: ['sh', '-c', 'echo "Version 1.0 - Rolling" && sleep 3600']
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+          limits:
+            memory: "64Mi"
+            cpu: "100m"

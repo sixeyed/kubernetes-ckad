@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-sticky
+  labels:
+    kubernetes.courselabs.co: services
+spec:
+  selector:
+    app: whoami
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600  # Session timeout: 1 hour
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+      protocol: TCP
