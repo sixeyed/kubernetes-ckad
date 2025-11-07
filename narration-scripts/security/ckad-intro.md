@@ -1,78 +1,15 @@
-# Security - CKAD Introduction
+Excellent work on the hands-on exercises! You've now practiced configuring security contexts at both pod and container levels, running applications as non-root users, implementing read-only filesystems, working with Linux capabilities, and securing real applications. Now it's time to focus on exactly what the CKAD exam expects from you when it comes to security.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with exam resources visible
-**Purpose:** Bridge from basic exercises to exam-focused preparation
+The first thing you need to understand is why security matters for CKAD specifically. Security is integrated throughout the exam and represents a significant portion of your score in the Application Environment, Configuration and Security domain. You won't get standalone security questions, rather security requirements will be embedded in deployment scenarios where you need to configure secure applications quickly and correctly. That's what makes this topic so critical: security context configuration needs to be second nature, something you can implement in under a minute without having to think through every field.
 
----
+In the upcoming CKAD-focused video, we'll start with a quick reference for the exam covering the exact syntax and structure you need to memorize for both pod-level and container-level security contexts. You'll see the specific fields that appear most frequently and understand which settings apply at which level. We'll walk through multiple exam scenarios you'll face, from running pods as non-root users to enforcing non-root execution, implementing read-only root filesystems with writable temporary directories, dropping all capabilities except specific ones you need, and setting volume permissions with filesystem groups. Each scenario is timed to match exam conditions, helping you build both speed and accuracy.
 
-## Transition to Exam Preparation
+You'll learn the essential security context fields that you absolutely must memorize, understanding not just what each field does but when you need to use it and at which level it belongs. We'll cover the common Linux capabilities you need to know, from NET_BIND_SERVICE for binding to low ports to NET_ADMIN for network configuration and the various others that appear in exam scenarios. The exam tips and time savers section will show you patterns that speed up your workflow: always dropping all capabilities first then adding specific ones back, using runAsNonRoot for enforcement alongside runAsUser, combining read-only root filesystems with volume mounts for writable locations, and checking your work with kubectl exec commands before moving on to the next question.
 
-Excellent work on the hands-on exercises! You've now practiced configuring security contexts, enforcing Pod Security Standards, implementing RBAC with least privilege, and creating NetworkPolicies for network segmentation.
+We'll dive deep into troubleshooting on the exam, covering the most common errors you'll encounter. When you see that a container has runAsNonRoot and the image will run as root, you'll know immediately to add a runAsUser field. When you hit read-only file system errors, you'll know to mount an emptyDir volume. When operations are not permitted, you'll know you need to add specific capabilities. When you get permission denied on volumes, you'll know to set the fsGroup at the pod level. These troubleshooting patterns can save you precious minutes during the exam.
 
-Here's what you need to know for CKAD: Security is integrated throughout the exam. You'll configure security contexts in Pods, work with ServiceAccounts and RBAC, and potentially implement NetworkPolicies. Security isn't a separate topic - it's part of every deployment.
+The video includes production security best practices, showing you both a minimal security baseline that every production pod should have and a hardened production template for maximum security. These templates give you starting points you can quickly adapt to different scenarios. You'll work through timed practice scenarios, spending exactly six minutes on each one to match the pace you'll need during the real exam. We'll cover common exam patterns like securing an insecure pod, fixing permission errors on volumes, and diagnosing why pods won't start due to security constraints. The exam day checklist walks you through verifying that you've put fields at the correct level, set both runAsUser and runAsNonRoot, added writable volumes for read-only filesystems, dropped all capabilities before adding specific ones, configured fsGroup for volume permissions, and tested everything with kubectl exec before moving on.
 
-That's what we're going to focus on in this next section: integrating security patterns into your standard CKAD workflows.
+The key points to remember section reinforces the most critical concepts: that there are two levels of security context and container-level overrides pod-level, that you should always drop all capabilities first then add specific ones, that read-only root filesystems require volumes for writable locations, that fsGroup is pod-level only and sets volume ownership, that runAsNonRoot actually enforces the restriction and will fail if the image tries to run as root, that you should never use privileged mode unless absolutely required, and that you must test with kubectl exec to verify your configuration works. We'll discuss time management strategies, breaking down how to allocate your six to eight minutes per security question: one minute reading requirements, three to four minutes adding security context YAML, and two to three minutes applying and verifying your work.
 
-## What Makes CKAD Different
-
-The CKAD exam embeds security in practical scenarios. You won't get standalone "security questions" - instead, you'll deploy applications that must meet security requirements alongside functional requirements. Security must be second nature, not an afterthought.
-
-For security in CKAD specifically, the exam may test you on:
-
-**Security context configuration** - Adding `securityContext` at Pod and container levels. Setting `runAsNonRoot: true`, `runAsUser: 1000`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, and `capabilities.drop: ["ALL"]`. Knowing this syntax by heart for restricted environments.
-
-**Pod Security Standard compliance** - Understanding that namespaces may enforce baseline or restricted policies. Configuring Pods to meet these standards. Recognizing Pod Security violations and fixing them quickly.
-
-**ServiceAccount and RBAC integration** - Creating ServiceAccounts for applications, binding appropriate Roles, configuring Pods to use custom ServiceAccounts. Understanding that RBAC controls API access, not resource access.
-
-**Secret handling best practices** - Mounting Secrets as volumes instead of environment variables when security is emphasized. Understanding that environment variables appear in process listings while volume mounts don't.
-
-**NetworkPolicy implementation** - Creating policies that allow necessary traffic while blocking everything else. Understanding pod and namespace selectors, ingress and egress rules, and default-deny patterns.
-
-**Troubleshooting security failures** - When Pods fail with "permission denied," checking security context and file permissions. When API calls fail with "forbidden," checking RBAC. When connections fail, checking NetworkPolicy.
-
-## What's Coming
-
-In the upcoming CKAD-focused video, we'll drill on integrating security into standard workflows. You'll practice adding security contexts to Pods in under 60 seconds. You'll configure ServiceAccounts and RBAC quickly. You'll implement NetworkPolicies efficiently.
-
-We'll cover exam patterns: deploying applications in namespaces with Pod Security enforcement, configuring minimal security contexts that pass restricted policies, implementing RBAC for specific API permissions, and combining security controls for defense-in-depth.
-
-We'll also explore time-saving techniques: using security context templates for common configurations, knowing that `kubectl explain pod.spec.securityContext` shows available fields, testing Pod creation with --dry-run before applying security contexts, and verifying RBAC with `kubectl auth can-i`.
-
-Finally, we'll practice complete scenarios with security requirements, ensuring security doesn't slow down your workflow.
-
-## Exam Mindset
-
-Remember: Security in CKAD isn't optional or advanced - it's integrated. When you deploy Pods, security context should be routine. When you create ServiceAccounts, RBAC should follow immediately. Security should be automatic, not a separate step.
-
-Practice adding security controls until they're muscle memory. A secure Pod should take you no longer to deploy than an insecure one.
-
-Let's dive into CKAD-specific security scenarios!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can show terminal with security configurations
-- Serious but encouraging tone - security is essential
-
-**Tone:**
-- Emphasize security as integrated, not separate
-- Build confidence that security patterns are routine
-- Reassure that exam provides time for secure configurations
-
-**Key Messages:**
-- Security is integrated throughout CKAD
-- Security contexts should be routine
-- RBAC and NetworkPolicy are important
-- The upcoming content integrates security into workflows
-
-**Timing:**
-- Transition opening: 30 sec
-- What Makes CKAD Different: 1 min
-- What's Coming: 45 sec
-- Exam Mindset: 30 sec
-
-**Total: ~2.75 minutes**
+Throughout the video, we'll emphasize that security in CKAD isn't optional or advanced, it's integrated into every deployment. When you create pods, security context should be routine. When you configure applications, security controls should come automatically. A secure pod should take you no longer to deploy than an insecure one. Practice adding security controls until they're muscle memory, until you can write a minimal secure security context without consulting documentation, and until you can troubleshoot common security errors immediately. The exam provides time for secure configurations, and the documentation you can access during the exam includes all the security context references you need. Let's dive into CKAD-specific security scenarios and build the speed and accuracy you need to excel on exam day!

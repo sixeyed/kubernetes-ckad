@@ -1,68 +1,23 @@
-# RBAC - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Role-Based Access Control, what it is, how it provides authorization in Kubernetes, and the relationship between Roles, RoleBindings, and ServiceAccounts, it's time to see RBAC in action.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to explore the key CKAD concepts around RBAC, including ServiceAccounts, Roles, RoleBindings, ClusterRoles, and ClusterRoleBindings. You'll see how these components work together to control who has permission to work with resources in your cluster and what they can do with them. We'll start with a quick reference for ServiceAccounts since they're the number one RBAC exam topic, and you'll learn how to create and use them efficiently.
 
----
+Before we dive into the practical work, there's an important note for Docker Desktop users about a bug in older versions that affects RBAC setup. We'll make sure you're aware of this so permissions are applied correctly in your environment.
 
-## Transition to Practice
+The exercises will demonstrate securing API access with Service Accounts. We'll work with a simple web app that connects to the Kubernetes API server to get a list of Pods, and you'll see firsthand how ServiceAccounts provide authentication and how RBAC rules provide authorization. You'll understand the difference between authenticated access, where the API server knows who you are, and authorized access, where the API server decides what you're allowed to do. We'll deploy resources and configure ServiceAccounts, and you'll see how the automatic token mounting works when Kubernetes populates authentication credentials in Pods.
 
-Welcome back! Now that we've covered the fundamental concepts of Role-Based Access Control - what it is, how it provides authorization in Kubernetes, and the relationship between Roles, RoleBindings, and ServiceAccounts - it's time to see RBAC in action.
+Then we'll move on to granting cluster-wide permissions using ClusterRoles and ClusterRoleBindings. You'll see how these differ from namespaced Roles, and when to use each for proper scope limitation. We'll explore how role bindings restrict access to specific namespaces, while cluster-level bindings grant permissions across all namespaces. You'll test permissions using kubectl auth can-i to verify what actions are allowed in different namespaces.
 
-In the upcoming exercises video, we're going to create Roles that define permissions, bind them to users and ServiceAccounts, and test access controls. You'll see how Kubernetes enforces least-privilege access for security.
+Next, we'll look at common Pod-to-API-Server access patterns. Understanding how Pods access the Kubernetes API is critical for CKAD. You'll learn the fastest imperative approaches for the exam, including creating ServiceAccounts with specific permissions for applications, granting read-only access to Pods and ConfigMaps, and disabling ServiceAccount token mounting where it's not needed as a security best practice. You'll see pattern after pattern of real-world scenarios, from apps that need to read ConfigMaps and Secrets to apps that need to list Pods, and even apps that require cluster-wide access.
 
-## What You'll Learn
+We'll also spend time on RBAC troubleshooting, which is a common CKAD task. You'll learn how to diagnose permission problems when you see Forbidden errors, how to check if ServiceAccounts exist, how to verify Pods are using the correct ServiceAccount, and how to fix RoleBinding configuration issues. You'll work through symptoms like Pods using the wrong ServiceAccount, permissions that work in one namespace but not another, ServiceAccount tokens not being mounted, and incorrect API groups in Roles.
 
-In the hands-on exercises, we'll work through practical RBAC patterns:
+The lab exercise will give you hands-on practice deploying new RBAC rules so a ServiceAccount can access the resources it needs. You'll also learn how to amend Pod configurations to disable token mounting for applications that don't use the Kubernetes API server, since this is a potential security issue and important for production deployments.
 
-First, you'll create Roles that grant specific permissions on Kubernetes resources. You'll define rules that allow verbs like get, list, create, delete on resources like Pods, Services, and Deployments. You'll understand how to build up permissions from atomic operations.
+There are also extra sections we'll touch on briefly. One covers managing end-user permissions with RBAC for kubectl users, showing how Kubernetes integrates with other systems for authentication. Another demonstrates applying ClusterRoles to specific namespaces using RoleBindings, which lets you use the standard built-in ClusterRoles like view, edit, and admin in a namespace-scoped way.
 
-Then, we'll create RoleBindings that connect Roles to subjects - users, groups, or ServiceAccounts. You'll see how RoleBindings activate permissions, allowing subjects to perform actions they couldn't before.
+Before starting the exercises video, make sure you have a Kubernetes cluster where you have admin permissions, kubectl installed and configured, and a terminal and text editor ready. Understanding that RBAC errors are common when permissions are too restrictive will help you stay patient as you work through the scenarios.
 
-Next, you'll work with ServiceAccounts - the identities that Pods use. You'll create custom ServiceAccounts, bind Roles to them, and configure Pods to use these ServiceAccounts. You'll see how applications get the permissions they need without sharing credentials.
-
-After that, you'll explore ClusterRoles and ClusterRoleBindings for cluster-wide permissions. You'll see how these differ from namespaced Roles, and when to use each for proper scope limitation.
-
-You'll also test permissions using `kubectl auth can-i` to verify what actions are allowed. This tool helps you validate RBAC configurations before deploying applications.
-
-Finally, you'll troubleshoot RBAC issues - diagnosing "Forbidden" errors, understanding permission denials, and fixing RoleBinding configuration problems.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A Kubernetes cluster where you have admin permissions
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that RBAC errors are common when permissions are too restrictive
-
-The exercises demonstrate RBAC patterns for common scenarios. You'll see security best practices for least-privilege access control.
-
-## Why This Matters
-
-RBAC is important CKAD exam content. You may be asked to create ServiceAccounts, bind Roles, or troubleshoot permission errors. The exam expects you to understand RBAC syntax and common patterns.
-
-Beyond the exam, RBAC is fundamental to Kubernetes security. Every production cluster uses RBAC to control who can do what. Understanding RBAC enables you to implement secure, least-privilege access for applications and users.
+RBAC is important CKAD exam content. You may be asked to create ServiceAccounts, bind Roles, or troubleshoot permission errors. The exam expects you to understand RBAC syntax and common patterns. Beyond the exam, RBAC is fundamental to Kubernetes security. Every production cluster uses RBAC to control who can do what. Understanding RBAC enables you to implement secure, least-privilege access for applications and users.
 
 Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness about security importance
-- Reassure about RBAC complexity
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**

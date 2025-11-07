@@ -1,68 +1,15 @@
-# Services - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Kubernetes Services, what they are, why they're essential for networking, and the different Service types, it's time to see them in action through hands-on practice.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to work through the complete Services lab, starting with the API specs section where we'll examine the Service resource definition and understand the relationship between Services and Pod YAML. You'll see how labels in Pod metadata connect to Service selectors, which is the foundation of how Kubernetes routes traffic dynamically.
 
----
+We'll begin by running sample Pods, creating simple Pod definitions with labels that we can target with Services. This gives us the foundation to explore how Services discover and route to Pods. Then we'll deploy an internal Service, creating a ClusterIP Service that exposes our application within the cluster. You'll see how the Service gets a stable IP address and becomes part of the cluster's DNS system. This leads us into the section on using DNS to find the Service, where you'll test connectivity from other Pods using both Service IPs and DNS names. You'll understand how Kubernetes makes service discovery automatic, and you'll see what happens when Pods are replaced and get new IP addresses while the Service IP remains constant.
 
-## Transition to Practice
+Next, we'll move into understanding external Services, exploring the differences between LoadBalancer and NodePort Service types. You'll learn why some clusters support LoadBalancers while others require NodePorts, and you'll understand the tradeoffs between these approaches. Then we'll deploy an external Service, actually creating both NodePort and LoadBalancer Services so you can access the application from outside the cluster. You'll see how these external Service types also create ClusterIP addresses for internal access, giving you flexibility in how applications communicate.
 
-Welcome back! Now that we've covered the fundamental concepts of Kubernetes Services - what they are, why they're essential for networking, and the different Service types - it's time to see them in action.
+The exercises culminate in a Lab challenge where you'll apply everything you've learned. You'll work with scenarios involving zero Pod matches for label selectors and multiple Pods matching the same selector. You'll discover how to verify whether a Service has found matching Pods and what happens when the selector doesn't match any running Pods. This hands-on problem solving reinforces the core concepts and prepares you for real troubleshooting situations. Finally, there's a Cleanup section showing you how to efficiently remove all the resources using label selectors.
 
-In the upcoming exercises video, we're going to create Services using different types, test connectivity between Pods, and see how DNS integration makes service discovery automatic. You'll understand exactly how Kubernetes provides stable networking in a dynamic container environment.
+Before starting the exercises video, make sure you have a running Kubernetes cluster. Any distribution works, whether it's Docker Desktop, k3s, kind, or a cloud provider. You'll need kubectl installed and configured to communicate with your cluster. Have a terminal and text editor ready, and ensure you can access Services through port-forward, NodePort, or LoadBalancer depending on your environment's capabilities. The exercises use simple web applications that make it easy to verify connectivity and see which Pod is responding to requests.
 
-## What You'll Learn
+This matters tremendously for the CKAD exam because Services are core exam content. You'll absolutely be asked to create Services, expose Deployments, and troubleshoot networking issues. The exam expects you to understand all Service types and know when to use each one. You need to be comfortable creating Services quickly and verifying they're working correctly. Beyond the exam, Services are fundamental to Kubernetes networking. Every application that needs to be accessed, whether by other Pods or external users, needs a Service. Understanding how Services work, how they use label selectors to find Pods, how DNS integration provides service discovery, and how different Service types enable internal and external access is essential for building reliable distributed applications in Kubernetes.
 
-In the hands-on exercises, we'll explore all the major Service patterns:
-
-First, you'll deploy an application and create a ClusterIP Service to expose it internally. You'll see how the Service gets a stable IP address and automatic DNS entry. You'll test connectivity from other Pods using both the Service IP and DNS name, understanding how internal service discovery works.
-
-Then, we'll work with label selectors - the mechanism that connects Services to Pods. You'll see how Services automatically discover and route to Pods with matching labels. You'll add and remove labels from Pods and watch how the Service endpoints update dynamically. This demonstrates the loose coupling that makes Kubernetes so flexible.
-
-Next, you'll create a NodePort Service to expose your application externally. You'll access the application through any node's IP address on the assigned port. You'll understand the relationship between NodePort and ClusterIP - every NodePort is also a ClusterIP, giving you both internal and external access.
-
-After that, you'll create a LoadBalancer Service (if your environment supports it). You'll see how Kubernetes provisions cloud load balancers automatically and routes external traffic into your cluster. You'll understand why LoadBalancer Services are the preferred choice for production external access.
-
-You'll also work with service endpoints. You'll use `kubectl get endpoints` to see exactly which Pods are backing each Service. When Pods fail health checks or aren't ready, you'll see them disappear from the endpoints list. This shows how Kubernetes ensures Services only route to healthy Pods.
-
-Finally, you'll explore DNS naming patterns. You'll test accessing services using short names within the same namespace, and fully qualified names across namespaces. You'll understand the pattern: `service-name.namespace.svc.cluster.local`.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Ability to access Services via port-forward, NodePort, or LoadBalancer
-
-The exercises use simple web applications that make it easy to verify connectivity and see which Pod is responding. You can follow along on your own cluster, or watch first and practice afterward.
-
-## Why This Matters
-
-Services are core CKAD exam content. You'll absolutely be asked to create Services, expose Deployments, and troubleshoot networking issues. The exam expects you to understand all Service types and know when to use each one.
-
-Beyond the exam, Services are fundamental to Kubernetes networking. Every application that needs to be accessed - whether by other Pods or external users - needs a Service. Understanding how Services work is essential for building reliable distributed applications.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing networking in action
-- Reassure that exercises build progressively
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Let's get started with the hands-on exercises and see Services in action!

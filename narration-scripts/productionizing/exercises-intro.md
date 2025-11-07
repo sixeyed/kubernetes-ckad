@@ -1,68 +1,17 @@
-# Productionizing - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of productionizing Kubernetes applications, it's time to apply these production-readiness patterns in practice. We've talked about health probes, resource management, quality of service, and autoscaling, and in this section you're going to see how all of these patterns come together to transform basic deployments into production-ready services.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises, we're going to work through implementing production readiness step by step, starting with self-healing applications using readiness probes. You'll see how Kubernetes can detect when an application is running but not responding properly, like when a web app starts returning 503 errors. We'll configure readiness probes that check the health endpoint of applications, and you'll watch as Kubernetes automatically removes unhealthy pods from service endpoints while they recover. This prevents users from hitting broken instances, which is exactly what you want in production.
 
----
+Then we'll move on to self-repairing applications with liveness probes. While readiness probes isolate failed pods from traffic, liveness probes take the more aggressive action of actually restarting containers when they fail. You'll configure both types of probes and understand when to use each one. We'll also look at different probe mechanisms beyond just HTTP checks, including TCP probes for databases and exec command probes for custom health checks. You'll see how to configure the timing parameters like period seconds and failure thresholds to avoid false positives while still catching real failures quickly.
 
-## Transition to Practice
+After mastering health probes, we'll tackle autoscaling for compute-intensive workloads. This is where the Horizontal Pod Autoscaler comes in, automatically scaling your pods up and down based on CPU metrics. You'll need to understand the metrics server API specs and how the autoscaler uses CPU utilization targets to make scaling decisions. We'll deploy a compute-intensive application and watch as it scales up under load and then scales back down when the load decreases. You'll configure minimum and maximum replicas and set the target CPU utilization percentage that triggers the scaling events.
 
-Welcome back! Now that we've covered the fundamental concepts of productionizing Kubernetes applications - health probes, resource management, quality of service, and autoscaling - it's time to apply these production-readiness patterns.
+Throughout these exercises, you'll be working with resource requests and limits, which are fundamental to how Kubernetes schedules pods and manages capacity. Every application you deploy needs these defined, both for the autoscaler to work and for proper resource management in the cluster. You'll see how resource limits protect your nodes from being overwhelmed by any single application.
 
-In the upcoming exercises video, we're going to configure health probes for reliable applications, set resource limits for capacity planning, and implement autoscaling for dynamic workloads. You'll transform basic deployments into production-ready services.
+The lab challenge ties everything together by asking you to add production concerns to a configurable application. You'll start with a basic spec and then progressively add container probes and security settings. The application fails after a few refreshes and never recovers, so you'll need to implement health checks using the healthz endpoint, scale to multiple replicas to ensure traffic only reaches healthy pods, configure pod restarts when containers fail, and add an HPA as a backup for unexpected load spikes. The interesting twist is that this particular app isn't CPU intensive, so you'll need to think creatively about how to test that your HPA is actually working correctly.
 
-## What You'll Learn
+There's also an extra section on pod security that covers restricting what pod containers can do. While not strictly required for basic production readiness, security contexts are essential for any serious production deployment. You'll learn about changing the user to avoid running as root, not mounting the Service Account API token unless your app needs it, and adding security contexts to limit the OS capabilities available to the container. These security measures aren't applied by default because they can break applications, but they're critical for defense in depth.
 
-In the hands-on exercises, we'll implement production readiness patterns:
+Before you start, make sure you have a running Kubernetes cluster with kubectl installed and configured. You'll also want the metrics server installed for the autoscaling exercises, though many clusters have this by default. The exercises use simple applications that clearly demonstrate production patterns without the complexity of real production systems.
 
-First, you'll configure liveness probes that restart unhealthy containers. You'll see how Kubernetes detects when applications are stuck or frozen and automatically recovers by restarting them. You'll work with HTTP, TCP, and exec probe types.
-
-Then, we'll add readiness probes that control traffic routing. You'll see how Pods are removed from Service endpoints when they're not ready to serve traffic, preventing users from hitting broken instances during startup or shutdown.
-
-Next, you'll configure startup probes for slow-starting applications. You'll see how these give applications time to initialize before liveness probes begin, preventing premature restarts of healthy but slow-starting containers.
-
-After that, you'll set resource requests and limits. You'll define CPU and memory requests for scheduling guarantees, and limits to prevent resource exhaustion. You'll understand Quality of Service classes: Guaranteed, Burstable, and BestEffort.
-
-You'll also implement the Horizontal Pod Autoscaler to scale applications based on CPU or memory metrics. You'll see Kubernetes automatically add and remove replicas as load changes, maintaining performance targets.
-
-Finally, you'll combine all these patterns into a production-ready deployment. You'll configure comprehensive health checks, appropriate resources, and autoscaling for a resilient, efficient application.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl installed and configured
-- Metrics-server installed for autoscaling (many clusters have this by default)
-- A terminal and text editor ready
-
-The exercises use simple applications that demonstrate production patterns clearly without production complexity.
-
-## Why This Matters
-
-Productionizing is core CKAD exam content. You'll configure health probes, set resource requests and limits, and potentially implement autoscaling. The exam expects you to know these patterns and implement them correctly.
-
-Beyond the exam, production readiness separates toy deployments from real services. Every production application needs health checks, resource management, and often autoscaling. These patterns are essential for reliable, efficient Kubernetes operations.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for production patterns
-- Emphasize importance for reliability
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+This hands-on work is core CKAD exam content. You'll definitely encounter questions about configuring health probes and setting resource requests and limits, and you might see autoscaling scenarios as well. But beyond the exam, these production readiness patterns separate toy deployments from real services. Every production application needs health checks, resource management, and often autoscaling. These aren't optional extras - they're essential for reliable, efficient Kubernetes operations. Let's get started with the hands-on exercises and see these patterns in action!

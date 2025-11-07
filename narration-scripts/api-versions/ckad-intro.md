@@ -1,76 +1,37 @@
-# API Versions and Deprecations - CKAD Introduction
+Excellent work on the hands-on exercises! You've now practiced discovering API versions, exploring resource structures with kubectl explain, and migrating manifests between API versions. Here's the key point for CKAD: API version questions appear directly in the exam, and they're usually quick wins if you know the right commands. The exam may give you manifests with deprecated APIs that you must fix, or ask you to identify the correct API version for a specific resource type. Time management is critical, and these questions should take three to four minutes maximum. That's what we're going to focus on in this next section: fast, accurate API version troubleshooting under exam conditions.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with exam resources visible
-**Purpose:** Bridge from basic exercises to exam-focused preparation
+The CKAD exam is practical and time-limited, which makes it fundamentally different from just working through exercises at your own pace. When you encounter API version questions during the exam, you can't afford to spend ten minutes researching the correct format or browsing through documentation. You need systematic approaches and memorized patterns that let you solve problems quickly and move on.
 
----
+Let me break down why API deprecations matter for CKAD specifically. This topic falls under the Application Observability and Maintenance domain, which accounts for fifteen percent of the exam. You need to be able to identify deprecated API versions, use kubectl api-resources and api-versions effectively, understand the kubectl convert command, migrate resources to newer API versions, and check for deprecated APIs in manifests. The exam expects you to complete these tasks in four to six minutes per question, which means speed and accuracy are both essential.
 
-## Transition to Exam Preparation
+The exam will test you on several specific scenarios. First, you'll need to identify current API versions quickly. When asked what API version a particular resource uses in the cluster, you must immediately know to run kubectl api-resources with grep to find the answer. Second, you'll encounter deprecated API errors that you must fix. When you see "no matches for kind Ingress in version networking.k8s.io/v1beta1", you need to immediately recognize this as a deprecated API issue, find the current version, and update the manifest. This entire workflow should take under two minutes if you've practiced it enough.
 
-Excellent work on the hands-on exercises! You've now practiced discovering API versions, exploring resource structures with `kubectl explain`, and migrating manifests between API versions.
+Understanding common API version migrations is crucial. You need to know that Deployment, DaemonSet, and ReplicaSet all moved from extensions v1beta1 to apps v1, and that these APIs were removed in Kubernetes 1.16. You should know that Ingress migrated from both extensions v1beta1 and networking.k8s.io v1beta1 to networking.k8s.io v1, with removal in version 1.22. CronJob moved from batch v1beta1 to batch v1 in version 1.25, and PodDisruptionBudget followed the same pattern from policy v1beta1 to policy v1. These migrations aren't just version number changes; they often involve schema changes too.
 
-Here's the key point for CKAD: API version questions appear directly in the exam, and they're usually quick wins if you know the right commands. The exam may give you manifests with deprecated APIs that you must fix, or ask you to identify the correct API version for a specific resource type. Time management is critical - these questions should take 3-4 minutes maximum.
+For instance, the v1 Ingress requires a pathType field that wasn't needed in v1beta1, and it uses service.name instead of serviceName. You need to spot and fix these structural differences quickly during the exam. This is where kubectl explain becomes invaluable. When you're unsure about required fields or valid values, kubectl explain gives you instant answers without leaving the terminal. You must use this tool reflexively to verify schema requirements and understand resource structure.
 
-That's what we're going to focus on in this next section: fast, accurate API version troubleshooting under exam conditions.
+The exam also tests your understanding of API version maturity levels. Alpha versions like v1alpha1 or v1alpha2 are experimental and may be removed without notice, so they're not recommended for production. Beta versions like v1beta1 or v1beta2 are generally safe but may change, and they're supported for nine months after deprecation. Stable or GA versions like v1 or v2 are production-ready and supported for twelve months or more after deprecation. You need to recommend the appropriate version based on the stability requirements of the application.
 
-## What Makes CKAD Different
+Time-saving exam tips are critical for success. Use kubectl api-resources as your first tool for finding current versions because it's the fastest approach. Check with kubectl explain when you need to see API version and field details. Remember that most workload controllers use apps v1, including Deployment, StatefulSet, DaemonSet, and ReplicaSet. Core resources like Pod, Service, ConfigMap, and Secret use just v1 without a group prefix. This pattern recognition saves precious seconds during the exam.
 
-The CKAD exam is practical and time-limited. When you encounter API version questions, you can't afford to spend 10 minutes researching the correct format. You need systematic approaches and memorized patterns.
+The kubectl convert command may or may not be available during your exam. You should check if it exists first by running kubectl convert with the help flag. If it's not available, you'll need to manually edit the YAML file to update the apiVersion field. When it is available, you can use it to convert single files, save output to new files, or even convert and apply directly through a pipe. Practice both approaches so you're comfortable with either scenario.
 
-For API versions specifically, the exam will test you on:
+Troubleshooting on the exam requires quick pattern recognition. When you see an error like "no matches for kind Deployment in version extensions/v1beta1", you need to immediately identify this as a removed API version and know to find the correct version using kubectl api-resources. When you see a warning like "batch/v1beta1 CronJob is deprecated in v1.21+, use batch/v1", you should note the warning and update to the recommended version. If kubectl convert gives you a "command not found" error, fall back to manual editing without wasting time trying to install it.
 
-**Identifying current API versions** - You'll need to quickly find the correct apiVersion for resources like Ingress, CronJob, or PodDisruptionBudget. The answer is always available through `kubectl api-resources`, but you need to execute this command reflexively.
+Your quick lookup table for the exam should include knowing that kubectl api-resources with grep shows you the API group and version for any resource, kubectl explain with head shows you the apiVersion field, kubectl api-versions lists all available versions in the cluster, and kubectl get with output to yaml and grep shows you what's currently deployed. These commands should be muscle memory by exam time.
 
-**Fixing deprecated API errors** - When you see "no matches for kind Ingress in version networking.k8s.io/v1beta1", you must immediately recognize this as a deprecated API issue, find the current version, and fix the manifest. This entire workflow should take under 2 minutes.
+Practice scenarios are essential for building this speed. Time yourself finding the current API version for NetworkPolicy. Practice checking what API version a specific deployment is using. Work on listing all API versions currently used by resources in a namespace. Practice updating a deprecated Ingress from networking.k8s.io v1beta1 to v1. Each of these scenarios should take you five minutes or less when you're exam-ready.
 
-**Understanding schema changes** - API migrations sometimes involve more than just changing the version number. The v1 Ingress requires a `pathType` field that wasn't needed in v1beta1. The v1 Ingress uses `service.name` instead of `serviceName`. You need to spot and fix these structural differences quickly.
+The exam also tests common patterns. When asked what API version you should use, your approach should be to run kubectl api-resources with grep for that resource, use the version shown, and if multiple versions exist, choose the stable one. When asked to find deprecated APIs, get all resources with output to yaml, look for old API versions like beta or extensions group, and check against known deprecations. When asked to migrate to a new API, identify the current version used, find the new version with kubectl api-resources, either use kubectl convert or manually edit the YAML, then test and apply.
 
-**Using kubectl explain efficiently** - When you're unsure about required fields or valid values, `kubectl explain` gives you instant answers without leaving the terminal. You must use this tool reflexively to verify schema requirements.
+Your exam day checklist should include checking api-resources to find the current version, looking for beta versions that usually need updating, checking the extensions group since it's completely deprecated and removed, verifying after updates that the resource deployed correctly, and watching for warnings since Kubernetes will warn about deprecations.
 
-**Common API version patterns** - Memorizing that core resources use v1, workloads use apps/v1, jobs use batch/v1, and networking resources use networking.k8s.io/v1 saves precious seconds during the exam.
+Key points to remember include that kubectl api-resources is your best friend for finding versions, most workload controllers use apps v1, core resources use just v1, jobs and cronjobs use batch v1, networking resources use networking.k8s.io v1, the extensions v1beta1 API is completely removed, kubectl convert may or may not be available, and manual editing is always a fallback option.
 
-## What's Coming
+Time management during the exam is crucial. A typical API version question should take four to six minutes total. Spend one minute reading requirements, one to two minutes finding the current API version, and two to three minutes updating the manifest. If you're stuck beyond six minutes, flag the question and move on. You can return to it later if time permits, but you can't afford to lose ten minutes on a single question.
 
-In the upcoming CKAD-focused video, we'll drill on exam-specific scenarios. You'll practice finding API versions in under 30 seconds per resource. You'll fix deprecated API manifests in under 2 minutes each. You'll use `kubectl explain` to verify schema requirements quickly.
+Remember that during the exam you can access the Kubernetes API Reference and the Deprecation Guide. Bookmark these pages before your exam starts so you can navigate to them quickly if needed. However, your primary tools should be kubectl api-resources and kubectl explain, which are much faster than browsing documentation.
 
-We'll cover the most common deprecated API patterns you might encounter: Deployment from extensions/v1beta1 to apps/v1, Ingress from v1beta1 to v1, and CronJob from v1beta1 to v1. For each pattern, you'll learn the exact changes required.
+In the upcoming CKAD-focused video, we'll drill on these exam-specific scenarios. You'll practice finding API versions in under thirty seconds per resource. You'll fix deprecated API manifests in under two minutes each. You'll use kubectl explain to verify schema requirements quickly. We'll develop a troubleshooting decision tree so when you see an API error, you'll know exactly which command to run first, what to look for in the output, and how to fix the issue systematically. This removes guesswork and saves time.
 
-We'll also develop a troubleshooting decision tree. When you see an API error, you'll know exactly which command to run first, what to look for in the output, and how to fix the issue systematically. This removes guesswork and saves time.
-
-Finally, we'll discuss time-saving exam strategies: using `kubectl api-resources` instead of searching documentation, leveraging `kubectl explain` for schema verification, testing fixes with `--dry-run=server` before applying, and knowing when to move on if stuck.
-
-## Exam Mindset
-
-Remember: API version questions are knowledge checks, not puzzles. The exam isn't trying to trick you - it's verifying that you can work efficiently with Kubernetes APIs. If you know the commands and patterns, these are straightforward points.
-
-Practice the workflows until they're automatic. When you see a deprecated API error, your hands should execute `kubectl api-resources | grep <resource>` before your brain finishes thinking about it.
-
-Let's dive into CKAD-specific API version scenarios!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can show terminal with quick command demonstrations
-- Serious but encouraging tone - this is exam preparation
-
-**Tone:**
-- Shift from learning to drilling
-- Emphasize speed and accuracy
-- Build confidence through systematic approaches
-
-**Key Messages:**
-- API version questions are quick wins with the right commands
-- kubectl api-resources and kubectl explain are your best friends
-- Memorize common patterns to save time
-- The upcoming content focuses on speed and accuracy
-
-**Timing:**
-- Transition opening: 30 sec
-- What Makes CKAD Different: 1 min
-- What's Coming: 45 sec
-- Exam Mindset: 30 sec
-
-**Total: ~2.75 minutes**
+Remember, API version questions are knowledge checks, not puzzles. The exam isn't trying to trick you; it's verifying that you can work efficiently with Kubernetes APIs. If you know the commands and patterns, these are straightforward points. Practice the workflows until they're automatic. When you see a deprecated API error, your hands should execute kubectl api-resources with grep before your brain finishes thinking about it. Let's dive into CKAD-specific API version scenarios and turn this knowledge into exam-day confidence!

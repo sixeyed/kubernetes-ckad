@@ -1,68 +1,17 @@
-# Affinity and Pod Scheduling - Exercises Introduction
+Welcome back! Now that we've covered the concepts of Pod scheduling with affinity in Kubernetes, it's time to put these powerful mechanisms into action. In the upcoming exercises, we're going to work with a multi-node Kubernetes cluster to demonstrate how affinity rules actually control Pod placement, exploring node affinity, Pod affinity, and Pod anti-affinity working in real scenarios.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the hands-on exercises, we'll build up progressively through different scheduling patterns. First, you'll set up a multi-node k3d cluster specifically for this lab, and we'll start by exploring the reference documentation and API specifications that define how affinity works in Kubernetes. Having multiple nodes is essential for seeing affinity in action because you need different targets for the scheduler to choose from, and you'll learn how to configure node capacity limits that add realistic constraints to your test environment.
 
----
+Then we'll dive into node affinity, where you'll watch Pods schedule onto nodes that match affinity requirements. You'll see Pods stuck in Pending state when no nodes satisfy the constraints, and you'll learn to diagnose scheduling failures by reading the Events from kubectl describe. We'll work with both required and preferred node affinity rules, understanding how required rules act as hard constraints while preferred rules express scheduling preferences that can be overridden when necessary. You'll label nodes with custom properties and use those labels to control where Pods can run.
 
-## Transition to Practice
+Next, we explore node topology, adding region and zone labels that simulate a multi-zone cloud environment. These topology labels are crucial for understanding how Pod affinity and anti-affinity work across your infrastructure. You'll see how every cluster includes a hostname label that uniquely identifies each node, and how cloud services typically add region labels to identify datacenters and zone labels to identify failure zones within regions. We'll simulate this topology in our k3d cluster so you can experiment with geographic placement strategies.
 
-Welcome back! Now that we've covered the concepts of Pod scheduling with affinity in Kubernetes, it's time to put these powerful mechanisms into action.
+After establishing our topology, we'll work with Pod affinity and anti-affinity for more sophisticated scheduling patterns. You'll see how Pods can be scheduled near other Pods based on labels and topology keys, understanding the difference between hostname-level affinity that places Pods on the same physical node and zone-level affinity that keeps Pods within the same availability zone. We'll experiment with co-location patterns where related services run together for performance, and with spreading patterns where replicas distribute across failure zones for high availability. You'll discover how required anti-affinity can be too restrictive, leaving Pods pending when there aren't enough nodes, and how preferred anti-affinity provides better flexibility by expressing preferences without hard constraints.
 
-In the upcoming exercises video, we're going to work with a multi-node Kubernetes cluster to demonstrate how affinity rules actually control Pod placement. You'll see node affinity, Pod affinity, and Pod anti-affinity working in real scenarios, and you'll understand when to use required versus preferred rules.
+The lab section gives you independent challenges to test your understanding. You'll create Deployment specifications that combine required and preferred affinity rules, working with node labels and weighting to express sophisticated scheduling requirements. This is where you'll really internalize the patterns and troubleshooting approaches that make affinity practical in production scenarios.
 
-## What You'll Learn
+We'll also explore an extra topic on node affinity for multi-arch images, showing how to optimize scheduling when you have clusters with mixed CPU architectures or operating systems. You'll see how to use affinity rules with standard node labels to ensure Pods run on compatible platforms while still utilizing all available cluster capacity. This demonstrates how affinity enables sophisticated resource utilization in heterogeneous environments.
 
-In the hands-on exercises, we'll build up progressively through different scheduling patterns:
+Before starting the exercises video, make sure you have k3d installed for creating a multi-node cluster, kubectl installed and configured, and the ability to create and delete clusters. The exercises will create a dedicated k3d cluster for this lab, so you won't affect your existing Kubernetes environment. You can follow along and create the same cluster, or watch first and practice afterward. We'll show the installation steps and provide cleanup commands at the end to remove the test cluster and all lab resources.
 
-First, you'll set up a multi-node k3d cluster specifically for this lab. Having multiple nodes is essential for seeing affinity in action - you need different targets for the scheduler to choose from.
-
-Then, we'll deploy applications with node affinity rules. You'll watch Pods schedule onto nodes that match affinity requirements, and you'll see Pods stuck in Pending state when no nodes satisfy the constraints. You'll learn to diagnose scheduling failures by reading the Events in `kubectl describe pod`.
-
-Next, we'll add topology labels to nodes - region and zone labels that simulate a multi-zone cloud environment. These topology labels are crucial for understanding how Pod affinity and anti-affinity work across your infrastructure.
-
-After that, we'll explore Pod affinity for co-location. You'll see how Pods can be scheduled near other Pods based on labels and topology keys. You'll understand the difference between hostname-level affinity (same physical node) and zone-level affinity (same availability zone).
-
-We'll then work with Pod anti-affinity to spread Pods apart for high availability. You'll see how required anti-affinity can be too restrictive, leaving Pods pending, and how preferred anti-affinity provides better flexibility.
-
-Finally, you'll experiment with weighted preferences. You'll see how different weights guide the scheduler to prefer certain nodes while still allowing fallback options.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- k3d installed for creating a multi-node cluster (we'll show the installation)
-- kubectl installed and configured
-- Ability to create and delete clusters
-- A terminal and text editor ready
-
-The exercises will create a dedicated k3d cluster for this lab, so you won't affect your existing Kubernetes environment. You can follow along and create the same cluster, or watch first and practice afterward.
-
-## Why This Matters
-
-While affinity is advanced material beyond core CKAD requirements, these patterns are fundamental to production Kubernetes. High availability deployments spread replicas across zones. Performance-optimized applications co-locate related components. Resource-intensive workloads target specialized nodes.
-
-For the exam, you won't need to write complex affinity rules from scratch, but you absolutely need to understand how they work. You'll encounter scenarios with existing affinity configurations, and you'll need to troubleshoot when Pods won't schedule due to affinity constraints.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing scheduling in action
-- Reassure that multi-node setup will be demonstrated
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+While affinity is advanced material beyond core CKAD requirements, these patterns are fundamental to production Kubernetes. High availability deployments spread replicas across zones. Performance-optimized applications co-locate related components. Resource-intensive workloads target specialized nodes. For the exam, you won't need to write complex affinity rules from scratch, but you absolutely need to understand how they work. You'll encounter scenarios with existing affinity configurations, and you'll need to troubleshoot when Pods won't schedule due to affinity constraints. Let's get started with the hands-on exercises!

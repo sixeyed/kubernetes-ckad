@@ -1,68 +1,11 @@
-# Security - Exercises Introduction
+Welcome back! Now that we've covered fundamental Kubernetes security concepts, it's time to implement these security controls hands-on. We're going to work through comprehensive security configurations that will prepare you for both real-world deployments and the CKAD exam.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, you'll start by understanding security contexts at a fundamental level, seeing why the default behavior of running containers as root poses significant security risks. We'll explore both pod-level and container-level security contexts, learning when to use each and how container-level settings can override pod-level configurations for more granular control. You'll practice running containers as non-root users, which is one of the most critical security practices in Kubernetes. We'll work through configuring specific user and group IDs, ensuring your applications never run with unnecessary privileges.
 
----
+Then we'll dive into working with read-only filesystems, one of the most effective ways to create immutable containers that can't be modified by attackers. You'll learn how to configure read-only root filesystems while still providing writable locations for temporary files and application data that genuinely needs to change. Next, you'll explore Linux capabilities in depth, understanding how to drop all capabilities by default and then selectively add back only the specific capabilities your application needs. This fine-grained approach to privilege management is far more secure than simply running containers as root. You'll also learn about preventing privilege escalation, ensuring that processes can't gain additional privileges through setuid binaries or other escalation mechanisms.
 
-## Transition to Practice
+We'll look at privileged containers and understand why they're dangerous, seeing how they grant access to all host devices and should be avoided in production unless absolutely necessary. You'll work with filesystem groups to properly manage volume permissions, ensuring that multiple containers or users can access shared storage with the correct ownership and permissions. The exercises include a comprehensive lab challenge where you'll secure a web application by combining multiple security controls, implementing everything from non-root execution to read-only filesystems with writable cache directories and properly configured capabilities.
 
-Welcome back! Now that we've covered fundamental Kubernetes security concepts - Pod Security Standards, security contexts, RBAC, and network policies - it's time to implement these security controls hands-on.
+Throughout the exercises, you'll be following security best practices and learning the patterns that the CKAD exam expects you to know. We'll cover the critical fields and configurations that appear most frequently in exam scenarios, giving you both the practical skills and the exam-specific knowledge you need.
 
-In the upcoming exercises video, we're going to configure secure Pod specifications, enforce security policies at the namespace level, and implement defense-in-depth patterns. You'll see how to harden Kubernetes applications against common threats.
-
-## What You'll Learn
-
-In the hands-on exercises, we'll implement security best practices:
-
-First, you'll configure security contexts at both Pod and container levels. You'll run containers as non-root users, drop Linux capabilities, set read-only root filesystems, and prevent privilege escalation. You'll see how these controls reduce attack surface.
-
-Then, we'll work with Pod Security Standards enforcement. You'll label namespaces to enforce baseline or restricted security policies. You'll see how Pod Security admission rejects Pods that violate security requirements, preventing dangerous configurations from running.
-
-Next, you'll create and configure ServiceAccounts with minimal RBAC permissions. You'll implement least-privilege access control, ensuring applications can only perform necessary API operations. You'll test permissions to verify restrictions.
-
-After that, you'll implement NetworkPolicies for network segmentation. You'll create zero-trust networking where communication is denied by default and explicitly allowed only where needed. You'll see how this limits lateral movement during security incidents.
-
-You'll also work with Secrets for sensitive data, using volume mounts instead of environment variables for improved security, and ensuring proper access controls.
-
-Finally, you'll troubleshoot security-related Pod failures - diagnosing permission denied errors, understanding security policy violations, and fixing configurations to meet security requirements without breaking functionality.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster with Pod Security admission enabled
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that security features may vary by cluster type
-
-The exercises demonstrate security patterns that protect applications in production environments, balancing security with functionality.
-
-## Why This Matters
-
-Security is core to CKAD. You'll configure security contexts, work with RBAC, and potentially implement NetworkPolicies. The exam expects you to know how to secure applications without extensive security expertise.
-
-Beyond the exam, security is fundamental to production Kubernetes. Every application needs proper security controls. Understanding these patterns helps you deploy secure, compliant applications.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness about security importance
-- Reassure that security patterns are learnable
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Before starting the exercises video, make sure you have a running Kubernetes cluster, kubectl installed and configured, and a terminal with a text editor ready. The exercises demonstrate security patterns that protect applications in production environments while maintaining functionality. Security is core to the CKAD exam, and you'll be expected to configure security contexts, work with capabilities, and implement defense-in-depth patterns without breaking your applications. Beyond the exam, these security controls are fundamental to running production workloads safely. Every application needs proper security boundaries, and understanding these patterns helps you deploy secure, compliant applications that can withstand real-world threats. Let's get started with the hands-on exercises!

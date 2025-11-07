@@ -1,68 +1,27 @@
-# Kustomize - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of Kustomize, understanding what it is, how it manages Kubernetes manifests without templates, and why it's valuable for environment-specific configurations, it's time to work with Kustomize hands-on and see these concepts in action.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to explore how Kustomize manages application configurations across multiple environments using a template-free approach. Before we dive in, it's worth understanding how Kustomize compares to other tools you might encounter. We'll look at Kustomize versus Helm to understand when each tool is most appropriate. Kustomize excels at managing the same application across different environments, while Helm focuses on packaging and distributing reusable applications. Both have their place in the Kubernetes ecosystem, and knowing the distinction helps you choose the right tool for each situation.
 
----
+We'll start by creating a base configuration, which forms the foundation of the Kustomize workflow. You'll see how the base contains common resources shared across all environments, like Deployments, Services, and ConfigMaps that apply universally. This base represents what stays consistent regardless of where you deploy.
 
-## Transition to Practice
+From there, we'll move into using overlays for different environments. This is where Kustomize really shines. You'll create overlays for development, staging, and production environments, and watch how each overlay customizes the base for specific requirements. Different replica counts, resource limits, namespace configurations, or image tags can all be managed cleanly through overlays without duplicating your base definitions. You'll see how this pattern keeps environment-specific changes organized and maintainable.
 
-Welcome back! Now that we've covered the fundamental concepts of Kustomize - what it is, how it manages Kubernetes manifests without templates, and why it's valuable for environment-specific configurations - it's time to work with Kustomize hands-on.
+Next, you'll work with common Kustomize features that make configuration management more powerful. We'll explore capabilities like ConfigMap and Secret generators that create these resources from literals or files, strategic merge patches that let you modify specific fields without replacing entire resources, and JSON patches for precise modifications when you need surgical accuracy. You'll also see transformers like commonLabels, namePrefix, and nameSuffix in action, which automate repetitive modifications and ensure consistency across all your resources.
 
-In the upcoming exercises video, we're going to use Kustomize to manage application configurations across multiple environments. You'll see how overlays and patches enable environment customization without duplicating YAML.
+Then you'll use kubectl apply with the k flag to deploy your Kustomized applications. You'll see how kubectl's built-in Kustomize support makes deployment straightforward without requiring additional tools or installations. The workflow from source manifests to running cluster resources becomes clear and repeatable.
 
-## What You'll Learn
+An important skill we'll cover is viewing generated YAML before applying it to your cluster. Using kubectl kustomize lets you preview exactly what will be deployed, which is invaluable for debugging and verification. You'll understand how to validate your Kustomize builds and catch issues before they reach your cluster.
 
-In the hands-on exercises, we'll work through practical Kustomize patterns:
+We'll also work through common Kustomize commands that you'll use regularly. Beyond just apply and kustomize, you'll see how to delete resources managed by Kustomize, validate your kustomization structure, and integrate these commands into your workflow effectively.
 
-First, you'll create a base configuration with common resources shared across all environments. You'll see how the base contains Deployments, Services, and ConfigMaps that apply universally.
+Throughout the exercises, we'll follow best practices that make Kustomize more effective. You'll learn principles like keeping your base generic so it works for any environment, creating small focused overlays that only customize what's different, using patches sparingly in favor of Kustomize's built-in features, and testing locally before applying to real clusters.
 
-Then, we'll create overlays for different environments - development, staging, production. Each overlay will customize the base for specific requirements: different replica counts, resource limits, or ConfigMap values. You'll see how overlays keep environment-specific changes organized.
+There's also a lab exercise where you'll create your own overlay for a QA environment, applying everything you've learned to meet specific requirements independently. This hands-on practice reinforces the concepts and builds your confidence working with Kustomize.
 
-Next, you'll use `kubectl apply -k` to deploy Kustomized applications. You'll see how kubectl's built-in Kustomize support makes deployment simple without additional tools. You'll understand the workflow from source to cluster.
+Before starting the exercises video, make sure you have a running Kubernetes cluster, kubectl version 1.14 or later with built-in Kustomize support, a terminal and text editor ready, and an understanding that Kustomize works with standard YAML manifests. The exercises demonstrate patterns that make multi-environment management sustainable and maintainable, and we'll include proper cleanup procedures so you understand how to remove Kustomized resources cleanly.
 
-After that, you'll work with patches to modify specific fields. You'll use strategic merge patches for partial updates and JSON patches for precise changes. You'll see how patches enable surgical modifications without duplicating entire resource definitions.
+Now, regarding CKAD exam preparation, Kustomize is actually a required exam topic under the Application Deployment domain. You need to know how to create kustomization files, deploy resources using kubectl apply with the k flag, understand the base and overlay pattern, and work with common transformations. The exam tips we'll encounter emphasize practicing these fundamentals, knowing the essential commands, and understanding when Kustomize is the right choice compared to other tools like Helm.
 
-You'll also explore Kustomize features like commonLabels, namePrefix, and configMapGenerator. These transformers automate repetitive modifications, ensuring consistency across resources.
+The key takeaways you'll gain from these exercises include understanding that Kustomize is template-free and works with standard YAML, that it's built directly into kubectl requiring no additional tools, how the base plus overlays pattern enables configuration reuse while allowing environment-specific customization, how patches provide strategic merge or JSON-based modifications for specific changes, and how generators create ConfigMaps and Secrets declaratively. Most importantly for CKAD, you'll build the practical skills needed to confidently handle Kustomize questions on the exam.
 
-Finally, you'll troubleshoot Kustomize builds - diagnosing patch conflicts, understanding build errors, and verifying output before applying to the cluster.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A running Kubernetes cluster (any distribution works)
-- kubectl v1.14+ with built-in Kustomize support
-- A terminal and text editor ready
-- Understanding that Kustomize works with standard YAML
-
-The exercises demonstrate Kustomize patterns that make multi-environment management sustainable and maintainable.
-
-## Why This Matters
-
-Kustomize is beyond core CKAD requirements but is built into kubectl, making basic familiarity valuable. Understanding Kustomize helps you manage configuration variations without copy-paste sprawl. While deep Kustomize expertise isn't needed for CKAD, basic concepts are accessible.
-
-Beyond the exam, Kustomize is widely adopted for managing Kubernetes configurations in GitOps workflows. Many organizations use Kustomize to customize applications across environments.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create awareness that Kustomize is built into kubectl
-- Reassure that basic concepts are straightforward
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Let's get started with the hands-on exercises and see Kustomize in action!

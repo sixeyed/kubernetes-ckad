@@ -1,66 +1,15 @@
-# DaemonSets - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of DaemonSets, it's time to see them in action. We've discussed when to use DaemonSets versus Deployments, and how that decision matrix helps you choose the right workload controller for your needs. Now we're going to put that knowledge into practice and watch how DaemonSets behave in a real cluster.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the upcoming exercises video, we're going to work through the API specs and create DaemonSets to see them automatically run on every node in your cluster. You'll start by deploying a DaemonSet with a HostPath volume, which is one of the most common patterns for node-level services that need to access resources specific to each node. We'll explore how multiple Pods running on the node might clash over resources, and how a DaemonSet prevents that by ensuring exactly one Pod per node.
 
----
+As we progress, you'll see updating DaemonSets in action, which behaves differently from Deployments. Where Deployments start new Pods before removing old ones, DaemonSets remove Pods first before starting replacements, which can impact your application availability. We'll also work with Pods that have init containers, showing you how init containers run before the app container starts and can share volumes to prepare the environment. This pattern is incredibly useful for startup tasks like writing configuration files or setting up directories.
 
-## Transition to Practice
+Then we'll dive into deploying to a subset of nodes using node selectors. You'll label nodes and use selectors to restrict DaemonSet Pods to specific nodes, watching how the DaemonSet controller automatically adjusts when node labels change. This is essential for scenarios where you only want your DaemonSet running on nodes with specific characteristics, like SSD storage or GPU capabilities.
 
-Welcome back! Now that we've covered the fundamental concepts of DaemonSets - what they are, how they differ from Deployments, and when to use them - it's time to see them in action.
+The exercises also include a lab challenge where you'll practice two advanced features: manually controlling when Pods get replaced using update strategies, and deleting a DaemonSet while leaving its Pods intact. There's even an extra section on deploying a debug Pod to a DaemonSet node using Pod affinity rules, which demonstrates how to co-locate Pods on the same node for troubleshooting shared HostPath volumes.
 
-In the upcoming exercises video, we're going to create DaemonSets and watch how they automatically run on every node in your cluster. You'll see how DaemonSets interact with node selectors and taints, and you'll understand the patterns for node-level services.
+Before starting the exercises video, make sure you have a Kubernetes cluster ready. The exercises work best with multiple nodes to see DaemonSets' full behavior, where you can watch Pods being distributed across your cluster. If you're using a single-node cluster like Docker Desktop, you'll still see the core concepts but with limited Pod distribution. You'll need kubectl installed and configured, and having a terminal and text editor ready will help you move quickly through the examples.
 
-## What You'll Learn
+While DaemonSets are not as common as Deployments in typical application development, understanding them is crucial for cluster-wide services. You may encounter scenarios involving logging, monitoring, or node-level networking where DaemonSets are the appropriate solution. Beyond the immediate exercises, DaemonSets are essential for infrastructure services that every production cluster relies on: log shipping with fluentd or filebeat, metrics collection with node exporters, network plugins like Calico or Weave, and storage drivers for distributed filesystems.
 
-In the hands-on exercises, we'll explore DaemonSet behavior and configuration:
-
-First, you'll create a basic DaemonSet and watch it deploy Pods to every node automatically. You'll see how DaemonSets maintain exactly one Pod per node, and you'll understand how this differs from Deployments that can place multiple Pods on the same node.
-
-Then, we'll work with node selectors to control which nodes run DaemonSet Pods. You'll label nodes and use selectors to restrict DaemonSet Pods to specific nodes - perhaps only running on nodes labeled for monitoring or logging infrastructure.
-
-Next, you'll see how DaemonSets interact with taints and tolerations. Unlike Deployments, DaemonSets can include tolerations to run on tainted nodes, which is essential for system-level services that need to run everywhere, including control plane nodes.
-
-After that, you'll explore update strategies for DaemonSets. You'll see how RollingUpdate automatically upgrades DaemonSet Pods node-by-node, and you'll understand the OnDelete strategy for manual control over updates.
-
-Finally, you'll work with real-world DaemonSet use cases like deploying monitoring agents or log collectors that need to run on every node in your cluster.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A multi-node Kubernetes cluster (or k3d/kind cluster with multiple nodes)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that single-node clusters limit DaemonSet demonstrations
-
-The exercises work best with multiple nodes to see DaemonSets' full behavior. If you're using a single-node cluster, you'll still see the core concepts but with limited Pod distribution.
-
-## Why This Matters
-
-While DaemonSets are not as common as Deployments in CKAD exam questions, understanding them is important for cluster-wide services. You may encounter scenarios involving logging, monitoring, or node-level networking where DaemonSets are the appropriate solution.
-
-Beyond the exam, DaemonSets are essential for infrastructure services. Every production cluster uses DaemonSets for log shipping, metrics collection, network plugins, and storage drivers.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing node-level deployments
-- Reassure about multi-node requirements
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+The hands-on practice ahead will give you concrete experience with these patterns, showing you not just how to create DaemonSets, but how they behave when nodes are added or removed, when labels change, and when updates are applied. This practical understanding will serve you well both in the CKAD exam and in real-world cluster management. Let's get started with the hands-on exercises!

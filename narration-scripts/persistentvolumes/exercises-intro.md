@@ -1,68 +1,15 @@
-# Persistent Volumes - Exercises Introduction
+Welcome back! Now that we've covered the fundamental concepts of persistent volumes, what they are, how they provide durable storage, and the relationship between PVs, PVCs, and storage classes, it's time to work with storage in Kubernetes. In the upcoming exercises video, we're going to create persistent volume claims, bind them to persistent volumes, and use them in pods for data persistence. You'll see how Kubernetes separates storage provisioning from storage consumption, and we'll explore the API specs that make this all possible.
 
-**Duration:** 2-3 minutes
-**Format:** Talking head or screen with terminal visible
-**Purpose:** Bridge from concepts to hands-on practice
+In the hands-on exercises, we'll work through the complete storage lifecycle starting with something you might not expect. We'll first look at data in the container's writeable layer to understand what happens when you don't use persistent storage at all. You'll see how data written to a container's filesystem disappears when the container restarts, which helps explain why we need better solutions. Then we'll move on to pod storage in emptyDir volumes, where you'll discover how to create storage that persists across container restarts but is still tied to the pod lifecycle. This is perfect for caches and temporary data that you want to survive individual container failures but don't need to keep forever.
 
----
+After understanding these simpler approaches, we'll dive into external storage with persistent volume claims, which is where things get really interesting. You'll create PVCs to request storage, specifying storage size and access modes, and you'll see how Kubernetes finds and binds matching persistent volumes. You'll understand the claiming process and how PVCs abstract storage details from pods, making your applications portable across different storage backends. We'll mount PVCs in pods as volumes, and you'll see how pods reference PVCs by name, how volume mounts connect storage to container file paths, and how data persists across pod restarts and even pod replacements.
 
-## Transition to Practice
+You'll work with different access modes including read-write-once for single node access, read-write-many for multiple nodes sharing storage, and read-only-many for shared read access. You'll see how access modes affect pod scheduling and data sharing patterns. We'll explore dynamic provisioning with storage classes, where you'll create PVCs that reference a storage class, triggering automatic persistent volume creation. You'll see how this eliminates manual PV management in cloud environments and makes storage consumption incredibly simple.
 
-Welcome back! Now that we've covered the fundamental concepts of Persistent Volumes - what they are, how they provide durable storage, and the relationship between PVs, PVCs, and StorageClasses - it's time to work with storage in Kubernetes.
+Before starting the exercises video, make sure you have a Kubernetes cluster with a working storage class, most clusters have a default one already configured. You'll need kubectl installed and configured, a terminal and text editor ready, and an understanding that storage behavior varies by cluster type. The exercises work with standard Kubernetes storage patterns, cloud clusters use cloud storage, local clusters use hostPath or local volumes, but the concepts remain the same across environments.
 
-In the upcoming exercises video, we're going to create PersistentVolumeClaims, bind them to PersistentVolumes, and use them in Pods for data persistence. You'll see how Kubernetes separates storage provisioning from storage consumption.
+There's also a lab challenge where you'll get to apply what you've learned independently. You'll work with different volume types and discover some interesting relationships between pods and the underlying node filesystem. If you get stuck, there are hints and solutions available, but try to work through it yourself first. For those who want to go deeper, there's an extra section on manual PVC management with PVs where you'll take ownership of the persistent volume lifecycle, work with local volumes, use node selectors to control where storage gets created, and understand more advanced scenarios that you might encounter in production.
 
-## What You'll Learn
+Persistent volumes are core CKAD exam content. You'll be asked to create PVCs, mount them in pods, and potentially troubleshoot storage binding issues. The exam expects you to understand PVC syntax and mounting patterns without hesitation. Beyond the exam, persistent storage is essential for stateful applications. Databases, file servers, and any application that stores data relies on persistent volumes for data durability across pod restarts and cluster maintenance. Understanding how to properly configure and use persistent storage is fundamental to running production workloads on Kubernetes.
 
-In the hands-on exercises, we'll work through the complete storage lifecycle:
-
-First, you'll create PersistentVolumeClaims to request storage. You'll specify storage size and access modes, and you'll see how Kubernetes finds and binds matching PersistentVolumes. You'll understand the claiming process and how PVCs abstract storage details from Pods.
-
-Then, we'll mount PVCs in Pods as volumes. You'll see how Pods reference PVCs by name, how volumeMounts connect storage to container file paths, and how data persists across Pod restarts. You'll understand that multiple Pods can share PVCs if access modes permit.
-
-Next, you'll work with different access modes: ReadWriteOnce (single node), ReadWriteMany (multiple nodes), and ReadOnlyMany. You'll see how access modes affect Pod scheduling and data sharing patterns.
-
-After that, you'll explore dynamic provisioning with StorageClasses. You'll create PVCs that reference a StorageClass, triggering automatic PersistentVolume creation. You'll see how this eliminates manual PV management in cloud environments.
-
-You'll also work with storage capacity and reclaim policies. You'll see what happens when PVCs request more storage than available, how retain and delete policies affect PV lifecycle, and how to expand PVCs when supported by the StorageClass.
-
-Finally, you'll troubleshoot common storage issues. You'll diagnose Pods stuck in Pending due to PVC binding failures, understand "volume not found" errors, and verify PVC-to-PV bindings.
-
-## Getting Ready
-
-Before starting the exercises video, make sure you have:
-- A Kubernetes cluster with a working StorageClass (most clusters have default)
-- kubectl installed and configured
-- A terminal and text editor ready
-- Understanding that storage behavior varies by cluster type
-
-The exercises work with standard Kubernetes storage patterns. Cloud clusters use cloud storage, local clusters use hostPath or local volumes. The concepts remain the same across environments.
-
-## Why This Matters
-
-PersistentVolumes are core CKAD exam content. You'll be asked to create PVCs, mount them in Pods, and potentially troubleshoot storage binding issues. The exam expects you to understand PVC syntax and mounting patterns.
-
-Beyond the exam, persistent storage is essential for stateful applications. Databases, file servers, and any application that stores data relies on PersistentVolumes for data durability across Pod restarts.
-
-Let's get started with the hands-on exercises!
-
----
-
-## Recording Notes
-
-**Visual Setup:**
-- Can be talking head, screen capture with small webcam overlay, or just terminal
-- Should feel like a quick transition, not a full lesson
-
-**Tone:**
-- Encouraging and energizing
-- Create excitement for seeing data persistence
-- Reassure about storage complexity
-
-**Timing:**
-- Opening: 30 sec
-- What You'll Learn: 1.5 min
-- Getting Ready: 30 sec
-- Why This Matters: 30 sec
-
-**Total: ~3 minutes**
+Let's get started with the hands-on exercises and see how storage really works in Kubernetes!
