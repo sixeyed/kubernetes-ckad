@@ -1,0 +1,288 @@
+# Consuming ConfigMaps as Volume Mounts
+# Different methods for mounting config files into containers
+
+---
+# ConfigMap with multiple file-like entries
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-files-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    events {
+      worker_connections 1024;
+    }
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      server {
+        listen 8080;
+        location / {
+          root /usr/share/nginx/html;
+          index index.html;
+        }
+      }
+    }
+
+  app.properties: |
+    server.port=8080
+    server.shutdown=graceful
+    database.pool.size=10
+    cache.enabled=true
+    logging.level=info
+
+  config.json: |
+    {
+      "database": {
+        "host": "postgres.default.svc.cluster.local",
+        "port": 5432
+      },
+      "features": {
+        "darkMode": true,
+        "notifications": false
+      }
+    }
+---
+# Method 1: Mount ENTIRE ConfigMap as directory
+# All keys become files in the mounted directory
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-volume-all
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== ConfigMap mounted as directory ==="
+      ls -la /config/
+      echo ""
+      echo "nginx.conf:"
+      cat /config/nginx.conf
+      echo ""
+      echo "app.properties:"
+      cat /config/app.properties
+      echo ""
+      echo "config.json:"
+      cat /config/config.json
+      sleep 3600
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-files-config
+---
+# Method 2: Mount SPECIFIC keys from ConfigMap
+# Only selected keys are mounted as files
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-volume-selective
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Selective files from ConfigMap ==="
+      ls -la /config/
+      echo ""
+      echo "Only nginx.conf and app.properties are mounted:"
+      cat /config/nginx.conf
+      echo ""
+      cat /config/app.properties
+      sleep 3600
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-files-config
+      items:
+      - key: nginx.conf
+        path: nginx.conf
+      - key: app.properties
+        path: app.properties
+      # config.json is NOT mounted
+---
+# Method 3: Mount with CUSTOM FILE NAMES and PERMISSIONS
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-volume-custom
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Custom file names and permissions ==="
+      ls -la /config/
+      echo ""
+      echo "webserver.conf (from nginx.conf key):"
+      cat /config/webserver.conf
+      sleep 3600
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-files-config
+      items:
+      - key: nginx.conf
+        path: webserver.conf  # Custom filename
+        mode: 0644  # Custom permissions
+      - key: app.properties
+        path: application.properties
+        mode: 0600  # Read-only for owner
+      defaultMode: 0644  # Default for other files
+---
+# Method 4: Using subPath to mount SINGLE FILE without overwriting directory
+# Critical for mounting files into existing directories (e.g., /etc/nginx/)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-volume-subpath
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+    volumeMounts:
+    # Mount single file using subPath - doesn't overwrite /etc/nginx/
+    - name: nginx-config
+      mountPath: /etc/nginx/nginx.conf  # Specific file path
+      subPath: nginx.conf  # Key from ConfigMap
+    # Can mount other files from same ConfigMap
+    - name: app-config
+      mountPath: /app/config.json
+      subPath: config.json
+  volumes:
+  - name: nginx-config
+    configMap:
+      name: app-files-config
+  - name: app-config
+    configMap:
+      name: app-files-config
+---
+# Method 5: Multiple ConfigMaps in single Pod
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: database-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  db.conf: |
+    host=postgres.default.svc.cluster.local
+    port=5432
+    database=myapp
+    pool_size=10
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cache-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  redis.conf: |
+    host=redis.default.svc.cluster.local
+    port=6379
+    max_connections=50
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-multiple-configmaps
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Multiple ConfigMaps mounted ==="
+      echo "Application config:"
+      ls -la /config/app/
+      echo ""
+      echo "Database config:"
+      cat /config/database/db.conf
+      echo ""
+      echo "Cache config:"
+      cat /config/cache/redis.conf
+      sleep 3600
+    volumeMounts:
+    - name: app-config
+      mountPath: /config/app
+    - name: db-config
+      mountPath: /config/database
+    - name: cache-config
+      mountPath: /config/cache
+  volumes:
+  - name: app-config
+    configMap:
+      name: app-files-config
+  - name: db-config
+    configMap:
+      name: database-config
+  - name: cache-config
+    configMap:
+      name: cache-config
+---
+# Method 6: Read-only ConfigMap mounts
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-volume-readonly
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Testing read-only ConfigMap ==="
+      cat /config/nginx.conf
+      echo ""
+      echo "Attempting to write (should fail):"
+      echo "test" > /config/test.txt 2>&1 || echo "FAILED: Read-only file system"
+      sleep 3600
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+      readOnly: true  # Explicitly read-only
+  volumes:
+  - name: config-volume
+    configMap:
+      name: app-files-config

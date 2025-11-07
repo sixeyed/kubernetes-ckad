@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-ambassador
+  labels:
+    app: myapp
+    pattern: ambassador
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Application container started"
+      while true; do
+        # Application connects to localhost:8080 (ambassador proxy)
+        # instead of directly to external service
+        echo "App making request via ambassador at $(date)"
+        wget -q -O- http://localhost:8080/api || true
+        sleep 30
+      done
+  - name: ambassador
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+    volumeMounts:
+    - name: ambassador-config
+      mountPath: /etc/nginx/nginx.conf
+      subPath: nginx.conf
+  volumes:
+  - name: ambassador-config
+    configMap:
+      name: ambassador-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ambassador-config
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  nginx.conf: |
+    events {
+      worker_connections 1024;
+    }
+    http {
+      server {
+        listen 8080;
+
+        location /api {
+          # Ambassador proxies requests to external service
+          # App doesn't need to know the actual URL
+          proxy_pass http://httpbin.org/get;
+          proxy_set_header Host httpbin.org;
+        }
+      }
+    }

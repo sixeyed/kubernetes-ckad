@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-hardened
+  labels:
+    app: production-secure
+    kubernetes.courselabs.co: pods
+spec:
+  # Pod-level security context
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+    seccompProfile:
+      type: RuntimeDefault
+
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+
+    # Container-level security context (most restrictive)
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      runAsUser: 1000
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop:
+        - ALL
+        add:
+        - NET_BIND_SERVICE  # Allow binding to privileged ports
+
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+
+    volumeMounts:
+    - name: cache
+      mountPath: /var/cache/nginx
+    - name: run
+      mountPath: /var/run
+    - name: tmp
+      mountPath: /tmp
+    - name: config
+      mountPath: /etc/nginx/conf.d
+      readOnly: true
+
+  volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+  - name: config
+    configMap:
+      name: nginx-config
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  labels:
+    kubernetes.courselabs.co: pods
+data:
+  default.conf: |
+    server {
+      listen 8080;  # Non-privileged port
+      location / {
+        root /usr/share/nginx/html;
+        index index.html;
+      }
+    }
+---
+# Example showing different security contexts
+apiVersion: v1
+kind: Pod
+metadata:
+  name: security-context-demo
+  labels:
+    app: security-demo
+    kubernetes.courselabs.co: pods
+spec:
+  securityContext:
+    # These apply to all containers
+    runAsUser: 1000
+    runAsGroup: 3000
+    fsGroup: 2000
+
+  containers:
+  - name: security-context-demo-1
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Container 1 Security Context ==="
+      echo "User ID: $(id -u)"
+      echo "Group ID: $(id -g)"
+      echo "Groups: $(id -G)"
+      echo "Creating file in /data/..."
+      echo "test" > /data/test.txt
+      ls -la /data/test.txt
+      sleep 3600
+    volumeMounts:
+    - name: data
+      mountPath: /data
+
+  - name: security-context-demo-2
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Container 2 Security Context ==="
+      echo "User ID: $(id -u)"
+      echo "Group ID: $(id -g)"
+      echo "Reading file created by container 1..."
+      cat /data/test.txt || echo "Cannot read file"
+      sleep 3600
+    securityContext:
+      # Override pod-level runAsUser
+      runAsUser: 2000
+    volumeMounts:
+    - name: data
+      mountPath: /data
+
+  volumes:
+  - name: data
+    emptyDir: {}

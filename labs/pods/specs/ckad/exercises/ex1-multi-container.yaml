@@ -1,0 +1,51 @@
+# Exercise 1: Multi-Container Pod
+#
+# Create a Pod with two containers that share data:
+# 1. An nginx web server that serves content from /usr/share/nginx/html
+# 2. A sidecar container that fetches content every 30 seconds using wget
+#
+# Requirements:
+# - Pod name: content-server
+# - Container 1 (nginx): image nginx:alpine, port 80
+# - Container 2 (fetcher): image busybox:latest
+# - Shared volume at /usr/share/nginx/html (nginx) and /content (fetcher)
+# - Fetcher should download from http://httpbin.org/html every 30 seconds
+# - Add appropriate labels: app=content-server, kubernetes.courselabs.co=pods
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: content-server
+  labels:
+    app: content-server
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: shared-content
+      mountPath: /usr/share/nginx/html
+
+  - name: fetcher
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "<h1>Content Fetcher Active</h1>" > /content/index.html
+      while true; do
+        echo "Fetching content at $(date)..."
+        wget -q -O /content/index.html http://httpbin.org/html || echo "Fetch failed"
+        echo "Next fetch in 30 seconds..."
+        sleep 30
+      done
+    volumeMounts:
+    - name: shared-content
+      mountPath: /content
+
+  volumes:
+  - name: shared-content
+    emptyDir: {}

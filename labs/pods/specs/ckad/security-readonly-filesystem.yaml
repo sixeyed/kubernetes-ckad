@@ -1,0 +1,76 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readonly-filesystem
+  labels:
+    app: secure-app
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+        - ALL
+    volumeMounts:
+    # nginx needs writable directories for runtime files
+    - name: cache
+      mountPath: /var/cache/nginx
+    - name: run
+      mountPath: /var/run
+    - name: tmp
+      mountPath: /tmp
+  volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: readonly-filesystem-app
+  labels:
+    app: custom-app
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Testing Read-Only Filesystem ==="
+
+      # This should succeed - reading from filesystem
+      echo "Reading /etc/hostname: $(cat /etc/hostname)"
+
+      # This will fail - root filesystem is read-only
+      echo "Attempting to write to /test.txt..."
+      echo "test" > /test.txt 2>&1 || echo "FAILED: Cannot write to read-only filesystem"
+
+      # This should succeed - writing to mounted volume
+      echo "Attempting to write to /data/test.txt..."
+      echo "test" > /data/test.txt && echo "SUCCESS: Wrote to writable volume"
+
+      sleep 3600
+    securityContext:
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 1000
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    emptyDir: {}

@@ -1,0 +1,233 @@
+# Job and CronJob Time Limits
+# Understanding timeouts, deadlines, and TTL
+
+---
+# activeDeadlineSeconds - Maximum time Job can run
+# Job terminates after this time, regardless of completion status
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-with-deadline
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  activeDeadlineSeconds: 30  # Job killed after 30 seconds
+  template:
+    spec:
+      containers:
+      - name: long-task
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting long task..."
+          sleep 60  # Tries to sleep for 60s but killed at 30s
+          echo "This won't print"
+      restartPolicy: Never
+
+# Test: Job will fail with reason "DeadlineExceeded"
+# kubectl apply -f time-limits.yaml
+# kubectl get job job-with-deadline --watch
+# kubectl describe job job-with-deadline  # Check for DeadlineExceeded
+---
+# TTL (Time To Live) - Automatic cleanup of finished Jobs
+# Job automatically deleted after specified seconds
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-with-ttl
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  ttlSecondsAfterFinished: 100  # Delete 100s after completion/failure
+  template:
+    spec:
+      containers:
+      - name: task
+        image: busybox:latest
+        command: ['sh', '-c', 'echo "Task done"; sleep 10']
+      restartPolicy: Never
+
+# Test: Job and its Pods auto-deleted 100 seconds after completion
+# kubectl apply -f time-limits.yaml
+# kubectl get job job-with-ttl --watch
+# Wait 100 seconds after completion
+# kubectl get job job-with-ttl  # Should be gone
+---
+# startingDeadlineSeconds - Deadline for starting missed CronJobs
+# If CronJob can't start within this time, it's counted as missed
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-with-deadline
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  schedule: "*/1 * * * *"  # Every minute
+  startingDeadlineSeconds: 200  # Must start within 200s of scheduled time
+
+  # If CronJob controller is down, jobs scheduled during downtime are missed
+  # if their scheduled time + startingDeadlineSeconds has passed
+
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: task
+            image: busybox:latest
+            command: ['sh', '-c', 'date']
+          restartPolicy: Never
+
+# Scenario: If CronJob controller is down for 5 minutes (300s),
+# and startingDeadlineSeconds is 200:
+# - Jobs scheduled more than 200s ago are marked as missed
+# - Recent jobs (within 200s) will still run when controller recovers
+---
+# Combined example: activeDeadlineSeconds + TTL
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-deadline-and-ttl
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  activeDeadlineSeconds: 20  # Must complete within 20 seconds
+  ttlSecondsAfterFinished: 60  # Auto-delete 60s after finish/fail
+  backoffLimit: 2
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting at $(date)"
+          sleep 15
+          echo "Completed at $(date)"
+      restartPolicy: Never
+
+# This job:
+# 1. Runs for 15 seconds (within 20s deadline)
+# 2. Completes successfully
+# 3. Gets auto-deleted after 60 seconds
+---
+# CronJob with all time-related fields
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cronjob-comprehensive
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  schedule: "*/5 * * * *"  # Every 5 minutes
+  startingDeadlineSeconds: 300  # Start within 5 minutes of schedule
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 240  # Each job must complete in 4 minutes
+      ttlSecondsAfterFinished: 600  # Jobs deleted after 10 minutes
+      backoffLimit: 3
+
+      template:
+        spec:
+          containers:
+          - name: task
+            image: busybox:latest
+            command:
+            - sh
+            - -c
+            - |
+              echo "Job started at $(date)"
+              sleep 30
+              echo "Job completed at $(date)"
+          restartPolicy: OnFailure
+---
+# Example: Long-running job with timeout
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-backup
+  labels:
+    kubernetes.courselabs.co: jobs
+    app: backup
+spec:
+  activeDeadlineSeconds: 1800  # 30 minute timeout
+  backoffLimit: 1  # Only retry once
+  ttlSecondsAfterFinished: 86400  # Keep for 24 hours
+
+  template:
+    spec:
+      containers:
+      - name: backup
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Starting database backup at $(date)"
+          # Simulating backup (replace with actual backup command)
+          for i in $(seq 1 10); do
+            echo "Backing up table $i of 10..."
+            sleep 10
+          done
+          echo "Backup completed at $(date)"
+      restartPolicy: Never
+---
+# Example: Quick job with fast cleanup
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: quick-task
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  activeDeadlineSeconds: 10  # Must finish in 10 seconds
+  ttlSecondsAfterFinished: 30  # Clean up after 30 seconds
+  backoffLimit: 0  # No retries
+
+  template:
+    spec:
+      containers:
+      - name: task
+        image: busybox:latest
+        command: ['sh', '-c', 'echo "Quick task"; date']
+      restartPolicy: Never
+---
+# Scenario: Preventing missed CronJobs
+# Use startingDeadlineSeconds to handle controller restarts
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: critical-hourly-job
+  labels:
+    kubernetes.courselabs.co: jobs
+    criticality: high
+spec:
+  schedule: "0 * * * *"  # Every hour
+  startingDeadlineSeconds: 3600  # Start within 1 hour
+
+  # If CronJob controller is down:
+  # - Jobs can still start up to 1 hour after scheduled time
+  # - Prevents missing critical hourly jobs
+
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: task
+            image: busybox:latest
+            command:
+            - sh
+            - -c
+            - |
+              echo "Hourly task executed at $(date)"
+              echo "Scheduled for: $(date -d '@$(( $(date +%s) / 3600 * 3600 ))')"
+          restartPolicy: Never

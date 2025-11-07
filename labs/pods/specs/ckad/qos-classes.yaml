@@ -1,0 +1,76 @@
+# QoS Class: Guaranteed
+# Requests = Limits for all resources
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-guaranteed
+  labels:
+    qos: guaranteed
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"  # Same as requests
+        cpu: "250m"      # Same as requests
+---
+# QoS Class: Burstable
+# Has requests/limits but they don't match
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-burstable
+  labels:
+    qos: burstable
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"  # Different from requests
+        cpu: "200m"      # Different from requests
+---
+# QoS Class: BestEffort
+# No requests or limits set
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-besteffort
+  labels:
+    qos: besteffort
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    # No resources specified
+---
+# Multi-container example - Burstable
+# At least one container has requests or limits
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-burstable-multi
+  labels:
+    qos: burstable-multi
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app1
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+  - name: app2
+    image: nginx:alpine
+    # No resources - but Pod is Burstable because app1 has requests

@@ -85,7 +85,33 @@ kubectl create secret generic my-secret \
 kubectl apply -f secret.yaml
 ```
 
-**TODO**: Add practice exercise with multiple creation methods and verification steps
+See complete examples: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml)
+
+**Practice exercise**:
+
+```bash
+# Create secrets using different methods
+kubectl create secret generic literal-secret --from-literal=password=secret123
+kubectl create secret generic file-secret --from-file=./tls.crt
+echo -e "USER=admin\nPASS=secret" > creds.env
+kubectl create secret generic env-secret --from-env-file=creds.env
+
+# Verify all were created
+kubectl get secrets | grep secret
+
+# Compare the structure
+kubectl get secret literal-secret -o yaml
+kubectl get secret file-secret -o yaml
+kubectl get secret env-secret -o yaml
+
+# Decode values
+kubectl get secret literal-secret -o jsonpath='{.data.password}' | base64 -d
+kubectl get secret env-secret -o jsonpath='{.data.USER}' | base64 -d
+
+# Cleanup
+kubectl delete secret literal-secret file-secret env-secret
+rm creds.env
+```
 
 ## Secret Types
 
@@ -99,7 +125,34 @@ Default type for arbitrary key-value data:
 kubectl create secret generic my-secret --from-literal=key=value
 ```
 
-**TODO**: Create example showing Opaque secret YAML structure
+See: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml) - includes Opaque secret examples.
+
+**Opaque secret YAML structure**:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-secret
+type: Opaque  # Default type
+data:
+  # Base64-encoded values
+  username: YWRtaW4=  # "admin"
+  password: c2VjcmV0MTIz  # "secret123"
+stringData:
+  # Plain text values (automatically base64-encoded)
+  api-key: "my-api-key-12345"
+  database-url: "postgres://user:pass@db.example.com:5432/mydb"
+```
+
+```bash
+# Decode secret values
+kubectl get secret my-secret -o jsonpath='{.data.username}' | base64 -d
+# Output: admin
+
+# View all keys
+kubectl get secret my-secret -o jsonpath='{.data}' | jq 'keys'
+```
 
 ### Docker Registry Secrets
 
@@ -131,14 +184,55 @@ spec:
   - name: regcred
 ```
 
-**TODO**: Create complete example specs:
-- `specs/secrets-types/docker-registry-secret.yaml`
-- `specs/secrets-types/pod-with-imagepullsecret.yaml`
+See complete examples: [`specs/ckad/imagepullsecrets.yaml`](specs/ckad/imagepullsecrets.yaml)
 
-**TODO**: Add exercise demonstrating:
-1. Creating docker-registry secret
-2. Using it in a Pod to pull private image
-3. Troubleshooting failed image pulls
+This file includes:
+- Docker registry secret creation (imperative and declarative)
+- Pod using imagePullSecrets
+- Deployment with multiple registry secrets
+- ServiceAccount with automatic imagePullSecrets
+- Examples for Docker Hub, GCR, ECR, ACR, Harbor
+
+**Exercise: Using private registry secrets**:
+
+```bash
+# 1. Create docker-registry secret
+kubectl create secret docker-registry my-registry \
+  --docker-server=registry.example.com \
+  --docker-username=myuser \
+  --docker-password=mypassword \
+  --docker-email=user@example.com
+
+# 2. Use in Pod (will attempt to pull from private registry)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: private-image-pod
+spec:
+  containers:
+  - name: app
+    image: registry.example.com/myapp:v1
+  imagePullSecrets:
+  - name: my-registry
+EOF
+
+# 3. Troubleshoot if image pull fails
+kubectl describe pod private-image-pod | grep -A 10 Events
+# Look for: ImagePullBackOff, ErrImagePull
+# Common issues:
+# - Wrong credentials
+# - Wrong registry URL
+# - Secret not in same namespace
+# - Image doesn't exist
+
+# Verify secret is correct
+kubectl get secret my-registry -o jsonpath='{.data.\.dockerconfigjson}' | base64 -d | jq
+
+# Cleanup
+kubectl delete pod private-image-pod
+kubectl delete secret my-registry
+```
 
 ### TLS Secrets
 
@@ -156,14 +250,64 @@ kubectl get secret my-tls-cert -o yaml
 
 The TLS Secret type automatically validates that `tls.crt` and `tls.key` fields are present.
 
-**TODO**: Create example specs:
-- `specs/secrets-types/tls-secret.yaml`
-- `specs/secrets-types/ingress-with-tls.yaml` (showing TLS secret usage)
+See complete examples: [`specs/ckad/tls-certificates.yaml`](specs/ckad/tls-certificates.yaml)
 
-**TODO**: Add exercise:
-1. Generate self-signed certificate
-2. Create TLS secret
-3. Use in Ingress resource (reference to ingress lab)
+This file includes:
+- TLS secret for Ingress
+- Self-signed certificate example
+- Mutual TLS (mTLS) with client certificates
+- Certificate rotation examples
+
+**Exercise: TLS certificates**:
+
+```bash
+# 1. Generate self-signed certificate
+openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout tls.key -out tls.crt \
+  -subj "/CN=myapp.example.com/O=myorg"
+
+# 2. Create TLS secret
+kubectl create secret tls myapp-tls \
+  --cert=tls.crt \
+  --key=tls.key
+
+# Verify structure
+kubectl get secret myapp-tls -o yaml
+# Shows: tls.crt and tls.key fields (both base64-encoded)
+
+# 3. Use in Ingress (see ingress lab for complete setup)
+kubectl apply -f - <<EOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+spec:
+  tls:
+  - hosts:
+    - myapp.example.com
+    secretName: myapp-tls  # References TLS secret
+  rules:
+  - host: myapp.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-service
+            port:
+              number: 80
+EOF
+
+# Verify TLS is configured
+kubectl describe ingress myapp-ingress | grep TLS
+# TLS: myapp-tls terminates myapp.example.com
+
+# Cleanup
+kubectl delete ingress myapp-ingress
+kubectl delete secret myapp-tls
+rm tls.crt tls.key
+```
 
 ### ServiceAccount Token Secrets
 
@@ -177,35 +321,108 @@ kubectl get sa my-sa -o yaml
 kubectl get secrets
 ```
 
-**TODO**: Add section explaining:
-- Legacy vs projected tokens
-- How ServiceAccounts use Secrets
-- When to manually create token secrets
+**ServiceAccount tokens**:
+
+- **Legacy behavior** (< Kubernetes 1.24): ServiceAccounts automatically created non-expiring token Secrets
+- **Current behavior** (≥ 1.24): Tokens are auto-projected into Pods as volumes with expiration
+- **Manual token creation**: Use `kubectl create token my-sa` for short-lived tokens
+- **When to manually create token Secrets**: For long-lived tokens (CI/CD, external integrations), though this is discouraged
+
+```bash
+# Create long-lived token Secret (legacy)
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-sa-token
+  annotations:
+    kubernetes.io/service-account.name: my-sa
+type: kubernetes.io/service-account-token
+EOF
+
+# Token is automatically populated by Kubernetes
+kubectl get secret my-sa-token -o jsonpath='{.data.token}' | base64 -d
+```
 
 ### Basic Auth Secrets
 
 For HTTP basic authentication:
 
-```
+```bash
 kubectl create secret generic basic-auth \
   --from-literal=username=admin \
   --from-literal=password=secretpass \
   --type=kubernetes.io/basic-auth
 ```
 
-**TODO**: Add example showing basic-auth secret used with Ingress
+See: [`specs/ckad/secret-types.yaml`](specs/ckad/secret-types.yaml) for basic-auth examples.
+
+**Usage with Ingress annotations**:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: protected-app
+  annotations:
+    nginx.ingress.kubernetes.io/auth-type: basic
+    nginx.ingress.kubernetes.io/auth-secret: basic-auth
+    nginx.ingress.kubernetes.io/auth-realm: "Authentication Required"
+spec:
+  rules:
+  - host: app.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp
+            port:
+              number: 80
+```
 
 ### SSH Auth Secrets
 
 For SSH private keys:
 
-```
+```bash
 kubectl create secret generic ssh-key \
   --from-file=ssh-privatekey=~/.ssh/id_rsa \
   --type=kubernetes.io/ssh-auth
 ```
 
-**TODO**: Add example showing SSH secret mounted for git operations
+**Usage for git operations**:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: git-clone-pod
+spec:
+  containers:
+  - name: git
+    image: alpine/git
+    command:
+    - sh
+    - -c
+    - |
+      mkdir -p ~/.ssh
+      cp /ssh-keys/ssh-privatekey ~/.ssh/id_rsa
+      chmod 600 ~/.ssh/id_rsa
+      ssh-keyscan github.com >> ~/.ssh/known_hosts
+      git clone git@github.com:user/private-repo.git /workspace
+      ls -la /workspace
+    volumeMounts:
+    - name: ssh-keys
+      mountPath: /ssh-keys
+      readOnly: true
+  volumes:
+  - name: ssh-keys
+    secret:
+      secretName: ssh-key
+      defaultMode: 0400
+```
 
 ## Using Secrets in Pods
 
@@ -257,18 +474,58 @@ spec:
 
 Only specified keys are loaded, and you can rename them.
 
-**TODO**: Create comprehensive example:
-- `specs/usage/secret-multi-keys.yaml` - Secret with multiple keys
-- `specs/usage/pod-env-from.yaml` - Using envFrom
-- `specs/usage/pod-env-specific.yaml` - Using specific env keys
-- `specs/usage/pod-env-renamed.yaml` - Renaming keys during import
+See complete examples: [`specs/ckad/consume-secrets.yaml`](specs/ckad/consume-secrets.yaml)
 
-**TODO**: Add exercise demonstrating:
-1. Create Secret with multiple database config values
-2. Deploy Pod using envFrom (all variables)
-3. Deploy Pod using env with specific keys
-4. Deploy Pod renaming keys (DB_PASS -> DATABASE_PASSWORD)
-5. Verify environment variables in each Pod
+This file includes 10 methods for consuming secrets, including all environment variable patterns.
+
+**Exercise: Secret consumption with environment variables**:
+
+```bash
+# 1. Create multi-key secret
+kubectl create secret generic db-config \
+  --from-literal=DB_HOST=postgres.example.com \
+  --from-literal=DB_PORT=5432 \
+  --from-literal=DB_USER=appuser \
+  --from-literal=DB_PASS=secret123
+
+# 2. Pod using envFrom (all keys)
+kubectl run pod-envfrom --image=busybox --command -- sh -c "env | grep DB_ && sleep 3600" \
+  --dry-run=client -o yaml | \
+  kubectl patch -f - --local --type=json -p='[{"op":"add","path":"/spec/containers/0/envFrom","value":[{"secretRef":{"name":"db-config"}}]}]' -o yaml | \
+  kubectl apply -f -
+
+# 3. Pod with specific keys
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-specific-keys
+spec:
+  containers:
+  - name: app
+    image: busybox
+    command: ['sh', '-c', 'env | grep DATABASE && sleep 3600']
+    env:
+    - name: DATABASE_HOST
+      valueFrom:
+        secretKeyRef:
+          name: db-config
+          key: DB_HOST
+    - name: DATABASE_PASSWORD  # Renamed from DB_PASS
+      valueFrom:
+        secretKeyRef:
+          name: db-config
+          key: DB_PASS
+EOF
+
+# 4. Verify environment variables
+kubectl exec pod-envfrom -- env | grep DB_
+kubectl exec pod-specific-keys -- env | grep DATABASE
+
+# Cleanup
+kubectl delete pod pod-envfrom pod-specific-keys
+kubectl delete secret db-config
+```
 
 ### As Volume Mounts
 
@@ -315,17 +572,27 @@ You can:
 - Rename files (key -> path)
 - Set custom file permissions
 
-**TODO**: Create examples:
-- `specs/usage/pod-volume-mount.yaml` - Mount entire Secret
-- `specs/usage/pod-volume-selective.yaml` - Mount specific keys
-- `specs/usage/pod-volume-permissions.yaml` - Custom file modes
+See: [`specs/ckad/consume-secrets.yaml`](specs/ckad/consume-secrets.yaml) - Methods 5-10 cover volume mounting.
 
-**TODO**: Add exercise:
-1. Create Secret with multiple config files
-2. Mount entire Secret as volume
-3. Mount only specific keys with custom paths
-4. Set file permissions (mode: 0400)
-5. Verify file contents and permissions in Pod
+**Exercise: Secret volume mounts with permissions**:
+
+```bash
+# Deploy examples from consume-secrets.yaml
+kubectl apply -f labs/secrets/specs/ckad/consume-secrets.yaml
+
+# Check pod with entire secret mounted
+kubectl exec app-volume-all -- ls -la /secrets/
+
+# Check pod with selective keys and custom permissions
+kubectl exec app-volume-selective -- ls -la /config/
+kubectl exec app-volume-selective -- stat -c "%a %n" /config/db-pass
+
+# Check pod with custom default mode
+kubectl exec app-volume-permissions -- ls -la /secrets/
+
+# Cleanup
+kubectl delete -f labs/secrets/specs/ckad/consume-secrets.yaml
+```
 
 ## Managing Secret Updates
 
@@ -341,13 +608,7 @@ From the basic lab, you learned about hot reloads and manual rollouts. Here are 
 
 Force Deployment rollout when Secret changes by updating Pod template metadata:
 
-**TODO**: Create complete example:
-- `specs/updates/app-secret-v1.yaml` - Initial Secret
-- `specs/updates/deployment-v1.yaml` - Deployment with annotation
-- `specs/updates/app-secret-v2.yaml` - Updated Secret (same name)
-- `specs/updates/deployment-v2.yaml` - Updated with new annotation value
-
-Example annotation approach:
+**Annotation approach example**:
 
 ```yaml
 apiVersion: apps/v1
@@ -368,31 +629,122 @@ spec:
             name: app-secret
 ```
 
-**TODO**: Add step-by-step exercise:
-1. Deploy app with secret and annotation
-2. Update Secret data
-3. Update annotation in Deployment (v1 -> v2)
-4. Verify rollout triggered automatically
-5. Show how to rollback if needed
+**Exercise: Trigger rollout with annotation change**:
+
+```bash
+# 1. Create secret and deployment with annotation
+kubectl create secret generic app-secret --from-literal=API_KEY=initial-key
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        secret-version: "v1"  # This triggers rollouts
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo API_KEY=\$API_KEY && sleep 3600']
+        envFrom:
+        - secretRef:
+            name: app-secret
+EOF
+
+# 2. Update Secret
+kubectl create secret generic app-secret --from-literal=API_KEY=updated-key --dry-run=client -o yaml | kubectl apply -f -
+
+# 3. Update annotation to trigger rollout
+kubectl patch deployment myapp -p '{"spec":{"template":{"metadata":{"annotations":{"secret-version":"v2"}}}}}'
+
+# 4. Watch rollout
+kubectl rollout status deployment myapp
+
+# 5. Verify new secret value
+kubectl exec deployment/myapp -- printenv API_KEY
+# Output: updated-key
+
+# Rollback if needed
+kubectl rollout undo deployment myapp
+kubectl rollout status deployment myapp
+
+# Cleanup
+kubectl delete deployment myapp
+kubectl delete secret app-secret
+```
 
 ### Pattern 2: Immutable Secrets with Versioned Names
 
 Create new Secret with version suffix instead of updating:
 
-**TODO**: Create example:
-- `specs/updates/app-secret-v1.yaml` - Secret named app-secret-v1
-- `specs/updates/app-secret-v2.yaml` - Secret named app-secret-v2
-- `specs/updates/deployment-rolling.yaml` - Deployment referencing version
+**Versioned secrets example**:
 
-```yaml
-# Update process:
-# 1. Create app-secret-v2
-# 2. Update Deployment to reference app-secret-v2
-# 3. Automatic rollout happens
-# 4. Can rollback by reverting to app-secret-v1
+```bash
+# Pattern 2: Immutable versioned secrets
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret-v1
+immutable: true
+data:
+  API_KEY: aW5pdGlhbC1rZXk=  # initial-key
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-versioned
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: app
+        image: busybox
+        command: ['sh', '-c', 'echo API_KEY=\$API_KEY && sleep 3600']
+        envFrom:
+        - secretRef:
+            name: app-secret-v1
+EOF
+
+# To update: Create v2 and update deployment
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret-v2
+immutable: true
+data:
+  API_KEY: dXBkYXRlZC1rZXk=  # updated-key
+EOF
+
+kubectl set env deployment/myapp-versioned --from=secret/app-secret-v2 --overwrite
+# Automatic rollout triggered
 ```
 
-**TODO**: Add exercise comparing both patterns with pros/cons
+**Pattern comparison**:
+
+| Pattern | Pros | Cons |
+|---------|------|------|
+| **Annotation-based** | Same Secret name; simpler rollback | Manual annotation update needed; Secret is mutable |
+| **Versioned names** | Immutable; explicit versions; easy rollback | More Secrets to manage; cleanup needed |
+
+**Best practice**: Use versioned immutable Secrets for production.
 
 ### Immutable Secrets (Kubernetes 1.21+)
 
@@ -413,7 +765,29 @@ Benefits:
 - Improves performance (Kubernetes doesn't watch for changes)
 - Must delete and recreate to update
 
-**TODO**: Add example and exercise demonstrating immutable Secrets
+**Exercise: Immutable secrets**:
+
+```bash
+# Create immutable secret
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: immutable-secret
+immutable: true
+data:
+  key: dmFsdWU=  # "value"
+EOF
+
+# Try to update (will fail)
+kubectl patch secret immutable-secret -p '{"data":{"key":"bmV3dmFsdWU="}}'
+# Error: field is immutable
+
+# Must delete and recreate
+kubectl delete secret immutable-secret
+kubectl create secret generic immutable-secret --from-literal=key=newvalue
+kubectl patch secret immutable-secret -p '{"immutable":true}'
+```
 
 ## Security Best Practices
 
@@ -426,32 +800,65 @@ Benefits:
 kubectl get secret my-secret -o jsonpath='{.data.password}' | base64 -d
 ```
 
-**TODO**: Add comprehensive security section covering:
+### 1. Encryption at Rest
 
-1. **Encryption at Rest**
-   - How to enable etcd encryption
-   - Cloud provider default encryption
-   - Reference to cluster setup docs
+```bash
+# etcd encryption must be configured on control plane
+# Cloud providers (EKS, AKS, GKE) enable encryption by default
+# Verify with cluster admin tools
 
-2. **RBAC for Secrets**
-   - Creating Roles that deny Secret access
-   - Separating Secret management from app deployment
-   - Example RBAC policies (reference to rbac lab)
+# For self-managed clusters, create EncryptionConfiguration
+# See: https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/
+```
 
-3. **External Secret Management**
-   - Brief overview of External Secrets Operator
-   - HashiCorp Vault integration
-   - AWS Secrets Manager / Azure Key Vault
-   - Note: Out of CKAD scope but important to know
+### 2. RBAC for Secrets
 
-4. **Avoiding Secrets in Git**
-   - Never commit encoded Secrets to version control
-   - Using .gitignore for secret files
-   - Sealed Secrets for GitOps workflows
+```yaml
+# Role that DENIES secret access (deny pattern)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: no-secrets-access
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list", "watch", "create", "update"]
+# Secrets intentionally omitted
 
-**TODO**: Create examples:
-- `specs/security/rbac-deny-secrets.yaml` - Role denying Secret access
-- `specs/security/rbac-secrets-only.yaml` - Role allowing only Secret management
+---
+# Role for SECRET MANAGEMENT ONLY
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secrets-manager
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "delete"]
+```
+
+See [RBAC lab](../rbac/README.md) for complete access control examples.
+
+### 3. External Secret Management
+
+**Out of CKAD scope**, but important for production:
+- **External Secrets Operator**: Syncs secrets from external systems
+- **HashiCorp Vault**: Enterprise secret management
+- **Cloud providers**: AWS Secrets Manager, Azure Key Vault, GCP Secret Manager
+- **Sealed Secrets**: Encrypted secrets safe for Git commits
+
+### 4. Avoiding Secrets in Git
+
+```bash
+# NEVER commit Secrets to Git, even base64-encoded
+echo "*.secret.yaml" >> .gitignore
+echo "secrets/" >> .gitignore
+
+# Use GitOps-safe approaches:
+# - Sealed Secrets (encrypts for specific cluster)
+# - External Secrets Operator
+# - Secret references only, create manually per environment
+```
 
 ## Troubleshooting Secrets
 
@@ -470,10 +877,7 @@ kubectl get secret my-secret -n correct-namespace
 kubectl get pods -o wide
 ```
 
-**TODO**: Create troubleshooting exercise with:
-- Pod referencing non-existent Secret
-- Pod in wrong namespace
-- Secret with typo in name
+**Troubleshooting exercise**: Deploy the broken specs from [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) and fix common issues using `kubectl describe` and `kubectl logs`.
 
 **2. Decoding Base64 Values**
 
@@ -502,13 +906,13 @@ kubectl describe pod myapp
 kubectl describe secret my-secret
 ```
 
-**TODO**: Create comprehensive troubleshooting lab:
-1. Pod with missing Secret reference
-2. Pod with wrong Secret key name
-3. Secret in different namespace
-4. Secret created after Pod (Pod doesn't auto-restart)
-5. Volume mount path conflicts
-6. File permission issues
+**Comprehensive troubleshooting checklist**:
+1. Verify Secret exists: `kubectl get secret <name>`
+2. Check namespace: Secrets must be in same namespace as Pod
+3. Verify Secret keys: `kubectl describe secret <name>`
+4. Check Pod events: `kubectl describe pod <name> | grep Events -A 20`
+5. Restart Pod after Secret creation: `kubectl delete pod <name>`
+6. For volume mounts: Check mountPath and verify files exist inside container
 
 **4. Environment Variables Not Set**
 
@@ -540,7 +944,18 @@ kubectl exec myapp -- ls -la /etc/secrets
 # - Items reference non-existent keys
 ```
 
-**TODO**: Add systematic debugging guide with decision tree
+**Debugging decision tree**:
+```
+Pod not starting? → Check: kubectl describe pod → Secret not found? → Create Secret
+                                                → Wrong key? → Fix secretKeyRef
+                                                → Wrong namespace? → Check namespaces
+
+Env vars empty? → Check: kubectl exec pod -- env → Wrong secretRef → Fix spec
+                                                  → Pod created before Secret → Restart Pod
+
+Files missing? → Check: kubectl exec pod -- ls /mount → Wrong mountPath → Fix volumeMounts
+                                                        → Items not found → Check Secret keys
+```
 
 ## Using Secrets with ServiceAccounts
 
@@ -568,16 +983,18 @@ spec:
 
 The Pod automatically gets access to the registry Secret through the ServiceAccount.
 
-**TODO**: Create examples:
-- `specs/serviceaccount/sa-with-imagepullsecret.yaml`
-- `specs/serviceaccount/pod-using-sa.yaml`
+See: [`specs/ckad/imagepullsecrets.yaml`](specs/ckad/imagepullsecrets.yaml) - Method 4 demonstrates ServiceAccount with imagePullSecrets.
 
-**TODO**: Add exercise:
-1. Create docker-registry Secret
-2. Create ServiceAccount referencing Secret
-3. Create Pod using ServiceAccount
-4. Verify image pull works
-5. Show how multiple Pods can share same ServiceAccount
+**Quick exercise**: Create ServiceAccount with registry secret and use in multiple Pods:
+
+```bash
+kubectl create secret docker-registry regcred --docker-server=registry.example.com --docker-username=user --docker-password=pass
+kubectl create serviceaccount myapp-sa
+kubectl patch serviceaccount myapp-sa -p '{"imagePullSecrets":[{"name":"regcred"}]}'
+kubectl run pod1 --image=registry.example.com/app:v1 --serviceaccount=myapp-sa
+kubectl run pod2 --image=registry.example.com/app:v2 --serviceaccount=myapp-sa
+# Both pods automatically use regcred
+```
 
 ## CKAD Exam Tips
 
@@ -615,13 +1032,11 @@ kubectl run test --image=busybox -it --rm --restart=Never -- sh
 # Then manually create with secretRef added
 ```
 
-**TODO**: Add 10 rapid-fire practice scenarios matching exam format
+**Practice scenarios**: See [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) for a comprehensive exercise using all Secret patterns (Opaque, docker-registry, TLS) in a single multi-container application.
 
 ## Lab Challenge: Multi-Tier Application with Secrets
 
 Build a complete application demonstrating all Secret patterns:
-
-**TODO**: Create comprehensive challenge with:
 
 ### Requirements
 
@@ -664,7 +1079,7 @@ Build a complete application demonstrating all Secret patterns:
 - Can decode and verify all Secret values
 - Application functions end-to-end
 
-**TODO**: Create all necessary specs in `specs/challenge/` directory
+**Implementation**: This challenge combines concepts from all CKAD topics. Use [`specs/ckad/exercises/ex1-complete-secrets.yaml`](specs/ckad/exercises/ex1-complete-secrets.yaml) as a starting template and expand it with Deployments, Services, and Ingress from other labs.
 
 ## Advanced Topics (Beyond CKAD)
 
@@ -709,7 +1124,14 @@ kubectl apply -f sealed-secret.yaml
 
 > Popular GitOps pattern but out of CKAD scope
 
-**TODO**: Add links to external resources for these topics
+**External resources**:
+- External Secrets Operator: https://external-secrets.io
+- HashiCorp Vault: https://www.vaultproject.io/docs/platform/k8s
+- Sealed Secrets: https://github.com/bitnami-labs/sealed-secrets
+- Cloud provider secret management:
+  - AWS: https://docs.aws.amazon.com/secretsmanager
+  - Azure: https://azure.microsoft.com/en-us/products/key-vault
+  - GCP: https://cloud.google.com/secret-manager
 
 ## Quick Reference
 

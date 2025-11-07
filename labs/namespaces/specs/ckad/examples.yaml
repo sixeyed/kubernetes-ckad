@@ -1,0 +1,335 @@
+# Namespaces for CKAD
+# Resource isolation, quotas, and cross-namespace communication
+
+---
+# Basic Namespace with Labels
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: development
+  labels:
+    environment: dev
+    team: backend
+    kubernetes.courselabs.co: namespaces
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+  labels:
+    environment: prod
+    team: backend
+    kubernetes.courselabs.co: namespaces
+---
+# Namespace with Resource Quotas
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: dev-quota
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+---
+# Namespace with LimitRange (default limits for pods)
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: dev-limits
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  limits:
+  - default:  # Default limits
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:  # Default requests
+      cpu: "100m"
+      memory: "128Mi"
+    max:  # Maximum allowed
+      cpu: "2"
+      memory: "2Gi"
+    min:  # Minimum required
+      cpu: "50m"
+      memory: "64Mi"
+    type: Container
+  - max:  # Per-pod limits
+      cpu: "4"
+      memory: "4Gi"
+    type: Pod
+---
+# Cross-Namespace Service Communication
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  namespace: production
+  labels:
+    app: database
+    kubernetes.courselabs.co: namespaces
+spec:
+  selector:
+    app: database
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Connecting to database in production namespace"
+      # Service DNS: <service>.<namespace>.svc.cluster.local
+      echo "Database URL: database.production.svc.cluster.local:5432"
+      # Short form also works from different namespace
+      nslookup database.production
+      sleep 3600
+---
+# NetworkPolicy for Cross-Namespace Access
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-dev
+  namespace: production
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    # Allow from development namespace
+    - namespaceSelector:
+        matchLabels:
+          environment: dev
+      podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+---
+# Service Account per Namespace
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-sa
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-role
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "configmaps"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: app-rolebinding
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+subjects:
+- kind: ServiceAccount
+  name: app-sa
+  namespace: development
+roleRef:
+  kind: Role
+  name: app-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ConfigMap in Namespace
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+data:
+  environment: "development"
+  api_url: "https://dev-api.example.com"
+  database_host: "database.production.svc.cluster.local"  # Cross-namespace reference
+---
+# Secret in Namespace
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: development
+  labels:
+    kubernetes.courselabs.co: namespaces
+type: Opaque
+stringData:
+  database_password: "dev-password"
+  api_key: "dev-api-key-123"
+---
+# Pod using Namespace resources
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-resources
+  namespace: development
+  labels:
+    app: backend
+    kubernetes.courselabs.co: namespaces
+spec:
+  serviceAccountName: app-sa
+
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'env && sleep 3600']
+
+    envFrom:
+    - configMapRef:
+        name: app-config
+    - secretRef:
+        name: app-secret
+
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+---
+# Namespace Isolation Example - Staging
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: staging
+  labels:
+    environment: staging
+    team: qa
+    kubernetes.courselabs.co: namespaces
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: staging-quota
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "10"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+# Allow DNS in isolated namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: staging
+  labels:
+    kubernetes.courselabs.co: namespaces
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Multi-Namespace Application
+# Frontend in one namespace, backend in another
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: frontend
+  labels:
+    tier: frontend
+    kubernetes.courselabs.co: namespaces
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+  labels:
+    tier: backend
+    kubernetes.courselabs.co: namespaces
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: backend
+  labels:
+    app: api
+    kubernetes.courselabs.co: namespaces
+spec:
+  selector:
+    app: api
+  ports:
+  - port: 8080
+    targetPort: 8080
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web
+  namespace: frontend
+  labels:
+    app: web
+    kubernetes.courselabs.co: namespaces
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    env:
+    - name: API_URL
+      value: "http://api.backend.svc.cluster.local:8080"

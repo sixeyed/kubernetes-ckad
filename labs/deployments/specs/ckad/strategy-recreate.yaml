@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami-recreate
+  labels:
+    app: whoami
+    kubernetes.courselabs.co: deployments
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: whoami-recreate
+  strategy:
+    type: Recreate  # All old pods terminated before new ones created
+  template:
+    metadata:
+      labels:
+        app: whoami-recreate
+        version: v1
+    spec:
+      containers:
+      - name: app
+        image: sixeyed/whoami:21.04
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "50m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami-recreate
+  labels:
+    kubernetes.courselabs.co: deployments
+spec:
+  selector:
+    app: whoami-recreate
+  ports:
+  - port: 80
+    targetPort: 80

@@ -1,0 +1,121 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probes-complete-demo
+  labels:
+    app: production-app
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    ports:
+    - containerPort: 8080
+    command:
+    - sh
+    - -c
+    - |
+      # Simulate application with startup, liveness, and readiness states
+      echo "=== Application Starting ==="
+
+      # Startup phase (slow initialization)
+      sleep 15
+      touch /tmp/started
+      echo "=== Application Started ==="
+
+      # Become ready to serve traffic
+      touch /tmp/ready
+      echo "=== Application Ready ==="
+
+      # Simulate normal operation with health tracking
+      counter=0
+      while true; do
+        # Update liveness indicator
+        date > /tmp/alive
+
+        # Simulate occasional temporary unavailability (readiness)
+        if [ $counter -eq 30 ]; then
+          echo "=== Temporary maintenance - not ready ==="
+          rm -f /tmp/ready
+          sleep 10
+          touch /tmp/ready
+          echo "=== Maintenance complete - ready again ==="
+          counter=0
+        fi
+
+        counter=$((counter + 1))
+        sleep 1
+      done
+
+    # Startup probe - gives app time to initialize
+    startupProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/started
+      initialDelaySeconds: 5
+      periodSeconds: 3
+      failureThreshold: 10  # 30 seconds max startup time
+
+    # Liveness probe - restarts if unhealthy
+    livenessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - test -f /tmp/alive && test $(expr $(date +%s) - $(stat -c %Y /tmp/alive)) -lt 10
+      periodSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+
+    # Readiness probe - removes from service if not ready
+    readinessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/ready
+      periodSeconds: 2
+      failureThreshold: 2
+      successThreshold: 1
+---
+# Example with different probe types
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probes-mixed-types
+  labels:
+    app: web-app
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+
+    # HTTP GET probe for liveness
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+        httpHeaders:
+        - name: X-Health-Check
+          value: liveness
+      initialDelaySeconds: 3
+      periodSeconds: 10
+
+    # TCP socket probe for readiness
+    readinessProbe:
+      tcpSocket:
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 5
+
+    # HTTP GET probe for startup
+    startupProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 2
+      periodSeconds: 3
+      failureThreshold: 5

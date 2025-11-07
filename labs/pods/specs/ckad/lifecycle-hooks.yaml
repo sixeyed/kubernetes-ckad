@@ -1,0 +1,210 @@
+# postStart hook - runs after container starts
+apiVersion: v1
+kind: Pod
+metadata:
+  name: poststart-hook-demo
+  labels:
+    app: lifecycle-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    lifecycle:
+      postStart:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            echo "Container started at $(date)" > /usr/share/nginx/html/index.html
+            echo "<h1>Application Ready</h1>" >> /usr/share/nginx/html/index.html
+            echo "<p>Started: $(date)</p>" >> /usr/share/nginx/html/index.html
+---
+# preStop hook - runs before container stops (graceful shutdown)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: prestop-hook-demo
+  labels:
+    app: lifecycle-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    lifecycle:
+      preStop:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            echo "Received shutdown signal at $(date)"
+            echo "Finishing in-flight requests..."
+            sleep 15
+            echo "Graceful shutdown complete"
+---
+# Both postStart and preStop hooks
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-hooks-complete
+  labels:
+    app: lifecycle-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Main application starting..."
+      # Application runs here
+      while true; do
+        echo "Application running at $(date)"
+        sleep 10
+      done
+    lifecycle:
+      postStart:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            echo "=== postStart Hook ==="
+            echo "Performing startup tasks..."
+            # Wait for dependencies
+            sleep 2
+            # Create required directories
+            mkdir -p /tmp/app/data
+            # Write startup marker
+            echo "Started at $(date)" > /tmp/app/startup
+            echo "postStart hook complete"
+
+      preStop:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            echo "=== preStop Hook ==="
+            echo "Graceful shutdown initiated at $(date)"
+            # Notify load balancer to stop sending traffic
+            echo "Draining connections..."
+            sleep 10
+            # Save state
+            echo "Saving application state..."
+            cp -r /tmp/app /tmp/backup 2>/dev/null || true
+            # Final cleanup
+            echo "Cleanup complete, ready to terminate"
+    volumeMounts:
+    - name: app-data
+      mountPath: /tmp/app
+  volumes:
+  - name: app-data
+    emptyDir: {}
+  terminationGracePeriodSeconds: 30  # Give enough time for preStop to complete
+---
+# HTTP-based lifecycle hooks
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lifecycle-http-hooks
+  labels:
+    app: lifecycle-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    lifecycle:
+      postStart:
+        httpGet:
+          path: /start
+          port: 80
+          scheme: HTTP
+      preStop:
+        httpGet:
+          path: /shutdown
+          port: 80
+          scheme: HTTP
+---
+# Real-world example: Web app with cache warming and graceful shutdown
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-with-hooks
+  labels:
+    app: production-web
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    lifecycle:
+      postStart:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            # Warm up the application cache
+            echo "Warming up cache..."
+            # Simulate cache warming by creating some files
+            mkdir -p /cache
+            echo "cache-ready" > /cache/status
+
+            # Health check until app is ready
+            for i in $(seq 1 30); do
+              if wget -q -O- http://localhost/ > /dev/null 2>&1; then
+                echo "Application ready to serve traffic"
+                break
+              fi
+              sleep 1
+            done
+
+      preStop:
+        exec:
+          command:
+          - sh
+          - -c
+          - |
+            # Graceful shutdown sequence
+            echo "Starting graceful shutdown..."
+
+            # 1. Stop accepting new connections (if supported by app)
+            echo "Stopped accepting new connections"
+
+            # 2. Wait for existing requests to complete
+            echo "Waiting for existing requests to complete..."
+            sleep 15
+
+            # 3. Flush cache/save state
+            echo "Flushing cache to disk..."
+            sync
+
+            # 4. Send notification (in real app, might call an API)
+            echo "Shutdown notification sent"
+
+            echo "Graceful shutdown complete"
+
+    volumeMounts:
+    - name: cache
+      mountPath: /cache
+
+  volumes:
+  - name: cache
+    emptyDir: {}
+
+  terminationGracePeriodSeconds: 60  # Longer grace period for shutdown

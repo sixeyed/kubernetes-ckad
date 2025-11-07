@@ -1,0 +1,232 @@
+# ConfigMap Updates and Pod Behavior
+# Understanding how ConfigMap changes affect running pods
+
+---
+# ConfigMap that will be updated
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dynamic-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  version: "1.0"
+  message: "Original configuration"
+  timestamp: "2024-01-01T00:00:00Z"
+
+  app.conf: |
+    [settings]
+    refresh_interval=30
+    debug_mode=false
+    max_connections=100
+---
+# Scenario 1: ConfigMap mounted as VOLUME
+# Changes ARE reflected in the pod (after kubelet sync period ~60s)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-volume-mount
+  labels:
+    kubernetes.courselabs.co: configmaps
+    scenario: volume-mount
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Watching for ConfigMap changes..."
+      while true; do
+        echo "=== $(date) ==="
+        echo "Version: $(cat /config/version)"
+        echo "Message: $(cat /config/message)"
+        echo "Timestamp: $(cat /config/timestamp)"
+        echo ""
+        cat /config/app.conf
+        echo ""
+        sleep 15
+      done
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: dynamic-config
+
+# TEST: Update the ConfigMap and watch the pod logs:
+# kubectl edit configmap dynamic-config
+# Change the message and version
+# kubectl logs -f pod-volume-mount
+# Changes appear after ~60 seconds (kubelet sync period)
+---
+# Scenario 2: ConfigMap as ENVIRONMENT VARIABLES
+# Changes are NOT reflected - pod must be restarted
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-env-vars
+  labels:
+    kubernetes.courselabs.co: configmaps
+    scenario: env-vars
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Environment Variables (Static) ==="
+      while true; do
+        echo "Version: $CONFIG_VERSION"
+        echo "Message: $CONFIG_MESSAGE"
+        echo "Timestamp: $CONFIG_TIMESTAMP"
+        sleep 15
+      done
+    envFrom:
+    - configMapRef:
+        name: dynamic-config
+      prefix: CONFIG_
+
+# TEST: Update the ConfigMap:
+# kubectl edit configmap dynamic-config
+# kubectl logs -f pod-env-vars
+# Values DO NOT change - must delete and recreate pod
+---
+# Scenario 3: ConfigMap with subPath
+# Changes are NOT reflected (subPath uses symlinks differently)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-subpath-mount
+  labels:
+    kubernetes.courselabs.co: configmaps
+    scenario: subpath
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        echo "=== $(date) ==="
+        cat /config/app.conf
+        echo ""
+        sleep 15
+      done
+    volumeMounts:
+    - name: config
+      mountPath: /config/app.conf
+      subPath: app.conf  # Using subPath - changes NOT reflected
+  volumes:
+  - name: config
+    configMap:
+      name: dynamic-config
+
+# TEST: Update the ConfigMap:
+# kubectl edit configmap dynamic-config
+# kubectl logs -f pod-subpath-mount
+# Changes DO NOT appear due to subPath
+---
+# Scenario 4: Application that watches for changes
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-config-watcher
+  labels:
+    kubernetes.courselabs.co: configmaps
+    scenario: config-watcher
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Application with config file watching..."
+      LAST_HASH=""
+      while true; do
+        CURRENT_HASH=$(md5sum /config/app.conf | cut -d' ' -f1)
+        if [ "$LAST_HASH" != "$CURRENT_HASH" ]; then
+          echo "=== CONFIG CHANGE DETECTED at $(date) ==="
+          cat /config/app.conf
+          echo ""
+          echo "Reloading application configuration..."
+          # App would reload config here
+          LAST_HASH=$CURRENT_HASH
+        fi
+        sleep 5
+      done
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: dynamic-config
+---
+# Best Practice: Rolling update with new ConfigMap
+# Create new ConfigMap version and update Deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-v1
+  labels:
+    kubernetes.courselabs.co: configmaps
+    version: v1
+immutable: true
+data:
+  config: "version 1 settings"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-v2
+  labels:
+    kubernetes.courselabs.co: configmaps
+    version: v2
+immutable: true
+data:
+  config: "version 2 settings with new features"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app-with-versioned-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: config-demo
+  template:
+    metadata:
+      labels:
+        app: config-demo
+        config-version: v1  # Update this when changing ConfigMap
+    spec:
+      containers:
+      - name: app
+        image: busybox:latest
+        command: ['sh', '-c', 'cat /config/config && sleep 3600']
+        volumeMounts:
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: config
+        configMap:
+          name: app-config-v1  # Change to app-config-v2 to update
+
+# To update config:
+# 1. Create new ConfigMap (app-config-v2)
+# 2. Update Deployment to use new ConfigMap
+# 3. Deployment performs rolling update automatically
+# kubectl set env deployment/app-with-versioned-config CONFIG_VERSION=v2
+# kubectl patch deployment app-with-versioned-config -p '{"spec":{"template":{"spec":{"volumes":[{"name":"config","configMap":{"name":"app-config-v2"}}]}}}}'

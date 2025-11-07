@@ -1,0 +1,224 @@
+# Exercise 5: Advanced Scheduling
+#
+# Create three Pods demonstrating different scheduling strategies:
+# 1. Pod with node affinity (required and preferred)
+# 2. Pod with pod affinity (schedule near cache pods)
+# 3. Pod with pod anti-affinity (spread across nodes)
+#
+# Requirements:
+# - Create a "cache" pod first (Redis)
+# - Pod 1: Requires SSD disk, prefers us-west region
+# - Pod 2: Wants to be on same node as cache pod
+# - Pod 3: Multiple replicas that avoid being on same node
+# - All pods: Add label kubernetes.courselabs.co=pods
+
+# First, create a cache pod to use for affinity rules
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-cache
+  labels:
+    app: cache
+    tier: backend
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: redis
+    image: redis:alpine
+    ports:
+    - containerPort: 6379
+---
+# Pod 1: Node Affinity (required + preferred)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-affinity-app
+  labels:
+    app: storage-app
+    tier: backend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    nodeAffinity:
+      # MUST have SSD disk
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: disktype
+            operator: In
+            values:
+            - ssd
+            - nvme
+      # PREFERS us-west region
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 80
+        preference:
+          matchExpressions:
+          - key: region
+            operator: In
+            values:
+            - us-west
+      - weight: 20
+        preference:
+          matchExpressions:
+          - key: region
+            operator: In
+            values:
+            - us-east
+
+  containers:
+  - name: app
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+---
+# Pod 2: Pod Affinity (schedule near cache)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-affinity-app
+  labels:
+    app: web
+    tier: frontend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cache
+          topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: web
+    image: nginx:alpine
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "100m"
+---
+# Pod 3: Pod Anti-Affinity (spread across nodes) - Multiple replicas
+apiVersion: v1
+kind: Pod
+metadata:
+  name: anti-affinity-app-1
+  labels:
+    app: distributed-app
+    tier: frontend
+    instance: "1"
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - distributed-app
+        topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: anti-affinity-app-2
+  labels:
+    app: distributed-app
+    tier: frontend
+    instance: "2"
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - distributed-app
+        topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: anti-affinity-app-3
+  labels:
+    app: distributed-app
+    tier: frontend
+    instance: "3"
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - distributed-app
+        topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Bonus: Combined affinity and anti-affinity
+apiVersion: v1
+kind: Pod
+metadata:
+  name: combined-affinity-app
+  labels:
+    app: smart-app
+    tier: backend
+    kubernetes.courselabs.co: pods
+spec:
+  affinity:
+    # Want to be near cache (same zone)
+    podAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app
+              operator: In
+              values:
+              - cache
+          topologyKey: topology.kubernetes.io/zone
+
+    # But not on same node as other smart-app instances
+    podAntiAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - smart-app
+        topologyKey: kubernetes.io/hostname
+
+  containers:
+  - name: app
+    image: nginx:alpine

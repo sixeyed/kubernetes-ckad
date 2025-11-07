@@ -1,0 +1,133 @@
+# Exercise 2: ConfigMap with Nginx using subPath
+#
+# Requirements:
+# 1. Create a ConfigMap with custom nginx.conf
+# 2. Deploy nginx with the custom config using subPath
+# 3. Don't overwrite the entire /etc/nginx/ directory
+# 4. Verify nginx starts successfully with custom config
+
+---
+# Solution:
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-custom-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes 1;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+
+      log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                      '$status $body_bytes_sent "$http_referer" '
+                      '"$http_user_agent" "$http_x_forwarded_for"';
+
+      access_log /var/log/nginx/access.log main;
+
+      sendfile on;
+      keepalive_timeout 65;
+
+      server {
+        listen 8080;  # Custom port
+        server_name _;
+
+        location / {
+          root /usr/share/nginx/html;
+          index index.html index.htm;
+        }
+
+        location /health {
+          access_log off;
+          return 200 "healthy\n";
+          add_header Content-Type text/plain;
+        }
+
+        location /config {
+          return 200 "Custom Nginx Configuration\n";
+          add_header Content-Type text/plain;
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-custom
+  labels:
+    app: nginx
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 8080
+      name: http
+
+    volumeMounts:
+    # Use subPath to mount only nginx.conf file
+    # This preserves other files in /etc/nginx/
+    - name: nginx-config
+      mountPath: /etc/nginx/nginx.conf
+      subPath: nginx.conf
+      readOnly: true
+
+    # Liveness and readiness probes
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: 8080
+      initialDelaySeconds: 3
+      periodSeconds: 5
+
+  volumes:
+  - name: nginx-config
+    configMap:
+      name: nginx-custom-config
+
+---
+# Service to access nginx
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-custom
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP
+
+# Test commands:
+# kubectl apply -f ex2-nginx-subpath.yaml
+# kubectl get pod nginx-custom
+# kubectl logs nginx-custom
+# kubectl exec nginx-custom -- nginx -t  # Test nginx config
+# kubectl exec nginx-custom -- ls -la /etc/nginx/  # Verify other files exist
+# kubectl exec nginx-custom -- cat /etc/nginx/nginx.conf  # Verify custom config
+# kubectl port-forward pod/nginx-custom 8080:8080
+# curl http://localhost:8080/health
+# curl http://localhost:8080/config

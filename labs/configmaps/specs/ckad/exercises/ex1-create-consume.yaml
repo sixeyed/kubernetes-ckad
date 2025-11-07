@@ -1,0 +1,87 @@
+# Exercise 1: Create and Consume ConfigMaps
+#
+# Requirements:
+# 1. Create a ConfigMap named 'webapp-config' with:
+#    - database_url: postgresql://db.example.com:5432/myapp
+#    - cache_ttl: 300
+#    - log_level: debug
+#    - A file 'app.properties' with multiple settings
+#
+# 2. Create a Pod that:
+#    - Uses the ConfigMap as environment variables
+#    - Also mounts the app.properties file to /config/
+#    - Runs busybox and displays both env vars and file content
+#
+# 3. Verify the configuration is correctly loaded
+
+---
+# Solution:
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webapp-config
+  labels:
+    app: webapp
+    kubernetes.courselabs.co: configmaps
+data:
+  # Simple key-value pairs
+  database_url: "postgresql://db.example.com:5432/myapp"
+  cache_ttl: "300"
+  log_level: "debug"
+
+  # File content
+  app.properties: |
+    server.port=8080
+    server.host=0.0.0.0
+    metrics.enabled=true
+    health.check.interval=30
+    request.timeout=60
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webapp-with-config
+  labels:
+    app: webapp
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Environment Variables from ConfigMap ==="
+      echo "Database URL: $database_url"
+      echo "Cache TTL: $cache_ttl"
+      echo "Log Level: $log_level"
+      echo ""
+      echo "=== ConfigMap File Mount ==="
+      echo "app.properties content:"
+      cat /config/app.properties
+      echo ""
+      echo "Verification complete!"
+      sleep 3600
+
+    # Load ConfigMap keys as environment variables
+    envFrom:
+    - configMapRef:
+        name: webapp-config
+
+    # Mount ConfigMap as volume
+    volumeMounts:
+    - name: config-volume
+      mountPath: /config
+
+  volumes:
+  - name: config-volume
+    configMap:
+      name: webapp-config
+
+# Test commands:
+# kubectl apply -f ex1-create-consume.yaml
+# kubectl logs webapp-with-config
+# kubectl exec webapp-with-config -- cat /config/app.properties
+# kubectl exec webapp-with-config -- env | grep -E "(database_url|cache_ttl|log_level)"

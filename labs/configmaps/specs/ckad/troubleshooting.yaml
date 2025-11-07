@@ -1,0 +1,281 @@
+# ConfigMap Troubleshooting Scenarios
+# Common issues and how to debug them
+
+---
+# Scenario 1: Missing ConfigMap (Pod fails to start)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-missing-configmap
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: missing-configmap
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'sleep 3600']
+    envFrom:
+    - configMapRef:
+        name: non-existent-configmap  # This ConfigMap doesn't exist
+
+# Status: Pod stays in CreateContainerConfigError
+# Debug: kubectl describe pod pod-missing-configmap
+# Solution: Create the ConfigMap or mark it as optional
+---
+# Scenario 2: Missing ConfigMap with optional flag (Pod starts successfully)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-optional-configmap
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: optional-configmap
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'echo "Started without ConfigMap" && sleep 3600']
+    envFrom:
+    - configMapRef:
+        name: non-existent-configmap
+        optional: true  # Pod starts even if ConfigMap doesn't exist
+---
+# Scenario 3: Missing ConfigMap key
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: incomplete-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  setting1: "value1"
+  setting2: "value2"
+  # missing: setting3
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-missing-key
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: missing-key
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'sleep 3600']
+    env:
+    - name: SETTING1
+      valueFrom:
+        configMapKeyRef:
+          name: incomplete-config
+          key: setting1  # Exists - OK
+    - name: SETTING3
+      valueFrom:
+        configMapKeyRef:
+          name: incomplete-config
+          key: setting3  # Doesn't exist - Pod fails
+
+# Status: CreateContainerConfigError
+# Debug: kubectl describe pod pod-missing-key
+# Solution: Add the key or make it optional
+---
+# Scenario 4: Missing key with optional flag
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-optional-key
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: optional-key
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'echo "Setting3=${SETTING3:-not set}" && sleep 3600']
+    env:
+    - name: SETTING1
+      valueFrom:
+        configMapKeyRef:
+          name: incomplete-config
+          key: setting1
+    - name: SETTING3
+      valueFrom:
+        configMapKeyRef:
+          name: incomplete-config
+          key: setting3
+          optional: true  # Pod starts, SETTING3 will be empty
+---
+# Scenario 5: ConfigMap too large (>1MB limit)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: large-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: size-limit
+data:
+  # ConfigMaps have 1MB size limit
+  # This would fail if the content exceeds 1MB:
+  large_file: |
+    # If this content > 1MB, ConfigMap creation fails
+    # Error: "metadata.annotations: Too long: must have at most 262144 bytes"
+    # Solution: Use Secrets, PersistentVolumes, or external config management
+    This is example data...
+---
+# Scenario 6: Volume mount overwrites existing directory
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: overwrite-test-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  custom.conf: "custom configuration"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-directory-overwrite
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: directory-overwrite
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    volumeMounts:
+    - name: config
+      mountPath: /etc/nginx  # This OVERWRITES entire /etc/nginx directory!
+  volumes:
+  - name: config
+    configMap:
+      name: overwrite-test-config
+
+# Problem: Mounting to /etc/nginx replaces all nginx config files
+# nginx fails to start because required configs are missing
+# Solution: Use subPath to mount only specific files
+---
+# Scenario 7: Correct approach with subPath
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-subpath-correct
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: subpath-solution
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    volumeMounts:
+    - name: config
+      mountPath: /etc/nginx/conf.d/custom.conf
+      subPath: custom.conf  # Mounts only this file, preserves directory
+  volumes:
+  - name: config
+    configMap:
+      name: overwrite-test-config
+---
+# Scenario 8: Wrong key name in volume items
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: items-test-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  correct-key: "data here"
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-wrong-key-in-items
+  labels:
+    kubernetes.courselabs.co: configmaps
+    issue: wrong-key
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'ls -la /config/ && sleep 3600']
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: items-test-config
+      items:
+      - key: wrong-key  # This key doesn't exist in ConfigMap!
+        path: file.conf
+
+# Status: Pod stays in CreateContainerConfigError
+# Debug: kubectl describe pod pod-wrong-key-in-items
+# Error: "couldn't find key wrong-key in ConfigMap"
+---
+# Scenario 9: Invalid YAML in ConfigMap data
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: yaml-test-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  config.yaml: |
+    # Valid YAML in ConfigMap
+    settings:
+      key1: value1
+      key2: value2
+    list:
+      - item1
+      - item2
+
+# Note: ConfigMap itself doesn't validate the data format
+# The consuming application must handle invalid YAML/JSON/etc.
+---
+# Scenario 10: Debugging helper pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-debug-helper
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: debug
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== ConfigMap Debugging Helper ==="
+      echo ""
+      echo "Listing all environment variables:"
+      env | sort
+      echo ""
+      echo "Listing mounted config files:"
+      find /config -type f -exec echo "File: {}" \; -exec cat {} \; -exec echo "" \;
+      echo ""
+      echo "Keeping pod alive for debugging..."
+      sleep 3600
+    envFrom:
+    - configMapRef:
+        name: app-config
+        optional: true
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: app-files-config
+      optional: true
+
+# Usage:
+# kubectl exec -it configmap-debug-helper -- sh
+# env | grep SETTING
+# cat /config/app.properties

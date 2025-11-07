@@ -1,0 +1,82 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: startup-probe-demo
+  labels:
+    app: slow-start
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: slow-startup-app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      # Simulate slow startup (e.g., loading large dataset)
+      echo "Application starting up..."
+      sleep 45  # Takes 45 seconds to start
+
+      # Mark as started
+      touch /tmp/started
+      echo "Application startup complete"
+
+      # Run application
+      while true; do
+        echo "Application running..."
+        sleep 10
+      done
+    startupProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/started
+      initialDelaySeconds: 10
+      periodSeconds: 5
+      failureThreshold: 10  # 10 failures * 5s = 50s max startup time
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/started
+      periodSeconds: 10
+      # Liveness only starts checking after startup succeeds
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: startup-http-probe
+  labels:
+    app: web-slow-start
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: web-app
+    image: nginx:alpine
+    ports:
+    - containerPort: 80
+    command:
+    - sh
+    - -c
+    - |
+      # Simulate slow initialization
+      sleep 20
+      # Then start nginx
+      nginx -g 'daemon off;'
+    startupProbe:
+      httpGet:
+        path: /
+        port: 80
+      initialDelaySeconds: 5
+      periodSeconds: 3
+      failureThreshold: 10  # 30 seconds max startup time
+    livenessProbe:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /
+        port: 80
+      periodSeconds: 5

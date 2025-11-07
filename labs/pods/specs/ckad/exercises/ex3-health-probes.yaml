@@ -1,0 +1,84 @@
+# Exercise 3: Comprehensive Health Checks
+#
+# Create a Pod with all three probe types working together:
+# - Startup probe: Allows 30 seconds for application to start
+# - Liveness probe: HTTP check on port 8080, path /healthz
+# - Readiness probe: File-based check (file must exist at /tmp/ready)
+#
+# Requirements:
+# - Pod name: health-check-demo
+# - Container: busybox with custom script that simulates app lifecycle
+# - Startup probe: Check /tmp/started file, max 30s startup time
+# - Liveness probe: Check /tmp/alive file every 5s
+# - Readiness probe: Check /tmp/ready file every 3s
+# - Add labels: app=health-demo, kubernetes.courselabs.co=pods
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: health-check-demo
+  labels:
+    app: health-demo
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Application Starting ==="
+      # Simulate slow startup (15 seconds)
+      sleep 15
+      touch /tmp/started
+      echo "=== Application Started ==="
+
+      # Now mark as alive and ready
+      touch /tmp/alive
+      touch /tmp/ready
+      echo "=== Application Ready ==="
+
+      # Run for a while
+      counter=0
+      while [ $counter -lt 100 ]; do
+        # Update alive marker
+        date > /tmp/alive
+
+        # Simulate temporary unavailability every 60 seconds
+        if [ $((counter % 60)) -eq 0 ] && [ $counter -gt 0 ]; then
+          echo "=== Entering maintenance mode ==="
+          rm -f /tmp/ready
+          sleep 10
+          touch /tmp/ready
+          echo "=== Maintenance complete ==="
+        fi
+
+        counter=$((counter + 1))
+        sleep 1
+      done
+
+    startupProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/started
+      initialDelaySeconds: 5
+      periodSeconds: 3
+      failureThreshold: 10  # 30 seconds max startup time
+
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/alive
+      periodSeconds: 5
+      failureThreshold: 3
+
+    readinessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/ready
+      periodSeconds: 3
+      failureThreshold: 2

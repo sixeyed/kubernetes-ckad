@@ -1,0 +1,371 @@
+# PersistentVolumes and PersistentVolumeClaims for CKAD
+# Complete examples covering all access modes, reclaim policies, and storage classes
+
+---
+# PersistentVolume - ReadWriteOnce (RWO)
+# Can be mounted read-write by a single node
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-rwo
+  labels:
+    type: local
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce  # RWO - single node read-write
+  persistentVolumeReclaimPolicy: Retain  # Retain | Delete | Recycle
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/pv-rwo
+    type: DirectoryOrCreate
+---
+# PersistentVolume - ReadWriteMany (RWX)
+# Can be mounted read-write by multiple nodes
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-rwx
+  labels:
+    type: nfs
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+  - ReadWriteMany  # RWX - multiple nodes read-write
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: shared
+  nfs:
+    server: nfs-server.example.com
+    path: /shared/data
+---
+# PersistentVolume - ReadOnlyMany (ROX)
+# Can be mounted read-only by multiple nodes
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-rox
+  labels:
+    type: local
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+  - ReadOnlyMany  # ROX - multiple nodes read-only
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: readonly
+  hostPath:
+    path: /mnt/data/readonly
+    type: DirectoryOrCreate
+---
+# PersistentVolumeClaim - ReadWriteOnce
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-rwo
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 500Mi  # Requesting 500Mi from 1Gi PV
+  storageClassName: manual
+---
+# Pod using PVC (RWO)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-using-pvc
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Writing to persistent volume..."
+      echo "Data written at $(date)" > /data/timestamp.txt
+      cat /data/timestamp.txt
+      echo "Persistent data will survive pod restarts"
+      sleep 3600
+    volumeMounts:
+    - name: persistent-storage
+      mountPath: /data
+  volumes:
+  - name: persistent-storage
+    persistentVolumeClaim:
+      claimName: pvc-rwo
+---
+# Dynamic Provisioning with StorageClass
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: fast-ssd
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+provisioner: kubernetes.io/no-provisioner  # Replace with actual provisioner
+parameters:
+  type: ssd
+volumeBindingMode: WaitForFirstConsumer  # or Immediate
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+---
+# PVC with dynamic provisioning
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-dynamic
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: fast-ssd  # Uses StorageClass for dynamic provisioning
+---
+# PVC with volume selector (specific PV selection)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-with-selector
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: manual
+  selector:
+    matchLabels:
+      type: local  # Selects PV with this label
+---
+# StatefulSet with volumeClaimTemplates
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  serviceName: web
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: www
+          mountPath: /usr/share/nginx/html
+  volumeClaimTemplates:
+  - metadata:
+      name: www
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: manual
+---
+# Multiple PVCs in single Pod
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-data
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: manual
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-logs
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: manual
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-multiple-pvcs
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "Data directory:" > /data/info.txt
+      ls -la /data/ >> /data/info.txt
+      echo "Log directory:" > /logs/app.log
+      ls -la /logs/ >> /logs/app.log
+      cat /data/info.txt
+      cat /logs/app.log
+      sleep 3600
+    volumeMounts:
+    - name: data-volume
+      mountPath: /data
+    - name: log-volume
+      mountPath: /logs
+  volumes:
+  - name: data-volume
+    persistentVolumeClaim:
+      claimName: pvc-data
+  - name: log-volume
+    persistentVolumeClaim:
+      claimName: pvc-logs
+---
+# PV with different reclaim policies
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-retain
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain  # PV kept after PVC deletion
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/retain
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-delete
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete  # PV deleted after PVC deletion
+  storageClassName: manual
+  hostPath:
+    path: /mnt/data/delete
+---
+# PVC with resource limits
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-with-limits
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+    limits:
+      storage: 5Gi  # Maximum storage
+  storageClassName: fast-ssd
+---
+# ReadWriteMany example for shared storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-pvc
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: shared
+---
+# Multiple Pods sharing RWX PVC
+apiVersion: v1
+kind: Pod
+metadata:
+  name: writer-pod
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  containers:
+  - name: writer
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        echo "$(hostname) - $(date)" >> /shared/data.log
+        sleep 5
+      done
+    volumeMounts:
+    - name: shared
+      mountPath: /shared
+  volumes:
+  - name: shared
+    persistentVolumeClaim:
+      claimName: shared-pvc
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: reader-pod
+  labels:
+    kubernetes.courselabs.co: persistentvolumes
+spec:
+  containers:
+  - name: reader
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      while true; do
+        echo "=== Last 5 lines ==="
+        tail -n 5 /shared/data.log
+        sleep 10
+      done
+    volumeMounts:
+    - name: shared
+      mountPath: /shared
+  volumes:
+  - name: shared
+    persistentVolumeClaim:
+      claimName: shared-pvc

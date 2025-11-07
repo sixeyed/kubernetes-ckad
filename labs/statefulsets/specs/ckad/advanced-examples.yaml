@@ -1,0 +1,292 @@
+# StatefulSets Advanced Examples for CKAD
+# Ordered deployment, persistent storage, stable network identities
+
+---
+# Complete StatefulSet with all CKAD-relevant features
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-headless
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  clusterIP: None  # Headless service for stable DNS
+  selector:
+    app: web
+  ports:
+  - port: 80
+    name: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: web-headless  # Required for stable network identity
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web
+
+  # Pod Management Policy
+  podManagementPolicy: OrderedReady  # or Parallel
+
+  # Update Strategy
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 0  # Update all pods (or set to N to update only pods >=N)
+
+  # Volume Claim Templates
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 1Gi
+
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+        ports:
+        - containerPort: 80
+          name: http
+
+        volumeMounts:
+        - name: data
+          mountPath: /usr/share/nginx/html
+
+        # Readiness probe for ordered deployment
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+# Pods created: web-0, web-1, web-2 (in order)
+# DNS names: web-0.web-headless, web-1.web-headless, web-2.web-headless
+# PVCs created: data-web-0, data-web-1, data-web-2
+---
+# Parallel Pod Management (faster scaling)
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web-parallel
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: web-headless
+  replicas: 5
+  podManagementPolicy: Parallel  # All pods created simultaneously
+  selector:
+    matchLabels:
+      app: web-parallel
+  template:
+    metadata:
+      labels:
+        app: web-parallel
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:alpine
+---
+# Partitioned Rolling Update
+# Update only pods with ordinal >= partition
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web-partitioned
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: web-headless
+  replicas: 5
+  selector:
+    matchLabels:
+      app: web-update
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 3  # Only update web-3 and web-4 (keep 0,1,2 on old version)
+  template:
+    metadata:
+      labels:
+        app: web-update
+        version: v2  # New version
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.21  # Updated image
+        ports:
+        - containerPort: 80
+
+# Use case: Canary deployment
+# 1. Set partition=3, update StatefulSet
+# 2. Pods 3,4 get new version, pods 0,1,2 stay on old version
+# 3. Test new version
+# 4. Set partition=0 to update all pods
+---
+# StatefulSet with Init Container
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: database
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+  template:
+    metadata:
+      labels:
+        app: database
+    spec:
+      initContainers:
+      - name: setup
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          # Determine if this is primary or replica based on ordinal
+          POD_ORDINAL=${HOSTNAME##*-}
+          if [ "$POD_ORDINAL" = "0" ]; then
+            echo "Initializing as PRIMARY"
+            echo "role=primary" > /data/role
+          else
+            echo "Initializing as REPLICA"
+            echo "role=replica" > /data/role
+            echo "primary=database-0.database" > /data/primary
+          fi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      containers:
+      - name: postgres
+        image: postgres:alpine
+        env:
+        - name: POSTGRES_PASSWORD
+          value: example
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        ports:
+        - containerPort: 5432
+          name: postgres
+---
+# StatefulSet with Resource Limits
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: resource-limited
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: resource-limited
+  replicas: 3
+  selector:
+    matchLabels:
+      app: limited
+  template:
+    metadata:
+      labels:
+        app: limited
+    spec:
+      containers:
+      - name: app
+        image: nginx:alpine
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+---
+# Using Pod Index in StatefulSet
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: statefulset-config
+  labels:
+    kubernetes.courselabs.co: statefulsets
+data:
+  config.sh: |
+    #!/bin/sh
+    # Extract ordinal from hostname
+    ORDINAL=${HOSTNAME##*-}
+    echo "Pod ordinal: $ORDINAL"
+
+    # Different behavior based on ordinal
+    case $ORDINAL in
+      0)
+        echo "I am the leader (pod-0)"
+        # Leader-specific initialization
+        ;;
+      *)
+        echo "I am a follower (pod-$ORDINAL)"
+        # Follower connects to leader
+        echo "Leader address: ${HOSTNAME%-*}-0.${SERVICE_NAME}"
+        ;;
+    esac
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ordered-app
+  labels:
+    kubernetes.courselabs.co: statefulsets
+spec:
+  serviceName: ordered-app
+  replicas: 3
+  selector:
+    matchLabels:
+      app: ordered
+  template:
+    metadata:
+      labels:
+        app: ordered
+    spec:
+      containers:
+      - name: app
+        image: busybox:latest
+        env:
+        - name: SERVICE_NAME
+          value: "ordered-app"
+        command:
+        - sh
+        - -c
+        - |
+          ORDINAL=${HOSTNAME##*-}
+          echo "Starting pod $HOSTNAME (ordinal: $ORDINAL)"
+          if [ "$ORDINAL" = "0" ]; then
+            echo "I am the primary"
+          else
+            echo "Connecting to primary: ${HOSTNAME%-*}-0.ordered-app"
+          fi
+          sleep 3600

@@ -1,0 +1,164 @@
+# Tolerations allow pods to schedule on tainted nodes
+#
+# First, taint a node (command, not in YAML):
+# kubectl taint nodes node1 env=production:NoSchedule
+# kubectl taint nodes node2 gpu=true:NoExecute
+# kubectl taint nodes node3 maintenance=true:PreferNoSchedule
+
+# Pod with toleration for production taint
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-with-toleration
+  labels:
+    app: production-app
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - key: "env"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Pod tolerating GPU node taint
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-pod
+  labels:
+    app: ml-training
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - key: "gpu"
+    operator: "Equal"
+    value: "true"
+    effect: "NoExecute"
+    tolerationSeconds: 3600  # Pod evicted after 1 hour if taint added
+  containers:
+  - name: app
+    image: tensorflow/tensorflow:latest-gpu
+---
+# Pod with multiple tolerations
+apiVersion: v1
+kind: Pod
+metadata:
+  name: multi-toleration-pod
+  labels:
+    app: flexible-app
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  # Tolerate production environment
+  - key: "env"
+    operator: "Equal"
+    value: "production"
+    effect: "NoSchedule"
+  # Tolerate high-memory nodes
+  - key: "memory"
+    operator: "Equal"
+    value: "high"
+    effect: "NoSchedule"
+  # Tolerate nodes in maintenance with PreferNoSchedule
+  - key: "maintenance"
+    operator: "Exists"
+    effect: "PreferNoSchedule"
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Pod tolerating any taint with specific key
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tolerate-any-value
+  labels:
+    app: system-pod
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - key: "node-role.kubernetes.io/control-plane"
+    operator: "Exists"
+    effect: "NoSchedule"
+  containers:
+  - name: app
+    image: nginx:alpine
+---
+# Pod tolerating all taints (use with caution!)
+apiVersion: v1
+kind: Pod
+metadata:
+  name: tolerate-all
+  labels:
+    app: debug-pod
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - operator: "Exists"  # Tolerates all taints
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'sleep 3600']
+---
+# Combined node affinity and tolerations
+# Schedule on GPU nodes that are tainted
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-with-affinity
+  labels:
+    app: ml-app
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - key: "gpu"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: gpu
+            operator: In
+            values:
+            - "true"
+          - key: gpu-type
+            operator: In
+            values:
+            - nvidia-a100
+            - nvidia-v100
+  containers:
+  - name: app
+    image: tensorflow/tensorflow:latest-gpu
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+---
+# Toleration with specific effect
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dedicated-pod
+  labels:
+    app: dedicated-app
+    kubernetes.courselabs.co: pods
+spec:
+  tolerations:
+  - key: "dedicated"
+    operator: "Equal"
+    value: "ml-workload"
+    effect: "NoSchedule"
+  - key: "dedicated"
+    operator: "Equal"
+    value: "ml-workload"
+    effect: "NoExecute"
+  nodeSelector:
+    workload: ml  # Also ensure we schedule on ML nodes
+  containers:
+  - name: app
+    image: nginx:alpine

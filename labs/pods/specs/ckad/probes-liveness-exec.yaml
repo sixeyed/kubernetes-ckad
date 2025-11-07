@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-exec-demo
+  labels:
+    app: liveness-test
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      # Create health indicator file
+      touch /tmp/healthy
+      echo "Application started and healthy"
+
+      # Run for 30 seconds, then remove health file
+      sleep 30
+      rm -f /tmp/healthy
+      echo "Application became unhealthy"
+
+      # Keep running but unhealthy
+      sleep 600
+    livenessProbe:
+      exec:
+        command:
+        - cat
+        - /tmp/healthy
+      initialDelaySeconds: 5
+      periodSeconds: 5
+      failureThreshold: 3  # Restart after 3 consecutive failures
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: liveness-exec-custom
+  labels:
+    app: custom-check
+    kubernetes.courselabs.co: pods
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      # Simulate app that writes timestamp to health file
+      while true; do
+        date > /tmp/last-heartbeat
+        sleep 5
+      done
+    livenessProbe:
+      exec:
+        command:
+        - sh
+        - -c
+        - |
+          # Check if heartbeat file was updated in last 10 seconds
+          if [ -f /tmp/last-heartbeat ]; then
+            last_update=$(stat -c %Y /tmp/last-heartbeat)
+            current=$(date +%s)
+            diff=$((current - last_update))
+            if [ $diff -lt 10 ]; then
+              exit 0
+            fi
+          fi
+          exit 1
+      initialDelaySeconds: 10
+      periodSeconds: 5
