@@ -1,0 +1,176 @@
+# Consuming ConfigMaps as Environment Variables
+# Different methods for loading config into containers
+
+---
+# ConfigMap to use in examples
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  database_host: "postgres.default.svc.cluster.local"
+  database_port: "5432"
+  database_name: "myapp"
+  redis_host: "redis.default.svc.cluster.local"
+  redis_port: "6379"
+  log_level: "info"
+  environment: "production"
+  max_connections: "100"
+---
+# Method 1: Load ALL keys as environment variables using envFrom
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-envfrom-all
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== All ConfigMap keys loaded as environment variables ==="
+      env | grep -E "(database_|redis_|log_level|environment|max_connections)" | sort
+      echo ""
+      echo "Database connection: $database_host:$database_port/$database_name"
+      echo "Redis connection: $redis_host:$redis_port"
+      echo "Environment: $environment"
+      echo "Log level: $log_level"
+      sleep 3600
+    envFrom:
+    - configMapRef:
+        name: app-config
+---
+# Method 2: Load INDIVIDUAL keys as environment variables
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-env-selective
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Selective ConfigMap keys loaded ==="
+      echo "Database Host: $DB_HOST"
+      echo "Database Port: $DB_PORT"
+      echo "Log Level: $LOG_LEVEL"
+      echo ""
+      echo "Note: Only selected keys are available"
+      sleep 3600
+    env:
+    - name: DB_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: database_host
+    - name: DB_PORT
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: database_port
+    - name: LOG_LEVEL
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: log_level
+---
+# Method 3: Mix of envFrom and individual env vars
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-env-mixed
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Mixed environment variables ==="
+      echo "From ConfigMap (all keys): $database_host, $redis_host"
+      echo "Hardcoded: $APP_VERSION"
+      echo "Override: $log_level (overridden to debug)"
+      sleep 3600
+    # Load all ConfigMap keys
+    envFrom:
+    - configMapRef:
+        name: app-config
+    # Add or override specific values
+    env:
+    - name: APP_VERSION
+      value: "1.2.3"
+    - name: log_level  # This overrides the ConfigMap value
+      value: "debug"
+---
+# Method 4: Using prefix with envFrom
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-env-prefix
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Environment variables with prefix ==="
+      env | grep "^CONFIG_" | sort
+      echo ""
+      echo "Database: $CONFIG_database_host:$CONFIG_database_port"
+      sleep 3600
+    envFrom:
+    - configMapRef:
+        name: app-config
+      prefix: CONFIG_  # All keys prefixed with "CONFIG_"
+---
+# Method 5: Handling missing ConfigMap keys gracefully
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-env-optional
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command:
+    - sh
+    - -c
+    - |
+      echo "=== Testing optional ConfigMap keys ==="
+      echo "Required key (will fail if missing): $DB_HOST"
+      echo "Optional key (won't fail if missing): $OPTIONAL_KEY"
+      sleep 3600
+    env:
+    # Required key - Pod fails if ConfigMap or key doesn't exist
+    - name: DB_HOST
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: database_host
+    # Optional key - Pod starts even if ConfigMap or key doesn't exist
+    - name: OPTIONAL_KEY
+      valueFrom:
+        configMapKeyRef:
+          name: app-config
+          key: non_existent_key
+          optional: true

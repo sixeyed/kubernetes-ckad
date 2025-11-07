@@ -1,0 +1,139 @@
+# ConfigMap Immutability
+# Immutable ConfigMaps cannot be changed after creation
+# Benefits: protection against accidental updates, performance (apiserver doesn't watch for changes)
+
+---
+# Regular mutable ConfigMap (default)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mutable-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  setting1: "value1"
+  setting2: "value2"
+# No immutable field = mutable (can be updated)
+---
+# Immutable ConfigMap (cannot be changed)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: immutable-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+immutable: true  # Once set to true, ConfigMap cannot be updated
+data:
+  setting1: "value1"
+  setting2: "value2"
+  critical_config: "DO_NOT_CHANGE"
+---
+# Example: Using immutable ConfigMap for security-critical settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: security-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+    security: critical
+immutable: true
+data:
+  # Security settings that should never change
+  tls_min_version: "1.2"
+  allowed_origins: "https://example.com,https://api.example.com"
+  session_timeout: "3600"
+  max_login_attempts: "3"
+
+  security_policy.yaml: |
+    encryption:
+      algorithm: "AES-256-GCM"
+      key_rotation_days: 90
+    authentication:
+      mfa_required: true
+      password_min_length: 12
+---
+# Example: Version-stamped immutable ConfigMaps
+# Best practice: create new ConfigMap for each version instead of updating
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-v1
+  labels:
+    kubernetes.courselabs.co: configmaps
+    version: v1
+immutable: true
+data:
+  app_version: "1.0.0"
+  feature_flag_x: "false"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config-v2
+  labels:
+    kubernetes.courselabs.co: configmaps
+    version: v2
+immutable: true
+data:
+  app_version: "2.0.0"
+  feature_flag_x: "true"  # Changed in v2
+  new_feature: "enabled"  # New in v2
+---
+# Pod using versioned immutable ConfigMap
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-with-versioned-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'env && sleep 3600']
+    envFrom:
+    - configMapRef:
+        name: app-config-v2  # Use specific version
+---
+# Comparison: Mutable vs Immutable behavior
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-mutable-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'while true; do cat /config/setting1; sleep 10; done']
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: mutable-config
+# If you update mutable-config, changes MAY appear in the pod after ~60 seconds
+# (kubelet sync period), but pod restart guarantees fresh config
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-immutable-config
+  labels:
+    kubernetes.courselabs.co: configmaps
+spec:
+  containers:
+  - name: app
+    image: busybox:latest
+    command: ['sh', '-c', 'while true; do cat /config/setting1; sleep 10; done']
+    volumeMounts:
+    - name: config
+      mountPath: /config
+  volumes:
+  - name: config
+    configMap:
+      name: immutable-config
+# immutable-config CANNOT be updated - you must delete and recreate
+# Or create a new ConfigMap with different name and update the pod

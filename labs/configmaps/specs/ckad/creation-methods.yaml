@@ -1,0 +1,130 @@
+# ConfigMap creation from different file methods
+# This demonstrates the difference in structure when using default vs custom key names
+
+---
+# Example 1: From file with default key (key = filename)
+# Command: kubectl create configmap nginx-default --from-file=nginx.conf --dry-run=client -o yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-file-default-key
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  # Key is the filename
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    events {
+      worker_connections 1024;
+    }
+    http {
+      server {
+        listen 80;
+        location / {
+          root /usr/share/nginx/html;
+        }
+      }
+    }
+---
+# Example 2: From file with custom key
+# Command: kubectl create configmap nginx-custom --from-file=webserver-config=nginx.conf --dry-run=client -o yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-file-custom-key
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  # Key is custom name, not filename
+  webserver-config: |
+    user nginx;
+    worker_processes auto;
+    events {
+      worker_connections 1024;
+    }
+    http {
+      server {
+        listen 80;
+        location / {
+          root /usr/share/nginx/html;
+        }
+      }
+    }
+---
+# Example 3: From multiple files
+# Command: kubectl create configmap app-configs --from-file=app.properties --from-file=config.json
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-multiple-files
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  app.properties: |
+    server.port=8080
+    server.shutdown=graceful
+    database.pool.size=10
+    cache.ttl=300
+
+  config.json: |
+    {
+      "application": {
+        "name": "my-app",
+        "version": "1.0.0"
+      },
+      "features": {
+        "darkMode": true,
+        "notifications": false,
+        "analytics": true
+      },
+      "limits": {
+        "maxUploadSize": 10485760,
+        "maxConnections": 100
+      }
+    }
+
+  database.yaml: |
+    database:
+      host: postgres.default.svc.cluster.local
+      port: 5432
+      name: myapp
+      pool:
+        min: 5
+        max: 20
+        timeout: 30
+---
+# Example 4: From literals
+# Command: kubectl create configmap from-literals --from-literal=key1=value1 --from-literal=key2=value2
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-literals
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  database_host: "postgres.default.svc.cluster.local"
+  database_port: "5432"
+  log_level: "info"
+  environment: "production"
+---
+# Example 5: From env file
+# Command: kubectl create configmap from-env-file --from-env-file=app.env
+# app.env contents:
+#   DATABASE_HOST=postgres
+#   DATABASE_PORT=5432
+#   LOG_LEVEL=info
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: from-env-file
+  labels:
+    kubernetes.courselabs.co: configmaps
+data:
+  # Each line in env file becomes a key-value pair
+  DATABASE_HOST: "postgres"
+  DATABASE_PORT: "5432"
+  LOG_LEVEL: "info"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  CACHE_ENABLED: "true"

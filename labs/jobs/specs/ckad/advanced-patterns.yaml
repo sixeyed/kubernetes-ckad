@@ -1,0 +1,351 @@
+# Advanced Job Patterns for CKAD
+# Indexed completion, init containers, and other advanced scenarios
+
+---
+# Indexed Completion Mode (Kubernetes 1.21+)
+# Each Pod gets a unique index from 0 to (completions - 1)
+# Useful for batch processing where each task processes specific data
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: indexed-job
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  completions: 5
+  parallelism: 2
+  completionMode: Indexed  # Each pod gets JOB_COMPLETION_INDEX env var
+
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Processing task with index: $JOB_COMPLETION_INDEX"
+          echo "Pod hostname: $(hostname)"
+          # Each pod can process different data based on index
+          case $JOB_COMPLETION_INDEX in
+            0) echo "Processing dataset A";;
+            1) echo "Processing dataset B";;
+            2) echo "Processing dataset C";;
+            3) echo "Processing dataset D";;
+            4) echo "Processing dataset E";;
+          esac
+          sleep 5
+      restartPolicy: Never
+
+# JOB_COMPLETION_INDEX is automatically set to 0, 1, 2, 3, 4
+# Pod names include the index: indexed-job-0-xxxxx, indexed-job-1-xxxxx, etc.
+---
+# NonIndexed Completion Mode (default)
+# Pods don't have specific indexes
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: non-indexed-job
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  completions: 5
+  parallelism: 2
+  completionMode: NonIndexed  # Default, no JOB_COMPLETION_INDEX
+
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Pod: $(hostname)"
+          echo "Processing generic task"
+          sleep 5
+      restartPolicy: Never
+---
+# Job with Init Container
+# Useful for setup tasks before main job runs
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-with-init
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  template:
+    spec:
+      initContainers:
+      - name: setup
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Downloading configuration..."
+          sleep 2
+          echo "config_key=value123" > /config/app.conf
+          echo "Setup complete"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+
+      containers:
+      - name: worker
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Reading configuration..."
+          cat /config/app.conf
+          echo "Processing job with config..."
+          sleep 5
+          echo "Job complete"
+        volumeMounts:
+        - name: config
+          mountPath: /config
+
+      volumes:
+      - name: config
+        emptyDir: {}
+
+      restartPolicy: Never
+---
+# Job with PersistentVolumeClaim
+# For jobs that need persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: job-storage
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-with-pvc
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  template:
+    spec:
+      containers:
+      - name: processor
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Writing results to persistent storage..."
+          date > /data/job-$(hostname).txt
+          echo "Job results saved to /data/job-$(hostname).txt"
+          cat /data/job-$(hostname).txt
+        volumeMounts:
+        - name: storage
+          mountPath: /data
+
+      volumes:
+      - name: storage
+        persistentVolumeClaim:
+          claimName: job-storage
+
+      restartPolicy: Never
+---
+# Multiple Jobs sharing PVC for batch processing
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-step-1
+  labels:
+    kubernetes.courselabs.co: jobs
+    pipeline: batch
+    step: "1"
+spec:
+  template:
+    spec:
+      containers:
+      - name: extractor
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Step 1: Extracting data..."
+          echo "data1,data2,data3" > /shared/extracted.csv
+          echo "Extraction complete"
+        volumeMounts:
+        - name: shared
+          mountPath: /shared
+      volumes:
+      - name: shared
+        persistentVolumeClaim:
+          claimName: job-storage
+      restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: batch-step-2
+  labels:
+    kubernetes.courselabs.co: jobs
+    pipeline: batch
+    step: "2"
+spec:
+  template:
+    spec:
+      containers:
+      - name: transformer
+        image: busybox:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Step 2: Transforming data..."
+          if [ -f /shared/extracted.csv ]; then
+            cat /shared/extracted.csv | tr ',' '\n' > /shared/transformed.txt
+            echo "Transformation complete"
+          else
+            echo "ERROR: extracted.csv not found"
+            exit 1
+          fi
+        volumeMounts:
+        - name: shared
+          mountPath: /shared
+      volumes:
+      - name: shared
+        persistentVolumeClaim:
+          claimName: job-storage
+      restartPolicy: Never
+---
+# Job with resource limits and requests
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: resource-limited-job
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  completions: 3
+  parallelism: 2
+
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox:latest
+        command: ['sh', '-c', 'echo "Working..."; sleep 10']
+
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+
+      restartPolicy: Never
+---
+# Job with node selector and affinity
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: gpu-job
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  template:
+    spec:
+      nodeSelector:
+        gpu: "true"  # Only schedule on nodes with gpu=true label
+
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: instance-type
+                operator: In
+                values:
+                - gpu-optimized
+
+      containers:
+      - name: ml-training
+        image: busybox:latest  # Replace with actual ML image
+        command:
+        - sh
+        - -c
+        - |
+          echo "Running ML training job"
+          echo "GPU nodes preferred"
+          sleep 30
+
+      restartPolicy: Never
+---
+# Job with Service Account for API access
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: job-service-account
+  labels:
+    kubernetes.courselabs.co: jobs
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: job-role
+  labels:
+    kubernetes.courselabs.co: jobs
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: job-rolebinding
+  labels:
+    kubernetes.courselabs.co: jobs
+subjects:
+- kind: ServiceAccount
+  name: job-service-account
+roleRef:
+  kind: Role
+  name: job-role
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: job-with-api-access
+  labels:
+    kubernetes.courselabs.co: jobs
+spec:
+  template:
+    spec:
+      serviceAccountName: job-service-account
+
+      containers:
+      - name: api-client
+        image: bitnami/kubectl:latest
+        command:
+        - sh
+        - -c
+        - |
+          echo "Job with Kubernetes API access"
+          kubectl get configmaps
+          kubectl create configmap job-output --from-literal=status=completed
+          echo "ConfigMap created successfully"
+
+      restartPolicy: Never

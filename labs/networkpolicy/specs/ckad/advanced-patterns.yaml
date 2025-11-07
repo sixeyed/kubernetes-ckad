@@ -1,0 +1,369 @@
+# Advanced NetworkPolicy Patterns for CKAD
+# Named ports, multiple policies, StatefulSets, and best practices
+
+---
+# Named Ports in NetworkPolicy
+# Use port names instead of numbers for flexibility
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-server
+  labels:
+    app: web
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  containers:
+  - name: nginx
+    image: nginx:alpine
+    ports:
+    - name: http  # Named port
+      containerPort: 80
+    - name: https  # Named port
+      containerPort: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-http-only
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: http  # Reference named port instead of 80
+    # https port (443) is blocked
+---
+# Multiple NetworkPolicies - Additive (OR logic)
+# Multiple policies affecting same pod are combined
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-frontend
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: api  # Same pods as above
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: prometheus  # Additional allowed source
+
+# Result: api pods accept traffic from BOTH frontend AND prometheus
+# NetworkPolicies are additive (union of all rules)
+---
+# NetworkPolicy for StatefulSets with stable network identities
+apiVersion: v1
+kind: Service
+metadata:
+  name: database
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  clusterIP: None  # Headless service for StatefulSet
+  selector:
+    app: database
+  ports:
+  - port: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: database
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  serviceName: database
+  replicas: 3
+  selector:
+    matchLabels:
+      app: database
+  template:
+    metadata:
+      labels:
+        app: database
+        role: db
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:alpine
+        ports:
+        - name: postgres
+          containerPort: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-policy
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from application pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: postgres
+  # Allow from other database pods (for replication)
+  - from:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: postgres
+  egress:
+  # Allow to other database pods
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: postgres
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Using endPort for port ranges (Kubernetes 1.22+)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-port-range
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: multi-port-app
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8080
+      endPort: 8090  # Allows ports 8080-8090 inclusive
+---
+# Best Practice: Microservices with NetworkPolicy
+# Each microservice has its own policy
+
+# Service 1: Frontend (public-facing)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-policy
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+    tier: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  # Allow to backend API
+  - to:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 8080
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Service 2: Backend API (internal only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-policy
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+    tier: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only from frontend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: frontend
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # To database
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+    ports:
+    - protocol: TCP
+      port: 5432
+  # To cache
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # DNS
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Service 3: Database (backend only)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-strict-policy
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+    tier: data
+spec:
+  podSelector:
+    matchLabels:
+      app: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Only from backend
+  - from:
+    - podSelector:
+        matchLabels:
+          app: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  # DNS only (no external access)
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+---
+# Deny-by-default then allow specific
+# Best practice for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector: {}  # Applies to all pods in namespace
+  policyTypes:
+  - Ingress
+  - Egress
+  # No ingress or egress rules = deny all
+---
+# Then allow specific traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-specific-traffic
+  labels:
+    kubernetes.courselabs.co: networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: myapp
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: client
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: database
+  # DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
