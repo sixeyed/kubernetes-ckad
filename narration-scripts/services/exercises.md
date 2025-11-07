@@ -1,329 +1,79 @@
-# Services - Practical Exercises Script
+# Services - Exercises Narration Script
 
 **Duration:** 15-20 minutes
-**Accompaniment:** Live terminal demonstration
-**Audience:** CKAD candidates following hands-on lab exercises
+**Format:** Screen recording with live demonstration
+**Prerequisite:** Kubernetes cluster running (Docker Desktop, k3d, or similar)
 
 ---
 
-## Introduction (0:00-0:30)
+Welcome back! In the previous video, we covered the concepts behind Kubernetes Services. Now it's time to get hands-on and explore how Services provide stable networking for Pods.
 
-Welcome to the practical exercises for Kubernetes Services. In this demo, we'll work through the hands-on lab, creating and testing different types of Services.
+Services solve a fundamental problem in Kubernetes. Every Pod has an IP address, but that IP address only applies for the life of the Pod. Replace the Pod and the new one will have a different IP address. Services provide a consistent IP address linked to a DNS name, so you can send traffic to a name rather than an IP address. You'll always use Services for routing internal and external traffic into Pods.
 
-Make sure you have a Kubernetes cluster running and kubectl configured. You should have completed the Pods lab before this one, as we'll be building on those concepts.
+## API specs
 
-All the YAML files we'll use are in the labs/services directory. Let's get started.
+Let's start by looking at the YAML structure for Services. I'll open the whoami-clusterip.yaml file in the labs/services/specs directory. This Service definition has the usual metadata with a name, and the spec needs to include the network ports and the label selector.
 
-## Setting Up Test Pods (0:30-3:00)
+The selector is a list of labels to find target Pods. In this case, it's looking for Pods with the label app equals whoami. The ports section is a list of ports to listen on, with each port having a name within Kubernetes, a port that the Service listens on, and a targetPort where traffic gets sent on the Pod.
 
-First, we need some Pods to work with. We're going to create two simple Pods - whoami and sleep. The whoami Pod runs a web service that tells us information about itself, and the sleep Pod is a utility container we'll use for testing.
+Now let's look at how Pods need to be configured to work with Services. I'll open the whoami Pod YAML. Pods need to include matching labels to receive traffic from the Service. Labels are specified in the object metadata, right here where you see the labels section with app colon whoami. Labels are arbitrary key-value pairs used for storing small pieces of useful data. You can use any keys you like, though app, component, and version are typically used for application Pods.
 
-Let's look at the Pod definitions first:
+## Run sample Pods
 
+Let's start by creating some simple Pods from definitions which contain labels. We have two Pod specs here, whoami and sleep, both in the labs/services/specs/pods directory. I'll deploy both at once by applying the entire directory. You can work with multiple objects and deploy multiple YAML manifests with kubectl by pointing to a directory.
 
-Notice the labels section in the metadata. The whoami Pod has the label "app: whoami". This label is crucial - it's how our Service will find this Pod.
+Now let's check the status for all Pods, printing all the IP addresses and labels. I'll use the wide output and show-labels flags. See how each Pod has its own IP address and the whoami Pod has the label app equals whoami? This label is crucial for Service selection.
 
-Now let's look at the sleep Pod:
+Here's something interesting about Pod networking. The Pod name has no effect on networking. Pods can't find each other by name. Let me demonstrate by running a DNS lookup inside the sleep Pod to find the whoami Pod. As you can see, it fails. The whoami name doesn't resolve because Pods don't automatically get DNS entries.
 
+## Deploy an internal Service
 
-This is a simple Pod that runs a sleep command, giving us a container we can exec into for testing.
+Kubernetes provides different types of Service for internal and external access to Pods. ClusterIP is the default and it means the Service gets an IP address which is only accessible within the cluster. It's for components to communicate internally.
 
-Let's create both Pods:
+Let's deploy the Service from the whoami-clusterip.yaml file. The Service is created successfully. Now let's print its details with get service and describe. The get and describe commands are the same for all objects. Services have the alias svc if you want to save some typing.
 
+Look at the output. The Service has its own IP address, and that is static for the life of the Service. This IP won't change unless we delete the Service itself.
 
-Kubectl can apply multiple YAML files from a directory at once. This is a handy time-saver in the CKAD exam.
+## Use DNS to find the Service
 
-Now let's check the status and see the Pod details:
+Kubernetes runs a DNS server inside the cluster and every Service gets an entry, linking the IP address to the Service name. Now if I do the same DNS lookup from the sleep Pod, looking up whoami, you'll get a response! This gets the IP address of the Service from its DNS name. Notice the first IP address shown is the Kubernetes DNS server itself.
 
+Now the Pods can communicate using DNS names. Let me curl the whoami Service from the sleep Pod. Beautiful! The sleep Pod successfully contacted the whoami application through the Service.
 
-Look at the output. Each Pod has its own IP address. The whoami Pod has the label "app=whoami" that we saw in the YAML. These are the key pieces of information we need.
+Let's demonstrate why this is so powerful. I'll recreate the whoami Pod and the replacement will have a new IP address, but the Service resolution with DNS will still work. First, let me check the current IP address, then delete the Pod using a label selector. You can use label selectors in kubectl too, which makes labels a powerful management tool.
 
-Now let's try something interesting. Can the sleep Pod find the whoami Pod by name?
+Now I'll create a replacement Pod and check its IP address. See that? Different IP address. But watch what happens when I do that DNS lookup and curl again. The Service IP address doesn't change, so if clients cache that IP they'll still work. The Service automatically routes traffic to the new Pod, even though the Pod IP changed.
 
+## Understanding external Services
 
-It fails. Even though both Pods exist, they can't find each other by name. Pod names don't create DNS entries. This is exactly the problem Services solve.
+There are two types of Service which can be accessed outside of the cluster: LoadBalancer and NodePort. They both listen for traffic coming into the cluster and route it to Pods, but they work in different ways.
 
-## Creating a ClusterIP Service (3:00-6:00)
+LoadBalancers are easier to work with, but not every Kubernetes cluster supports them. LoadBalancer Services integrate with the platform they're running on to get a real IP address. In a managed Kubernetes service in the cloud, you'll get a unique public IP address for every Service, integrated with a cloud load balancer to direct traffic to your nodes. In Docker Desktop the IP address will be localhost, and in k3d it will be a local network address.
 
-Let's create a Service to provide a stable network endpoint for the whoami Pod.
+NodePorts don't need any external setup so they work in the same way on all Kubernetes clusters. Every node in the cluster listens on the specified port and forwards traffic to Pods. The external port number must be at least thirty thousand, which is a security feature so Kubernetes components don't need to run with elevated privileges on the node.
 
-First, let's look at the Service definition:
+In this course we deploy both LoadBalancers and NodePorts for all our sample apps so you can follow along whichever Kubernetes distribution you're using.
 
+## Deploy an external Service
 
-Let me explain the important parts here. The kind is Service, which tells Kubernetes what type of resource this is.
+Let's deploy both Service types. Here are two Service definitions to make the whoami app available outside the cluster. The whoami-nodeport.yaml is for clusters which don't support LoadBalancer Services, and whoami-loadbalancer.yaml is for clusters which do. I can deploy both at once by specifying multiple files with the -f flag.
 
-The spec has a selector with "app: whoami". This is how the Service finds Pods - it looks for Pods with this label. Remember, our whoami Pod has exactly this label.
+Now let me print the details for both Services. I'll use a label selector since both have the label app equals whoami. If your cluster doesn't have LoadBalancer support, the external IP field will stay at pending forever. That's completely normal.
 
-The ports section defines how traffic flows. The Service listens on port 80, and it forwards traffic to targetPort 80 on the Pods. These happen to be the same, but they don't have to be.
+External Services also create a ClusterIP, so you can access them internally from Pods. You always need to use the Service port for communication. Let me demonstrate by calling the LoadBalancer Service on port 8080 and the NodePort Service on port 8010 from the sleep Pod. Both work! The Services all have the same label selector, so they all direct traffic to the same Pod.
 
-Let's create the Service:
+Now you can call the whoami app from your local machine. Depending on whether your cluster supports LoadBalancers, you can either curl localhost on port 8080 for the LoadBalancer, or localhost on port 30010 for the NodePort. If you're not running Kubernetes on your local machine then you'll need to use a different address. Use the node's IP address for NodePort access or the external IP address field for the LoadBalancer.
 
+## Lab
 
-Now let's examine it:
+Now it's your turn to experiment. Services are a networking abstraction. They're like routers which listen for incoming traffic and direct it to Pods. Target Pods are identified with a label selector, and there could be zero or more matches.
 
+The lab challenge asks you to create new Services and whoami Pods to test these scenarios. First, create a scenario where zero Pods match the label spec. Second, create a scenario where multiple Pods match the label spec. What happens in each case? How can you check if a Service has found any matching Pods to use as targets?
 
-Look at the TYPE column - it says ClusterIP. The CLUSTER-IP column shows the IP address assigned to this Service. This IP is stable - it won't change unless we delete the Service.
+This is critical knowledge for troubleshooting Services in the real world and on the CKAD exam. Take your time and explore both scenarios thoroughly.
 
-Let's get more details:
+## Cleanup
 
+When you're finished with the lab, cleanup is straightforward. Every YAML spec for this lab adds a label kubernetes.courselabs.co equals services. That makes it super easy to clean up by deleting all those resources. Just delete all pods and services with that label selector, and everything from this lab is removed.
 
-This shows us several important things. The Type is ClusterIP, so this is an internal-only Service. The IP is the same we saw before. The Port shows 80/TCP - that's what the Service listens on.
-
-Most importantly, look at the Endpoints section. It shows the IP address of our whoami Pod. The Service has successfully found the Pod using the label selector.
-
-## Testing Service Discovery (6:00-8:30)
-
-Now for the magic moment - let's try that DNS lookup again:
-
-
-Success! This time it works. The DNS lookup returns the Service IP address. Kubernetes automatically created a DNS entry when we created the Service.
-
-Now let's actually access the whoami service:
-
-
-Beautiful. The sleep Pod can now access whoami using its Service name. The request went to the Service IP, and the Service forwarded it to the whoami Pod.
-
-Now let's demonstrate why Services are so important. We're going to delete the whoami Pod and recreate it. The new Pod will have a different IP address, but watch what happens to the Service.
-
-First, let's see the current Pod IP:
-
-
-Note that IP address. Now let's delete the Pod:
-
-
-Notice we used a label selector with kubectl delete. Labels aren't just for Services - you can use them with kubectl commands too. This is incredibly useful for managing related resources.
-
-Now let's recreate the Pod:
-
-
-And check its IP address:
-
-
-See that? Different IP address. But let's try our curl command again:
-
-
-It still works! The Service IP didn't change, and the Service automatically updated its endpoints to route to the new Pod IP. Let's verify that:
-
-
-Same Service IP as before. The Service provides stability on top of ephemeral Pods.
-
-## Understanding External Services (8:30-10:00)
-
-Now let's talk about exposing applications outside the cluster. There are two main Service types for this - NodePort and LoadBalancer.
-
-A NodePort Service opens a specific port on every node in your cluster. Any traffic to that port on any node gets forwarded to your Pods.
-
-A LoadBalancer Service integrates with your cloud provider to create an actual load balancer. This only works in environments that support it - cloud platforms like AWS, Azure, GCP, and some local environments like Docker Desktop.
-
-Let's look at the configurations for both:
-
-
-Notice the type is NodePort, and we've specified nodePort: 30010. This means port 30010 will be opened on every node. The Service still listens on port 8010 internally, and forwards to targetPort 80 on the Pods.
-
-Now let's look at the LoadBalancer:
-
-
-The type is LoadBalancer, and it listens on port 8080. No nodePort is needed - the load balancer handles external access.
-
-We can deploy both Services at the same time:
-
-
-Now let's look at all our Services:
-
-
-We have three Services now, all routing to the same whoami Pod. The ClusterIP Service we created earlier, plus our new NodePort and LoadBalancer Services.
-
-If you're on a cluster that supports LoadBalancers, you'll see an external IP in the EXTERNAL-IP column. If not, it will show pending forever - that's normal for environments without LoadBalancer support.
-
-## Testing External Access (10:00-12:00)
-
-Here's something important to understand - NodePort and LoadBalancer Services also create a ClusterIP. This means they can be accessed both internally and externally.
-
-Let's test internal access to both Services:
-
-
-That's accessing the LoadBalancer Service internally. Notice we use the Service name and the port from the Service spec.
-
-Now the NodePort:
-
-
-Both work internally. The LoadBalancer Service listens on port 8080, the NodePort on 8010, but both forward to the same Pod.
-
-Now let's test external access from our local machine. If you're using Docker Desktop or a similar environment where localhost works:
-
-
-This accesses the LoadBalancer Service externally. If this doesn't work in your environment, don't worry - not all clusters expose localhost access.
-
-Let's try the NodePort:
-
-
-Notice we use the nodePort value - 30010 - for external access, not the Service port.
-
-If you're on a cloud cluster, you'd use the node's public IP address for NodePort access, or the LoadBalancer's external IP.
-
-## Understanding Endpoints (12:00-13:30)
-
-Let's dig deeper into how Services actually know where to send traffic.
-
-When you create a Service with a selector, Kubernetes creates an Endpoints object:
-
-
-This shows the IP addresses of all Pods that match the Service selector. Let's get more detail:
-
-
-The Addresses section lists the Pod IPs that are receiving traffic. The Ports section shows which port traffic is sent to.
-
-All three of our Services - the ClusterIP, NodePort, and LoadBalancer - have the same selector, so they all use the same Pod. That's why we see the same endpoint IP in all of them.
-
-What happens if no Pods match the selector? Let's demonstrate that.
-
-## Lab Challenge Introduction (13:30-14:00)
-
-Now it's time for you to experiment on your own. The lab challenge asks you to explore two scenarios:
-
-First, create a Service whose selector doesn't match any Pods. What happens? How can you tell that the Service has no targets?
-
-Second, create multiple whoami Pods and a Service that matches all of them. What happens when you make requests to the Service? How does it distribute traffic?
-
-These are important scenarios to understand for the CKAD exam. Service troubleshooting often comes down to checking whether endpoints exist and whether labels match.
-
-## Lab Solution Preview (14:00-16:00)
-
-Let me give you some hints without completely solving the challenge.
-
-For the first scenario, you could create a Service with a selector that doesn't match any existing Pods. Try this:
-
-
-Then check its endpoints:
-
-
-You'll see it has no endpoints. The Service exists, but it can't route traffic anywhere. If you try to access it, the connection will fail.
-
-For the second scenario, you need multiple Pods with the same labels. You could modify the whoami Pod spec to create multiple copies, or better yet, use a label selector that matches multiple Pods.
-
-Then check the endpoints:
-
-
-You'll see multiple IP addresses in the addresses list. Each time you make a request to the Service, it picks one of these Pods.
-
-Make requests in a loop and you'll see responses from different Pods:
-
-
-The Service is load balancing across all matching Pods.
-
-## Troubleshooting Tips (16:00-17:30)
-
-Let me share some troubleshooting techniques you'll need for the CKAD exam.
-
-If a Service isn't working, always check the endpoints first:
-
-
-No endpoints? Check the selector:
-
-
-Look at the Selector line and compare it to your Pod labels:
-
-
-If the labels don't match exactly, the Service won't find the Pods.
-
-For DNS issues, test from a Pod:
-
-
-If DNS fails, the problem might be with the DNS service itself or the namespace.
-
-For connectivity issues, check that your ports line up:
-- The Service port is what clients connect to
-- The targetPort must match the container port in the Pod
-- The nodePort (if used) is for external access
-
-Quick port check:
-
-
-## Cleanup (17:30-18:00)
-
-When you're done experimenting, cleanup is easy. All the resources in this lab have the label "kubernetes.courselabs.co=services":
-
-
-This deletes all Pods and Services with that label. Using labels for cleanup is a best practice - it's fast, safe, and you don't have to remember every resource you created.
-
-Let's verify everything is cleaned up:
-
-
-Should show no resources found.
-
-## Summary (18:00-19:00)
-
-Let's recap what we've demonstrated in this lab:
-
-We created Pods with labels and showed that Pods can't find each other by name without Services.
-
-We created a ClusterIP Service that uses label selectors to find Pods and provides a stable DNS name and IP address.
-
-We saw how Services automatically update their endpoints when Pods are recreated, maintaining stable networking despite Pod IP changes.
-
-We created NodePort and LoadBalancer Services for external access, and saw how they also provide internal ClusterIP access.
-
-We explored how endpoints track which Pods receive traffic from a Service.
-
-We looked at troubleshooting techniques - checking endpoints, verifying labels, and testing DNS resolution.
-
-## Next Steps (19:00-19:30)
-
-You've now seen Services in action. Make sure you complete the lab challenge to reinforce these concepts.
-
-In the next video, we'll tackle CKAD-specific scenarios including headless Services, multi-port Services, ExternalName Services, and exam-style troubleshooting exercises.
-
-Practice is key for the CKAD exam. Try creating Services using kubectl expose. Get comfortable with the imperative commands. Time yourself to see how quickly you can create and test a Service.
-
-Thank you for following along, and I'll see you in the CKAD preparation video!
-
----
-
-## Demonstration Notes
-
-**Required Setup:**
-- Kubernetes cluster (Docker Desktop, k3d, or cloud cluster)
-- kubectl configured and working
-- Terminal with clear, large font
-- Labs repository cloned locally
-
-**Pre-Demo Checklist:**
-- Clean cluster state (no conflicting resources)
-- Test all commands beforehand
-- Verify LoadBalancer support or plan alternative
-- Have YAML files readily accessible
-- Prepare for potential timing issues with pod creation
-
-**Timing Guide:**
-- Introduction: 0.5 min
-- Setting Up Test Pods: 2.5 min
-- Creating ClusterIP Service: 3 min
-- Testing Service Discovery: 2.5 min
-- Understanding External Services: 1.5 min
-- Testing External Access: 2 min
-- Understanding Endpoints: 1.5 min
-- Lab Challenge Introduction: 0.5 min
-- Lab Solution Preview: 2 min
-- Troubleshooting Tips: 1.5 min
-- Cleanup: 0.5 min
-- Summary: 1 min
-- Next Steps: 0.5 min
-
-**Total: ~19 minutes**
-
-**Command Reference:**
-
-
-**Troubleshooting During Demo:**
-- If pods take time to start, talk about pod lifecycle while waiting
-- If LoadBalancer shows pending, explain cloud vs local environments
-- If curl fails, check pod status and explain container startup time
-- Have backup commands ready for platform-specific issues
-
-**Presentation Tips:**
-- Type commands slowly and deliberately
-- Read output aloud and explain what you're looking at
-- Use cat to show YAML before applying it
-- Emphasize the cause-and-effect relationship
-- Pause after major concepts to let them sink in
-- Keep terminal output clean - clear between major sections
+That wraps up our hands-on exploration of Services. We've seen how to create ClusterIP Services for internal communication, how DNS makes Services discoverable, how external Services work with NodePort and LoadBalancer types, and how to think about Service endpoints. These are essential skills for working with Kubernetes. In the next video, we'll dive deeper into CKAD-specific scenarios including multi-port Services, headless Services, session affinity, and advanced troubleshooting techniques.

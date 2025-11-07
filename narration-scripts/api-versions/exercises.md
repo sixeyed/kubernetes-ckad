@@ -1,10 +1,7 @@
 # API Versions and Deprecations - Practical Demo
-## Narration Script for Hands-On Exercises (12-15 minutes)
+## Narration Script for Hands-On Exercises
 
----
-
-### Section 1: Environment Setup and API Discovery (3 min)
-**[00:00-03:00]**
+### Section 1: API Discovery
 
 Welcome to the hands-on demonstration of Kubernetes API versions and deprecations. In this session, we'll practice identifying API versions, working with deprecated APIs, and migrating resources to current versions.
 
@@ -26,8 +23,7 @@ You can see this deployment uses apps/v1, the current stable version.
 
 ---
 
-### Section 2: Understanding API Version Structure (2 min)
-**[03:00-05:00]**
+### Section 2: Understanding API Version Structure
 
 Let's use kubectl explain to understand API structure. This is incredibly useful for the CKAD exam.
 
@@ -43,8 +39,7 @@ You'll get an error or warning because extensions/v1beta1 for Deployment was rem
 
 ---
 
-### Section 3: Working with API Version Changes (3 min)
-**[05:00-08:00]**
+### Section 3: Working with API Version Changes
 
 Let's explore how API versions evolve using Ingress as an example. Ingress had significant changes from v1beta1 to v1.
 
@@ -67,8 +62,7 @@ For the CKAD exam, you need to recognize these structural differences. When migr
 
 ---
 
-### Section 4: Identifying Deprecated APIs in Your Cluster (2 min)
-**[08:00-10:00]**
+### Section 4: Identifying Deprecated APIs in Your Cluster
 
 Now let's find all API versions currently in use in our cluster.
 
@@ -86,8 +80,7 @@ This shows current API versions for commonly updated resources. Compare these ag
 
 ---
 
-### Section 5: Using kubectl convert (2 min)
-**[10:00-12:00]**
+### Section 5: Using kubectl convert
 
 The kubectl convert tool helps migrate manifests to new API versions. First, let's check if we have it installed.
 
@@ -108,8 +101,7 @@ For the CKAD exam, understand what kubectl convert does and its basic syntax, ev
 
 ---
 
-### Section 6: Troubleshooting API Version Issues (2 min)
-**[12:00-14:00]**
+### Section 6: Troubleshooting API Version Issues
 
 Let's practice troubleshooting common API version problems. First, let's try to apply a manifest with a wrong API version.
 
@@ -125,48 +117,44 @@ The lesson: always use current API versions. When troubleshooting, check the api
 
 ---
 
-### Section 7: Cleanup and Summary (1 min)
-**[14:00-15:00]**
+### Section 7: Lab
+
+Now let's practice what we've learned. Your challenge is to take a legacy manifest using deprecated APIs and migrate it to current versions.
+
+You'll find manifests using old API versions - they won't apply on modern clusters. Your tasks:
+- Identify which resources use deprecated APIs
+- Find the current API versions for each resource type
+- Update the manifests with correct apiVersion fields
+- Fix any schema changes required by the new versions
+- Verify the resources deploy successfully
+
+Solution approach: Use kubectl api-resources to find current versions, apply each manifest to see what fails, check kubectl explain for required fields in new versions, update the YAML files accordingly, and test with dry-run before applying.
+
+---
+
+### Section 8: Cleanup
 
 Let's clean up the resources we created.
 
-To summarize what we practiced:
-- Using kubectl api-versions and api-resources to discover supported APIs
-- Using kubectl explain to understand resource structures
-- Identifying deprecated APIs in running resources
-- Converting manifests with kubectl convert
-- Troubleshooting API version errors
+Summary: We discovered API versions using kubectl api-versions and api-resources, learned to use kubectl explain for understanding resource structures, identified deprecated APIs in our cluster, converted manifests with kubectl convert, and practiced troubleshooting API version errors.
 
-Key takeaways for CKAD:
-- Always check api-resources when unsure about the correct API version
-- Use explain to understand field requirements
-- Recognize deprecated API errors and know how to fix them
-- Practice updating manifests from old to new API versions
-
-These skills will help you avoid common pitfalls during the exam and in real-world Kubernetes operations. Thank you for following along with this demonstration.
+Key takeaways for CKAD: Always check api-resources when unsure about the correct API version, use explain to understand field requirements, recognize deprecated API errors and know how to fix them, and practice updating manifests from old to new API versions. These skills will help you avoid common pitfalls during the exam and in real-world Kubernetes operations.
 
 ---
 
 ## Recording Notes
 
-**Timing:**
-- Section 1: 3 minutes
-- Section 2: 2 minutes
-- Section 3: 3 minutes
-- Section 4: 2 minutes
-- Section 5: 2 minutes
-- Section 6: 2 minutes
-- Section 7: 1 minute
-- Total: 15 minutes
-
 **Key Points:**
-- Emphasize kubectl explain as a quick reference tool
-- Show the difference between API discovery commands
-- Demonstrate common deprecation errors
+- Emphasize kubectl explain as a quick reference tool for CKAD exam
+- Show the difference between api-versions and api-resources commands
+- Demonstrate common deprecation errors and how to fix them
 - Highlight that schema changes often accompany version changes
+- Note that kubectl convert is helpful but not always perfect
+- Stress the importance of checking apiVersion field first when troubleshooting
 
 **Visual Focus:**
-- Keep API version output visible when comparing
-- Show error messages clearly
-- Highlight the differences in YAML structure between versions
+- Keep API version output visible when comparing old and new versions
+- Show error messages clearly and explain each part
+- Highlight the differences in YAML structure between API versions
 - Display kubectl explain output for key resources
+- Demonstrate the workflow: error message to api-resources to explain to fix

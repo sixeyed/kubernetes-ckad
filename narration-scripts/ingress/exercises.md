@@ -21,6 +21,9 @@ I'm working in a Kubernetes cluster - you can use Docker Desktop, K3s, or any ot
 
 **Commands:**
 
+```powershell
+kubectl get nodes
+```
 
 ---
 

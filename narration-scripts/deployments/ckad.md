@@ -1,395 +1,149 @@
-# Deployments - CKAD Exam Preparation Script
+# Deployments - CKAD Narration Script
 
 **Duration:** 25-30 minutes
 **Format:** Screen recording with live demonstration
-**Focus:** CKAD exam scenarios and advanced deployment techniques
+**Prerequisite:** Completed basic Deployments exercises
 
 ---
 
-## Opening
+Welcome to the CKAD exam preparation module for Kubernetes Deployments. This session covers the advanced Deployment topics required for the Certified Kubernetes Application Developer exam, building on what we learned in the exercises lab.
 
-Welcome to the CKAD-focused session on Deployments. In this video, we'll go beyond the basics and cover everything you need to master Deployments for the Certified Kubernetes Application Developer exam.
+The CKAD exam expects you to work with deployment strategies including RollingUpdate and Recreate, rolling update configuration with maxSurge and maxUnavailable, advanced rollout management including pause and resume, resource requests and limits, health checks with readiness, liveness, and startup probes, multi-container patterns, advanced deployment patterns like canary and blue-green, and production best practices. Let's dive deep into each topic.
 
-The CKAD exam tests your ability to work quickly and accurately with production-ready configurations. For Deployments, this means understanding deployment strategies, health checks, resource management, advanced rollout controls, and various deployment patterns.
+## Deployment Strategies
 
-Let's dive into these advanced topics with practical examples.
+Deployments support two strategies for replacing old Pods with new ones, and you need to know both for the exam.
 
-## Deployment Strategies Overview
+The RollingUpdate strategy is the default. It gradually replaces old Pods with new ones, ensuring some Pods are always available during updates. Let me deploy an example with explicit RollingUpdate configuration. The spec includes the strategy type set to RollingUpdate, with maxSurge set to one and maxUnavailable set to zero. This ensures zero-downtime updates.
 
-Kubernetes supports two deployment strategies, and you need to know both for the exam.
+When I trigger an update by changing the image, watch what happens. The deployment creates one new pod due to maxSurge, waits for the readiness probe to pass, then terminates one old pod, and repeats until all pods are updated. At no point did we have fewer than the desired replica count because maxUnavailable is zero.
 
-The **RollingUpdate strategy** is the default. It gradually replaces old Pods with new ones, ensuring some are always available. This is what we used in the exercises video.
+The Recreate strategy is different. It terminates all existing Pods before creating new ones. This causes downtime but ensures old and new versions never run simultaneously. Let me deploy an example with Recreate strategy. The strategy is simply type Recreate with no additional parameters needed.
 
-The **Recreate strategy** terminates all Pods before creating new ones. This causes downtime but ensures old and new versions never run simultaneously.
+When I trigger an update, notice what happens. All pods terminate immediately, there's a brief period with zero running pods showing downtime, then all new pods start together, and the service is unavailable until new pods are ready. This is necessary when your application can't handle multiple versions running simultaneously, when you need to perform database migrations, when resource constraints prevent running both versions, or when the old and new versions can't share the same database.
 
-Let's see both in action.
+## Rolling Update Configuration
 
-## RollingUpdate Strategy Configuration
+Control how rolling updates behave with maxSurge and maxUnavailable settings. These parameters are critical for the exam.
 
-First, let's create a Deployment with explicit RollingUpdate configuration.
+MaxSurge is the maximum number or percentage of Pods created above the desired replica count during an update. MaxUnavailable is the maximum number or percentage of Pods that can be unavailable during an update. Let me demonstrate different configurations.
 
-The key section is the **strategy**:
-- **type: RollingUpdate** - explicitly sets the strategy
-- **maxSurge: 1** - at most 1 extra Pod during updates (25% is default)
-- **maxUnavailable: 1** - at most 1 Pod can be unavailable (25% is default)
+With maxSurge set to one and maxUnavailable set to zero, we guarantee all Pods remain available during updates. We temporarily have extra Pods beyond the replica count, and only after a new Pod is ready does an old one terminate. This is your zero-downtime guarantee and a common exam scenario.
 
-With 4 replicas, maxSurge=1 means we'll have at most 5 Pods during updates, and maxUnavailable=1 means at least 3 must be available.
-
-Let's verify it's running.
-
-Perfect! Four replicas running. Now let's trigger an update to see the strategy in action.
-
-I'll open a watch window first.
-
-And update the image in another terminal.
-
-Watch the pattern:
-- One new Pod is created (maxSurge=1)
-- Once it's ready, one old Pod is terminated
-- Another new Pod is created
-- This continues until all Pods are updated
-
-At no point did we have fewer than 3 Pods available (4 - maxUnavailable).
-
-## Zero-Downtime Configuration
-
-For critical applications, you want absolute zero downtime. Set maxUnavailable to 0.
-
-This guarantees:
-- All 4 Pods remain available during updates
-- We temporarily have 5 Pods (4 + maxSurge)
-- Only after a new Pod is ready does an old one terminate
-
-This is a common exam scenario: "Ensure zero downtime during deployments."
-
-Let me update the Deployment with this configuration.
-
-Now trigger another update.
-
-Watch carefully - you'll see 5 Pods momentarily. The extra Pod must become ready before any old Pod is removed. This is your zero-downtime guarantee.
-
-## Recreate Strategy
-
-Now let's see the Recreate strategy. This is used when you can't have multiple versions running simultaneously.
-
-The strategy is simply **type: Recreate** - no additional parameters needed.
-
-Wait for it to be ready, then watch for the update.
-
-Trigger an update.
-
-Notice the difference:
-- All three Pods terminate immediately
-- Only after termination do new Pods get created
-- There's a period with zero Pods running
-
-This causes downtime but is necessary when:
-- Your application uses a database schema that changes
-- You're releasing exclusive resources like file locks
-- The old and new versions can't share the same database
-- You have resource constraints preventing both versions
-
-For the exam, know when each strategy is appropriate.
+You can also use percentages instead of absolute numbers. With maxSurge set to fifty percent and maxUnavailable set to fifty percent, the rollout happens much faster but with less availability guarantee. For the CKAD exam, you may need to configure a zero-downtime deployment where maxUnavailable equals zero and maxSurge equals one.
 
 ## Advanced Rollout Management
 
-Let's explore advanced rollout controls that are exam topics.
+Let's explore advanced rollout controls that appear in exam scenarios.
 
-### Recording Changes with Annotations
+For recording changes, Kubernetes tracks why changes were made using annotations. The record flag is deprecated but may still appear on the exam. The better approach is using the kubernetes.io/change-cause annotation. Let me demonstrate by updating an image and setting the change-cause annotation. Now when I check the rollout history, you'll see the change cause in the output. This is valuable for tracking what changed and why.
 
-Kubernetes tracks why changes were made using annotations. The --record flag is deprecated, so use annotations instead.
+For pausing and resuming rollouts, you can pause a Deployment to make multiple changes before rolling them out together. Let me pause this deployment, then make several changes including updating the image and setting resources. When I check the Pods, nothing changed because the Deployment is paused. Now I'll resume to apply all changes in one rollout. Watch as both changes apply in a single rollout. This is useful when you need to batch multiple updates.
 
-Now check the rollout history.
+Checking rollout status is important for automation. The rollout status command blocks until the rollout completes. When it says successfully rolled out, the update is complete and all Pods are ready. For exam scripts, this ensures commands wait for completion before proceeding.
 
-You'll see the change cause in the CHANGE-CAUSE column. This is valuable for tracking what changed and why.
-
-### Pausing and Resuming Rollouts
-
-You can pause a Deployment to make multiple changes before rolling them out together.
-
-Now make several changes.
-
-Check the Pods.
-
-Nothing changed! The Deployment is paused.
-
-Now resume to apply all changes in one rollout.
-
-Watch the update.
-
-Both changes (image and resources) applied in a single rollout. This is useful when you need to batch multiple updates.
-
-### Checking Rollout Status
-
-The rollout status command blocks until the rollout completes.
-
-When it says "successfully rolled out," the update is complete and all Pods are ready.
-
-For exam scripts, this ensures commands wait for completion before proceeding.
-
-### Rolling Back to Specific Revisions
-
-You can roll back to any previous revision, not just the previous one.
-
-Let's say we want to roll back to revision 2.
-
-This jumps directly to that specific configuration. Very useful when you need to skip over several bad releases.
+For rolling back, you can rollback to any previous revision, not just the previous one. The undo command rolls back to the previous revision by default, but you can specify a particular revision with the to-revision flag. This jumps directly to that specific configuration, which is very useful when you need to skip over several bad releases.
 
 ## Resource Management
 
-Production Deployments must include resource requests and limits. This is critical for the exam.
+Production Deployments must include resource requests and limits. This is critical for the exam. The requests section guarantees minimum resources like CPU and memory. The limits section caps maximum usage.
 
-The **requests** section guarantees minimum resources:
-- 64 MiB of memory
-- 100 millicores (0.1 CPU cores)
+Let me deploy an example with resources configured. The requests specify sixty-four megabytes of memory and one hundred millicores of CPU, which is 0.1 CPU cores. The limits cap at one hundred twenty-eight megabytes and two hundred millicores.
 
-The **limits** section caps maximum usage:
-- 128 MiB of memory
-- 200 millicores (0.2 CPU cores)
+For the exam, you can set resources imperatively to save time using kubectl set resources. This is much faster than editing YAML during the exam. Let me demonstrate by setting both requests and limits in one command.
 
-For the exam, you can set resources imperatively to save time.
+Understanding QoS classes is also exam material. When I describe a Pod and check its QoS class, it shows Burstable because requests are less than limits. For Guaranteed QoS, requests must equal limits for all resources. Know the difference between requests, which are scheduler guarantees, and limits, which are enforcement boundaries.
 
-This is much faster than editing YAML during the exam.
+## Health Checks
 
-Let's verify the resources were set.
+Production deployments need health checks to ensure reliable updates. There are three types of probes you need to master.
 
-Perfect! You can see both requests and limits.
+Readiness probes determine when a Pod is ready to accept traffic. Let me deploy an example with a readiness probe configured. The probe does an HTTP GET to the root path on port 80, waits five seconds before the first check, then checks every five seconds. If the probe fails, the Pod is removed from Service endpoints.
 
-Understanding QoS classes is also exam material. Let's check.
+Watch the Pods during creation. Notice they show zero out of one ready initially, then switch to one out of one after the readiness probe succeeds. This is crucial. Without readiness probes, Pods receive traffic immediately even if they're not ready.
 
-The QoS Class is "Burstable" because requests are less than limits. For "Guaranteed" QoS, requests must equal limits for all resources.
+Liveness probes determine when to restart a container. They use a similar HTTP check but with a longer initial delay, typically fifteen seconds, and check every ten seconds. If the liveness probe fails, Kubernetes restarts the container.
 
-## Health Checks for Zero-Downtime
+Startup probes are for slow-starting containers. They have the same format but run before readiness and liveness probes. Once the startup probe succeeds, it hands off to the other probes. This prevents liveness probes from killing containers that are just slow to start.
 
-Readiness probes are critical for zero-downtime deployments. Let's create a Deployment with proper health checks.
+For the exam, know all three probe types. HTTP GET probes check an HTTP endpoint, TCP Socket probes check if a port is open, and Exec probes run a command inside the container. Practice creating all three quickly.
 
-The **readinessProbe** determines when a Pod can receive traffic:
-- HTTP GET to / on port 80
-- Waits 5 seconds before first check
-- Checks every 5 seconds
-- Pod removed from Service endpoints if it fails
+## Multi-Container Patterns
 
-The **livenessProbe** determines when to restart:
-- Same HTTP check
-- Waits 15 seconds (longer initial delay)
-- Checks every 10 seconds
-- Restarts the container if it fails
+Multi-container Pods are common in CKAD scenarios. The two main patterns are init containers and sidecar containers.
 
-Let's watch the Pods during creation.
+Init containers run to completion before app containers start. They're perfect for setup tasks. Let me show you an example where an init container downloads configuration before the main application starts. The init container runs, completes successfully, then the main container starts with the prepared configuration.
 
-Notice the Pods show 0/1 ready initially, then switch to 1/1 after the readiness probe succeeds. This is crucial - without readiness probes, Pods receive traffic immediately, even if they're not ready.
+Sidecar containers run alongside the main container. Common use cases include log shipping, metrics collection, and proxies. Let me deploy an example with a sidecar that streams logs. Both containers run simultaneously, and the sidecar can access the main container's log files through a shared volume.
 
-During rolling updates, new Pods won't receive traffic until the readiness probe passes. This ensures zero downtime.
+You can combine init containers and sidecars in the same Pod. Init containers run first in sequence, then all regular containers including sidecars start together. This pattern is powerful for complex application setups.
 
-For the exam, know all three probe types:
+## Advanced Deployment Patterns
 
-**HTTP GET probe:**
+Beyond basic rolling updates, you need to understand canary and blue-green deployments for the exam.
 
-**TCP Socket probe:**
+Canary deployments run a small percentage of traffic on the new version to test it. The strategy is to create two Deployments with different replica counts, both selected by the same Service. Let me demonstrate with a main Deployment running three replicas and a canary Deployment with one replica. Both use the same app label but different version labels. The Service selects only the app label, not the version, so it distributes traffic proportionally, about seventy-five percent to main and twenty-five percent to canary.
 
-**Exec probe:**
+When I make requests, you'll see mostly responses from the main version with occasional responses from the canary. If the canary performs well, promote it by scaling up the canary and scaling down the main. If there are issues, quickly scale back the canary.
 
-Practice creating all three quickly.
+Blue-green deployments run both versions fully but only one receives traffic at a time. You use Service label selectors to control which version receives traffic. The pattern involves creating two complete Deployments and switching the Service selector between them. This provides instant cutover with instant rollback capability.
 
-## Production-Ready Deployment
+## Production Best Practices
 
-Let's combine everything into a production-ready Deployment that would pass any exam scenario.
+Let me show you a complete production-ready Deployment that would pass any exam scenario. This Deployment has everything. It includes an appropriate replica count for high availability, zero-downtime rolling update strategy with maxUnavailable zero, resource requests and limits properly configured, readiness probe for traffic management, liveness probe for auto-healing, named ports for clarity, pinned image version not using latest, change-cause annotation for tracking, and meaningful labels for management.
 
-This Deployment has everything:
-- Appropriate replica count for HA
-- Zero-downtime rolling update strategy
-- Resource requests and limits
-- Readiness probe for traffic management
-- Liveness probe for auto-healing
-- Named port for clarity
-- Pinned image version
-- Change-cause annotation
-- Meaningful labels
+This is your template for exam questions asking for production-ready Deployments. Know this pattern by heart and be able to create it quickly.
 
-This is your template for exam questions asking for "production-ready" Deployments.
+## CKAD Lab Exercises
 
-## Canary Deployment Pattern
+The lab exercises combine multiple concepts in realistic scenarios. Each exercise tests your ability to work quickly and accurately.
 
-Canary deployments are an advanced pattern tested in the exam. You run a small percentage of traffic on the new version to test it.
+The zero-downtime deployment exercise asks you to configure a deployment ensuring no downtime during updates. You need to set maxUnavailable to zero, configure readiness probes, verify the rollout, and test that the service remains available throughout the update.
 
-The strategy: Create two Deployments with different replica counts, both selected by the same Service.
+The failed deployment recovery exercise simulates a broken deployment. You identify the failure using rollout status and describe pod, fix it with rollout undo, verify recovery with rollout status again, and check the updated history.
 
-First, the main Deployment with most replicas.
+The canary release exercise asks you to deploy a new version to a subset of pods. You create the main deployment, add a canary deployment with the same labels, verify traffic distribution, and promote or rollback as needed.
 
-Then the canary Deployment with fewer replicas.
+The multi-container pattern exercise requires a pod with init container and sidecar. You configure the init container for setup, add a sidecar for monitoring, verify both run correctly, and test the interaction between containers.
 
-Both use the label "app=whoami-canary" but different "version" labels.
-
-The Service selects only the app label, not the version.
-
-Check what we created.
-
-We have 4 total Pods: 3 main, 1 canary. The Service distributes traffic proportionally - about 75% to main, 25% to canary.
-
-Let's test it.
-
-You'll see mostly full responses (main version) with occasional short responses (canary). That's the canary receiving about 25% of traffic.
-
-If the canary performs well, promote it:
-
-Now 100% of traffic goes to the canary version. If there are issues, quickly scale back:
-
-This pattern gives you production traffic testing with minimal risk.
+The production deployment exercise combines everything. You need proper replica count, rolling update strategy, resource limits, all three probe types, appropriate labels, and change tracking annotations.
 
 ## Quick Command Reference for CKAD
 
-Let me show you time-saving imperative commands for the exam.
+Let me show you time-saving imperative commands for the exam. Create a deployment quickly with kubectl create deployment. Update the image with kubectl set image. Scale with kubectl scale. Set resources with kubectl set resources. Expose as a service with kubectl expose. Check rollout status, view history, and rollback with the kubectl rollout commands. Restart all Pods with kubectl rollout restart. Patch specific fields with kubectl patch.
 
-Create a Deployment quickly:
-
-This generates a basic Deployment. You can save it to YAML for editing:
-
-Update the image:
-
-Scale:
-
-Set resources:
-
-Expose as a Service:
-
-Check rollout status:
-
-View history:
-
-Rollback:
-
-Restart all Pods (triggers rollout):
-
-Patch specific fields:
-
-These commands are much faster than editing YAML during the exam.
+These commands are much faster than editing YAML during the exam. Practice them until they're muscle memory.
 
 ## Common CKAD Exam Scenarios
 
-Let me walk through typical exam scenarios.
+Let me walk through typical exam scenarios with solutions.
 
-### Scenario 1: Zero-Downtime Update
+For updating an application version, you use kubectl set image and check the rollout status. For fixing a failed deployment, you check the status, describe pods to find the issue, rollback with undo, and verify recovery. For scaling applications, use kubectl scale and verify all pods are ready. For adding resource limits, use kubectl set resources on the specific container.
 
-"Update the deployment 'webapp' to use nginx:1.21 with zero downtime."
+For configuring rolling updates, you patch the deployment with the strategy configuration. For adding probes to existing deployments, you can patch or edit to add the probe configurations. For changing deployment strategy, patch the spec strategy type field. For updating multiple configurations, pause the deployment, make all changes, then resume.
 
-### Scenario 2: Fix Failed Deployment
+These patterns appear repeatedly on the exam. Practice each one multiple times.
 
-"The deployment 'api' failed to roll out. Investigate and fix."
+## Troubleshooting Deployments
 
-### Scenario 3: Production-Ready Configuration
+Quick debugging steps for exam scenarios start with checking deployment status, then checking ReplicaSets to see if new ones were created, checking Pods to see their status, and examining events for error messages.
 
-"Create a production-ready deployment 'frontend' with nginx:1.21, 3 replicas, resource limits, and health checks."
+Common failure reasons include ImagePullBackOff from wrong image names or registry authentication issues, CrashLoopBackOff when containers keep failing, Pending state from resource constraints or scheduling issues, and rollout stuck from failing readiness probes.
 
-### Scenario 4: Canary Deployment
+When you need to force a new rollout, use kubectl rollout restart. This recreates all pods even if the spec hasn't changed.
 
-"Deploy a canary version of 'backend' with 20% traffic to the new version."
+## Study Tips for CKAD
 
-### Scenario 5: Resource Management
+For time management, use kubectl create to generate YAML quickly, use imperative commands when possible, practice typing resource limits and probes from memory, and set your preferred editor with the KUBE_EDITOR environment variable.
 
-"Add resource limits to 'worker' deployment: CPU 500m, Memory 256Mi."
+Must-know commands include kubectl create deployment, kubectl set image, kubectl scale, kubectl set resources, kubectl rollout status, history, and undo, and kubectl expose. Practice these until you can type them without thinking.
 
-## Troubleshooting Tips
+Key concepts to memorize are that zero downtime requires maxUnavailable zero, readiness probes prevent traffic to unready Pods, liveness probes restart unhealthy containers, requests guarantee resources while limits cap them, ReplicaSets implement updates, and rollbacks just scale old ReplicaSets back up.
 
-Quick debugging steps for exam scenarios:
-
-Check Deployment status:
-
-Check ReplicaSets:
-
-Check Pods:
-
-Check rollout issues:
-
-Common failure reasons:
-- **ImagePullBackOff**: Wrong image name or registry auth
-- **CrashLoopBackOff**: Container keeps failing
-- **Pending**: Resource constraints or scheduling issues
-- **Rollout stuck**: Check readiness probes and events
-
-Force a new rollout:
+Common requirements to recognize are that production-ready means replicas of at least two, resources set, probes configured, and rolling update strategy. Zero downtime means maxUnavailable zero and readiness probes. Canary means two Deployments with the same Service selector. Blue-green means two Deployments where the Service selector controls traffic.
 
 ## Cleanup
 
-Let's clean up all the resources we created.
+When you're finished, remove all CKAD practice resources using the label selector. This deletes all Deployments, ReplicaSets, and Pods we created during this session.
 
-## CKAD Exam Tips Summary
-
-**Time Management:**
-- Use kubectl create to generate YAML quickly
-- Use imperative commands when possible
-- Practice typing resource limits and probes from memory
-- Set your editor: export KUBE_EDITOR=nano
-
-**Must-Know Commands:**
-- kubectl create deployment
-- kubectl set image
-- kubectl scale
-- kubectl set resources
-- kubectl rollout status/history/undo
-- kubectl expose
-
-**Key Concepts:**
-- Zero downtime requires maxUnavailable: 0
-- Readiness probes prevent traffic to unready Pods
-- Liveness probes restart unhealthy containers
-- Requests guarantee resources, limits cap them
-- ReplicaSets implement updates
-- Rollbacks just scale old ReplicaSets back up
-
-**Common Requirements:**
-- Production-ready means: replicas ≥ 2, resources set, probes configured, rolling update strategy
-- Zero downtime means: maxUnavailable: 0, readiness probes
-- Canary means: two Deployments, same Service selector
-- Blue-green means: two Deployments, Service selector controls traffic
-
-**Documentation:**
-- You can access kubernetes.io/docs during exam
-- Bookmark key pages beforehand
-- Search for "deployment" and use examples
-- kubectl explain is allowed: kubectl explain deployment.spec.strategy
-
-## Practice Exercise
-
-Here's a comprehensive exercise combining multiple concepts:
-
-Create a production-ready deployment named "shop" that:
-1. Runs nginx:1.21 with 3 replicas
-2. Has zero-downtime updates configured
-3. Includes CPU request 100m, limit 200m
-4. Includes memory request 64Mi, limit 128Mi
-5. Has HTTP readiness probe on port 80, path /
-6. Has HTTP liveness probe with 15s initial delay
-7. Uses RollingUpdate with maxSurge 1
-8. Has proper labels: app=shop, tier=frontend
-
-Pause the video and create this from scratch. Time yourself - in the exam, this should take 3-5 minutes.
-
-## Summary
-
-In this video, we covered all advanced Deployment topics for the CKAD exam:
-
-- RollingUpdate and Recreate strategies with configuration
-- Zero-downtime deployments with maxUnavailable: 0
-- Advanced rollout management (pause, resume, annotations)
-- Resource requests and limits with imperative commands
-- Readiness and liveness probes for production reliability
-- Production-ready Deployment checklist
-- Canary deployment pattern for testing in production
-- Time-saving imperative commands
-- Common exam scenarios with solutions
-- Troubleshooting techniques
-
-## Final Advice
-
-Practice is key. Set up scenarios and time yourself:
-- Can you create a basic Deployment in 30 seconds?
-- Can you add resources and probes in 2 minutes?
-- Can you troubleshoot a failing rollout in 1 minute?
-
-The exam is performance-based. Knowing the concepts isn't enough - you must execute quickly and accurately.
-
-Keep practicing, use the official docs during practice, and familiarize yourself with kubectl explain.
-
-Good luck with your CKAD exam!
-
----
+That completes our CKAD preparation for Kubernetes Deployments. You now have the knowledge and hands-on experience needed for Deployments on the CKAD exam. Practice these scenarios multiple times until they become muscle memory. Set yourself time-based challenges to build speed. Use kubectl explain during practice since it's available during the exam. Master these concepts, and you'll be well-prepared for this portion of the CKAD exam.
